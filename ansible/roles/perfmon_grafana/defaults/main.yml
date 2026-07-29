@@ -65,3 +65,19 @@ perfmon_alert_group_wait: 30s
 perfmon_alert_group_interval: 5m
 perfmon_alert_repeat_interval: 4h
 perfmon_alert_group_by: "team,instance,alertname"
+
+# Which upstream edition this Grafana layer reads - accepted val: darling, dashboard
+perfmon_edition: dashboard
+
+# Darling store connection, used when perfmon_edition is darling.
+grafana_darling_folder: "PerformanceMonitor (Darling)"
+grafana_darling_folder_uid: perfmon-darling
+
+perfmon_darling_ds_name: Darling
+perfmon_darling_ds_uid: darling
+perfmon_darling_pg_host: darling-pg
+perfmon_darling_pg_port: 5432
+perfmon_darling_pg_database: darling
+perfmon_darling_pg_user: viewer
+# perfmon_darling_pg_password: set in inventory group_vars or vault
+perfmon_darling_pg_sslmode: disable

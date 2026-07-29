@@ -1,0 +1,27 @@
+---
+# Separate from dashboards.yml so a run only imports its own edition's line.
+
+- name: Ensure Darling folder exists
+  community.grafana.grafana_folder:
+    grafana_url: "{{ grafana_url }}"
+    grafana_api_key: "{{ grafana_api_key }}"
+    title: "{{ grafana_darling_folder }}"
+    uid: "{{ grafana_darling_folder_uid }}"
+    state: present
+  delegate_to: localhost
+  no_log: true
+
+- name: Import Darling dashboard
+  community.grafana.grafana_dashboard:
+    grafana_url: "{{ grafana_url }}"
+    grafana_api_key: "{{ grafana_api_key }}"
+    path: "{{ item }}"
+    folder: "{{ grafana_darling_folder }}"
+    overwrite: true
+    state: present
+  loop: >-
+    {{ lookup('fileglob', role_path + '/files/grafana/dashboards/darling/*.json', wantlist=true) }}
+  loop_control:
+    label: "{{ item | basename | replace('.json', '') }}"
+  delegate_to: localhost
+  no_log: true

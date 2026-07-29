@@ -11,9 +11,23 @@
     - dashboards
     - alerting
 
+- name: Validate the configured edition
+  ansible.builtin.assert:
+    that:
+      - perfmon_edition in ['dashboard', 'darling']
+    fail_msg: >-
+      Invalid perfmon_edition '{{ perfmon_edition }}'. Must be dashboard (SQL-Server-resident
+      collect.*/report.* schema) or darling (central PostgreSQL store).
+    quiet: true
+  tags:
+    - datasources
+    - dashboards
+    - alerting
+
 - name: Validate resolved reader auth mode on every instance
   vars:
     resolved_mode: "{{ item.perfmon_reader_auth_mode | default(perfmon_reader_auth_mode) }}"
+  when: perfmon_edition == 'dashboard'
   ansible.builtin.assert:
     that:
       - resolved_mode in ['sql', 'windows']
@@ -30,6 +44,7 @@
 - name: Validate reader credentials for the resolved auth mode on every instance
   vars:
     resolved_mode: "{{ item.perfmon_reader_auth_mode | default(perfmon_reader_auth_mode) }}"
+  when: perfmon_edition == 'dashboard'
   ansible.builtin.assert:
     that:
       - resolved_mode != 'windows'
@@ -54,20 +69,42 @@
 
 - name: Provision datasources
   ansible.builtin.import_tasks: datasources.yml
+  when: perfmon_edition == 'dashboard'
+  tags: datasources
+
+- name: Provision the Darling datasource
+  ansible.builtin.import_tasks: datasources_darling.yml
+  when: perfmon_edition == 'darling'
   tags: datasources
 
 - name: Generate dashboard JSON files
   ansible.builtin.import_tasks: generate_dashboards.yml
+  when: perfmon_edition == 'dashboard'
+  tags:
+    - dashboards
+    - generate
+
+- name: Generate Darling dashboard JSON files
+  ansible.builtin.import_tasks: generate_dashboards_darling.yml
+  when: perfmon_edition == 'darling'
   tags:
     - dashboards
     - generate
 
 - name: Import dashboards into Grafana
   ansible.builtin.import_tasks: dashboards.yml
+  when: perfmon_edition == 'dashboard'
   tags: dashboards
 
+- name: Import Darling dashboards into Grafana
+  ansible.builtin.import_tasks: dashboards_darling.yml
+  when: perfmon_edition == 'darling'
+  tags: dashboards
+
+# No Darling equivalent yet: the rules target per-instance MSSQL datasources and live DMVs.
 - name: Provision alerting resources
   ansible.builtin.import_tasks: alerting.yml
+  when: perfmon_edition == 'dashboard'
   tags: alerting
 
 - name: Remove all provisioned resources
