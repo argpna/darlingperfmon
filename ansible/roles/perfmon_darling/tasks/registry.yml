@@ -1,0 +1,91 @@
+---
+# darling.json's servers[] seeds config_monitored_servers only while it is empty, so an
+# instance added to inventory after the store's first start is otherwise never collected.
+# These tasks insert it directly; the table's trigger bumps config_version, so the running
+# service reloads without a restart.
+#
+# The secret is not written here. On Linux there is no DPAPI blob to store, and the service
+# backfills a row's password from darling.json by matching storage name (host) + username -
+# which is why the rendered file must keep listing every SQL-auth instance.
+
+- name: Read the current monitored-server registry
+  community.postgresql.postgresql_query:
+    login_host: "{{ perfmon_darling_pg_host }}"
+    port: "{{ perfmon_darling_pg_port }}"
+    login_user: "{{ perfmon_darling_pg_user }}"
+    login_password: "{{ perfmon_darling_pg_password }}"
+    db: "{{ perfmon_darling_pg_database }}"
+    query: SELECT server_id, name, is_enabled FROM config.config_monitored_servers
+  register: _darling_registry
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: Register instances missing from the registry
+  vars:
+    _auth: "{{ item.darling_auth | default(perfmon_darling_auth) }}"
+    _storage: >-
+      {{ (item.ds_host | default(item.ansible_host))
+         | darling_storage_name(item.mssql_database | default(none),
+                                item.darling_read_only_intent | default(false) | bool) }}
+  community.postgresql.postgresql_query:
+    login_host: "{{ perfmon_darling_pg_host }}"
+    port: "{{ perfmon_darling_pg_port }}"
+    login_user: "{{ perfmon_darling_pg_user }}"
+    login_password: "{{ perfmon_darling_pg_password }}"
+    db: "{{ perfmon_darling_pg_database }}"
+    query: >-
+      INSERT INTO config.config_monitored_servers
+        (server_id, name, host, database, auth, username, encrypt_mode,
+         trust_server_certificate, read_only_intent, excluded_databases,
+         monthly_cost_usd, is_enabled)
+      VALUES (%(server_id)s, %(name)s, %(host)s, %(database)s, %(auth)s, %(username)s,
+              %(encrypt_mode)s, %(trust)s, %(read_only)s, %(excluded)s, %(cost)s, TRUE)
+      ON CONFLICT (server_id) DO NOTHING
+    named_args:
+      server_id: "{{ _storage | darling_server_id }}"
+      name: "{{ item.darling_name | default(item.inventory_hostname) }}"
+      host: "{{ item.ds_host | default(item.ansible_host) }}"
+      database: "{{ item.mssql_database | default(none) }}"
+      auth: "{{ _auth }}"
+      username: "{{ (item.darling_sql_username | default(perfmon_darling_sql_username | default(none))) if _auth == 'sql' else none }}"
+      encrypt_mode: "{{ item.darling_encrypt_mode | default('Mandatory') }}"
+      trust: "{{ item.darling_trust_server_certificate | default(true) | bool }}"
+      read_only: "{{ item.darling_read_only_intent | default(false) | bool }}"
+      excluded: "{{ item.darling_excluded_databases | default([]) }}"
+      cost: "{{ item.darling_monthly_cost_usd | default(0) | float }}"
+  loop: "{{ perfmon_darling_instances }}"
+  loop_control:
+    label: "{{ item.inventory_hostname }}"
+  when:
+    - perfmon_darling_register_new | bool
+    - (_storage | darling_server_id) not in (_darling_registry.query_result | map(attribute='server_id') | list)
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+# Only for a run whose inventory is the complete fleet - a partial run would otherwise stop
+# collection on instances it simply does not know about. Rows are disabled, never deleted,
+# so their collected history survives.
+- name: Disable registry rows whose instance left the inventory
+  vars:
+    _known: >-
+      {{ perfmon_darling_instances
+         | map(attribute='ds_host', default=none)
+         | select('string') | list }}
+  community.postgresql.postgresql_query:
+    login_host: "{{ perfmon_darling_pg_host }}"
+    port: "{{ perfmon_darling_pg_port }}"
+    login_user: "{{ perfmon_darling_pg_user }}"
+    login_password: "{{ perfmon_darling_pg_password }}"
+    db: "{{ perfmon_darling_pg_database }}"
+    query: >-
+      UPDATE config.config_monitored_servers
+      SET is_enabled = FALSE, modified_at = (now() AT TIME ZONE 'UTC')
+      WHERE is_enabled AND NOT (host = ANY(%(known)s))
+    named_args:
+      known: "{{ _known }}"
+  when: perfmon_darling_prune_orphaned | bool
+  delegate_to: localhost
+  become: false
+  no_log: true

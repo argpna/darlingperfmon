@@ -1,0 +1,209 @@
+{
+  "uid": "darling-queries",
+  "title": "Query Performance",
+  "tags": [
+    "perfmon"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Top Resource Consumers",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Query CPU",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT * FROM (\nSELECT\n    qs.bucket AS time,\n    qs.server_name AS metric,\n    SUM(qs.worker_time_sum) / 1000.0 AS cpu_ms\nFROM collect.query_stats_daily AS qs\nWHERE $__timeFilter(qs.bucket)\n  AND qs.server_id IN (${server:csv})\nGROUP BY qs.bucket, qs.server_name\n) AS daily_tier WHERE $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days'\nUNION ALL\nSELECT * FROM (\nSELECT\n    qs.bucket AS time,\n    qs.server_name AS metric,\n    SUM(qs.worker_time_sum) / 1000.0 AS cpu_ms\nFROM collect.query_stats_hourly AS qs\nWHERE $__timeFilter(qs.bucket)\n  AND qs.server_id IN (${server:csv})\nGROUP BY qs.bucket, qs.server_name\n) AS hourly_tier WHERE $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days'\nUNION ALL\nSELECT * FROM (\nSELECT\n    qs.collection_time AS time,\n    qs.server_name AS metric,\n    SUM(qs.delta_worker_time) / 1000.0 AS cpu_ms\nFROM collect.v_query_stats AS qs\nWHERE $__timeFilter(qs.collection_time)\n  AND qs.server_id IN (${server:csv})\nGROUP BY qs.collection_time, qs.server_name\n) AS raw_tier WHERE $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days'\nORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Top Queries by CPU",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "CPU (ms)",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT * FROM (\nSELECT\n    qs.server_name AS \"Server\",\n    qs.database_name AS \"Database\",\n    qs.query_hash AS \"Query Hash\",\n    SUM(qs.worker_time_sum) / 1000.0 AS \"CPU (ms)\",\n    SUM(qs.elapsed_time_sum) / 1000.0 AS \"Duration (ms)\",\n    SUM(qs.execution_count_sum) AS \"Executions\"\nFROM collect.query_stats_daily AS qs\nWHERE $__timeFilter(qs.bucket)\n  AND qs.server_id IN (${server:csv})\nGROUP BY qs.server_name, qs.database_name, qs.query_hash\n) AS daily_tier WHERE $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days'\nUNION ALL\nSELECT * FROM (\nSELECT\n    qs.server_name AS \"Server\",\n    qs.database_name AS \"Database\",\n    qs.query_hash AS \"Query Hash\",\n    SUM(qs.worker_time_sum) / 1000.0 AS \"CPU (ms)\",\n    SUM(qs.elapsed_time_sum) / 1000.0 AS \"Duration (ms)\",\n    SUM(qs.execution_count_sum) AS \"Executions\"\nFROM collect.query_stats_hourly AS qs\nWHERE $__timeFilter(qs.bucket)\n  AND qs.server_id IN (${server:csv})\nGROUP BY qs.server_name, qs.database_name, qs.query_hash\n) AS hourly_tier WHERE $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days'\nUNION ALL\nSELECT * FROM (\nSELECT\n    qs.server_name AS \"Server\",\n    qs.database_name AS \"Database\",\n    qs.query_hash AS \"Query Hash\",\n    SUM(qs.delta_worker_time) / 1000.0 AS \"CPU (ms)\",\n    SUM(qs.delta_elapsed_time) / 1000.0 AS \"Duration (ms)\",\n    SUM(qs.delta_execution_count) AS \"Executions\"\nFROM collect.v_query_stats AS qs\nWHERE $__timeFilter(qs.collection_time)\n  AND qs.server_id IN (${server:csv})\nGROUP BY qs.server_name, qs.database_name, qs.query_hash\n) AS raw_tier WHERE $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days'\nORDER BY \"CPU (ms)\" DESC\nLIMIT 50"
+        }
+      ]
+    }
+  ]
+}

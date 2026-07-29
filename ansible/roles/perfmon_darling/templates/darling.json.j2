@@ -1,0 +1,42 @@
+{#
+  darling.json for the Darling collector service.
+
+  servers[] seeds config_monitored_servers only while it is empty, but it stays the source
+  of the SQL-auth secrets on every start - the service backfills a store row's missing
+  password from here, matching name + auth + username exactly. So every SQL-auth instance
+  must be listed whether or not the store already knows it.
+#}
+{
+  "postgres": {
+    "connectionString": "Host={{ perfmon_darling_pg_host }};Port={{ perfmon_darling_pg_port }};Username={{ perfmon_darling_pg_user }};Password={{ perfmon_darling_pg_password }};Database={{ perfmon_darling_pg_database }}"
+  },
+  "servers": [
+{% for h in perfmon_darling_instances %}
+{%   set auth = h.darling_auth | default(perfmon_darling_auth) %}
+    {
+      "name": {{ (h.darling_name | default(h.inventory_hostname)) | to_json }},
+      "host": {{ (h.ds_host | default(h.ansible_host)) | to_json }},
+      "auth": {{ auth | to_json }},
+{%   if h.mssql_database is defined %}
+      "database": {{ h.mssql_database | to_json }},
+{%   endif %}
+{%   if auth == 'sql' %}
+      "username": {{ (h.darling_sql_username | default(perfmon_darling_sql_username)) | to_json }},
+      "password": {{ (h.darling_sql_password | default(perfmon_darling_sql_password)) | to_json }},
+{%   endif %}
+      "trustServerCertificate": {{ (h.darling_trust_server_certificate | default(true)) | bool | to_json }},
+      "encryptMode": {{ (h.darling_encrypt_mode | default('Mandatory')) | to_json }},
+      "readOnlyIntent": {{ (h.darling_read_only_intent | default(false)) | bool | to_json }},
+      "monthlyCostUsd": {{ (h.darling_monthly_cost_usd | default(0)) | float }},
+      "excludedDatabases": {{ (h.darling_excluded_databases | default([])) | to_json }}
+    }{{ "," if not loop.last else "" }}
+{% endfor %}
+  ],
+  "capturePlans": {{ perfmon_darling_capture_plans | bool | to_json }},
+  "alerts": {
+    "enabled": {{ perfmon_darling_alerts_enabled | bool | to_json }}
+  },
+  "analysis": {
+    "enabled": {{ perfmon_darling_analysis_enabled | bool | to_json }}
+  }
+}

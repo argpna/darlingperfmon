@@ -18,7 +18,7 @@ RUN curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
 
 ENV PATH="/opt/mssql-tools18/bin:${PATH}"
 
-RUN pip3 install --no-cache-dir ansible requests
+RUN pip3 install --no-cache-dir ansible requests psycopg2-binary
 
 COPY requirements.yml /tmp/requirements.yml
 RUN ansible-galaxy collection install -r /tmp/requirements.yml -p /usr/share/ansible/collections

@@ -17,9 +17,10 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 # pylint: disable=wrong-import-position
 from darling_defs._shared import OUT  # noqa: E402
+from darling_defs.queries import queries  # noqa: E402
 from darling_defs.waits import waits  # noqa: E402
 
-DASHBOARDS = [waits]
+DASHBOARDS = [queries, waits]
 
 
 def main() -> None:
