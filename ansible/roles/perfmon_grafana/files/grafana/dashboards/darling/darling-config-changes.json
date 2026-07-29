@@ -1,0 +1,403 @@
+{
+  "uid": "darling-config-changes",
+  "title": "Configuration Changes",
+  "tags": [
+    "perfmon"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      },
+      {
+        "name": "database",
+        "label": "Database",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "\nSELECT DISTINCT dc.database_name\nFROM collect.v_database_config AS dc\nWHERE dc.server_id IN (${server:csv})\nORDER BY 1\n",
+        "definition": "\nSELECT DISTINCT dc.database_name\nFROM collect.v_database_config AS dc\nWHERE dc.server_id IN (${server:csv})\nORDER BY 1\n",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "refresh": 2,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "allValue": "*",
+        "sort": 0,
+        "description": "Scopes the database configuration change history."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Server Config Changes",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Server Configuration Changes",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 11,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Requires Restart"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Yes": {
+                        "color": "orange",
+                        "index": 0
+                      },
+                      "No": {
+                        "color": "text",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Change Time",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH walked AS (\n    SELECT\n        sc.server_id,\n        sc.capture_time,\n        sc.configuration_name,\n        sc.value_configured,\n        sc.value_in_use,\n        sc.is_dynamic,\n        sc.is_advanced,\n        LAG(sc.value_configured) OVER w AS prev_configured,\n        LAG(sc.value_in_use) OVER w AS prev_in_use,\n        LAG(sc.capture_time) OVER w AS prev_capture\n    FROM collect.v_server_config AS sc\n    WHERE sc.server_id IN (${server:csv})\n      AND sc.capture_time <= $__timeTo()\n    WINDOW w AS (\n        PARTITION BY sc.server_id, sc.configuration_name ORDER BY sc.capture_time\n    )\n)\nSELECT\n    w.capture_time AS \"Change Time\",\n    srv.name AS \"Server\",\n    w.configuration_name AS \"Setting\",\n    w.prev_configured AS \"Old Configured\",\n    w.value_configured AS \"New Configured\",\n    w.prev_in_use AS \"Old In Use\",\n    w.value_in_use AS \"New In Use\",\n    CASE WHEN w.is_dynamic THEN 'Yes' ELSE 'No' END AS \"Dynamic\",\n    CASE WHEN w.is_advanced THEN 'Yes' ELSE 'No' END AS \"Advanced\",\n    /* The Dashboard view's own definition: a non-dynamic setting whose configured value\n       differs from the in-use value is waiting on a restart. */\n    CASE WHEN w.is_dynamic = FALSE AND w.value_configured IS DISTINCT FROM w.value_in_use\n         THEN 'Yes' ELSE 'No' END AS \"Requires Restart\",\n    CASE\n        WHEN w.prev_configured IS DISTINCT FROM w.value_configured\n            THEN 'Configured value changed from ' || COALESCE(w.prev_configured::text, '')\n                 || ' to ' || COALESCE(w.value_configured::text, '')\n        WHEN w.prev_in_use IS DISTINCT FROM w.value_in_use\n            THEN 'In-use value changed from ' || COALESCE(w.prev_in_use::text, '')\n                 || ' to ' || COALESCE(w.value_in_use::text, '')\n        ELSE 'Value unchanged'\n    END AS \"Change\"\nFROM walked AS w\nJOIN config.config_monitored_servers AS srv ON srv.server_id = w.server_id\nWHERE w.prev_capture IS NOT NULL\n  AND (w.prev_configured IS DISTINCT FROM w.value_configured\n       OR w.prev_in_use IS DISTINCT FROM w.value_in_use)\n  AND $__timeFilter(w.capture_time)\nORDER BY w.capture_time DESC, w.configuration_name\n"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "row",
+      "title": "Database Config Changes",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "panels": []
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Database Configuration Changes",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 11,
+        "w": 24,
+        "x": 0,
+        "y": 13
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Change Time",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH lagged AS (\n    SELECT\n        dc.server_id,\n        dc.capture_time,\n        dc.database_name,\n        LAG(dc.capture_time) OVER w AS prev_capture,\n        dc.state_desc::text AS state_desc,\n        LAG(dc.state_desc::text) OVER w AS prev_state_desc,\n        dc.compatibility_level::text AS compatibility_level,\n        LAG(dc.compatibility_level::text) OVER w AS prev_compatibility_level,\n        dc.collation_name::text AS collation_name,\n        LAG(dc.collation_name::text) OVER w AS prev_collation_name,\n        dc.recovery_model::text AS recovery_model,\n        LAG(dc.recovery_model::text) OVER w AS prev_recovery_model,\n        dc.is_read_only::text AS is_read_only,\n        LAG(dc.is_read_only::text) OVER w AS prev_is_read_only,\n        dc.is_auto_close_on::text AS is_auto_close_on,\n        LAG(dc.is_auto_close_on::text) OVER w AS prev_is_auto_close_on,\n        dc.is_auto_shrink_on::text AS is_auto_shrink_on,\n        LAG(dc.is_auto_shrink_on::text) OVER w AS prev_is_auto_shrink_on,\n        dc.is_auto_create_stats_on::text AS is_auto_create_stats_on,\n        LAG(dc.is_auto_create_stats_on::text) OVER w AS prev_is_auto_create_stats_on,\n        dc.is_auto_update_stats_on::text AS is_auto_update_stats_on,\n        LAG(dc.is_auto_update_stats_on::text) OVER w AS prev_is_auto_update_stats_on,\n        dc.is_auto_update_stats_async_on::text AS is_auto_update_stats_async_on,\n        LAG(dc.is_auto_update_stats_async_on::text) OVER w AS prev_is_auto_update_stats_async_on,\n        dc.is_read_committed_snapshot_on::text AS is_read_committed_snapshot_on,\n        LAG(dc.is_read_committed_snapshot_on::text) OVER w AS prev_is_read_committed_snapshot_on,\n        dc.snapshot_isolation_state::text AS snapshot_isolation_state,\n        LAG(dc.snapshot_isolation_state::text) OVER w AS prev_snapshot_isolation_state,\n        dc.is_parameterization_forced::text AS is_parameterization_forced,\n        LAG(dc.is_parameterization_forced::text) OVER w AS prev_is_parameterization_forced,\n        dc.is_query_store_on::text AS is_query_store_on,\n        LAG(dc.is_query_store_on::text) OVER w AS prev_is_query_store_on,\n        dc.is_encrypted::text AS is_encrypted,\n        LAG(dc.is_encrypted::text) OVER w AS prev_is_encrypted,\n        dc.is_trustworthy_on::text AS is_trustworthy_on,\n        LAG(dc.is_trustworthy_on::text) OVER w AS prev_is_trustworthy_on,\n        dc.is_db_chaining_on::text AS is_db_chaining_on,\n        LAG(dc.is_db_chaining_on::text) OVER w AS prev_is_db_chaining_on,\n        dc.is_broker_enabled::text AS is_broker_enabled,\n        LAG(dc.is_broker_enabled::text) OVER w AS prev_is_broker_enabled,\n        dc.is_cdc_enabled::text AS is_cdc_enabled,\n        LAG(dc.is_cdc_enabled::text) OVER w AS prev_is_cdc_enabled,\n        dc.is_mixed_page_allocation_on::text AS is_mixed_page_allocation_on,\n        LAG(dc.is_mixed_page_allocation_on::text) OVER w AS prev_is_mixed_page_allocation_on,\n        dc.log_reuse_wait_desc::text AS log_reuse_wait_desc,\n        LAG(dc.log_reuse_wait_desc::text) OVER w AS prev_log_reuse_wait_desc,\n        dc.page_verify_option::text AS page_verify_option,\n        LAG(dc.page_verify_option::text) OVER w AS prev_page_verify_option,\n        dc.target_recovery_time_seconds::text AS target_recovery_time_seconds,\n        LAG(dc.target_recovery_time_seconds::text) OVER w AS prev_target_recovery_time_seconds,\n        dc.delayed_durability::text AS delayed_durability,\n        LAG(dc.delayed_durability::text) OVER w AS prev_delayed_durability,\n        dc.is_accelerated_database_recovery_on::text AS is_accelerated_database_recovery_on,\n        LAG(dc.is_accelerated_database_recovery_on::text) OVER w AS prev_is_accelerated_database_recovery_on,\n        dc.is_memory_optimized_enabled::text AS is_memory_optimized_enabled,\n        LAG(dc.is_memory_optimized_enabled::text) OVER w AS prev_is_memory_optimized_enabled,\n        dc.is_optimized_locking_on::text AS is_optimized_locking_on,\n        LAG(dc.is_optimized_locking_on::text) OVER w AS prev_is_optimized_locking_on\n    FROM collect.v_database_config AS dc\n    WHERE dc.server_id IN (${server:csv})\n      AND dc.capture_time <= $__timeTo()\n      AND (ARRAY[${database:sqlstring}] @> ARRAY['*'] OR dc.database_name = ANY(ARRAY[${database:sqlstring}]))\n    WINDOW w AS (PARTITION BY dc.server_id, dc.database_name ORDER BY dc.capture_time)\n),\nwalked AS (\n    SELECT\n        l.server_id,\n        l.capture_time,\n        l.database_name,\n        l.prev_capture,\n        s.setting_name,\n        s.new_value,\n        s.old_value\n    FROM lagged AS l\n    CROSS JOIN LATERAL (VALUES\n        ('state_desc', l.state_desc, l.prev_state_desc),\n        ('compatibility_level', l.compatibility_level, l.prev_compatibility_level),\n        ('collation_name', l.collation_name, l.prev_collation_name),\n        ('recovery_model', l.recovery_model, l.prev_recovery_model),\n        ('is_read_only', l.is_read_only, l.prev_is_read_only),\n        ('is_auto_close_on', l.is_auto_close_on, l.prev_is_auto_close_on),\n        ('is_auto_shrink_on', l.is_auto_shrink_on, l.prev_is_auto_shrink_on),\n        ('is_auto_create_stats_on', l.is_auto_create_stats_on, l.prev_is_auto_create_stats_on),\n        ('is_auto_update_stats_on', l.is_auto_update_stats_on, l.prev_is_auto_update_stats_on),\n        ('is_auto_update_stats_async_on', l.is_auto_update_stats_async_on, l.prev_is_auto_update_stats_async_on),\n        ('is_read_committed_snapshot_on', l.is_read_committed_snapshot_on, l.prev_is_read_committed_snapshot_on),\n        ('snapshot_isolation_state', l.snapshot_isolation_state, l.prev_snapshot_isolation_state),\n        ('is_parameterization_forced', l.is_parameterization_forced, l.prev_is_parameterization_forced),\n        ('is_query_store_on', l.is_query_store_on, l.prev_is_query_store_on),\n        ('is_encrypted', l.is_encrypted, l.prev_is_encrypted),\n        ('is_trustworthy_on', l.is_trustworthy_on, l.prev_is_trustworthy_on),\n        ('is_db_chaining_on', l.is_db_chaining_on, l.prev_is_db_chaining_on),\n        ('is_broker_enabled', l.is_broker_enabled, l.prev_is_broker_enabled),\n        ('is_cdc_enabled', l.is_cdc_enabled, l.prev_is_cdc_enabled),\n        ('is_mixed_page_allocation_on', l.is_mixed_page_allocation_on, l.prev_is_mixed_page_allocation_on),\n        ('log_reuse_wait_desc', l.log_reuse_wait_desc, l.prev_log_reuse_wait_desc),\n        ('page_verify_option', l.page_verify_option, l.prev_page_verify_option),\n        ('target_recovery_time_seconds', l.target_recovery_time_seconds, l.prev_target_recovery_time_seconds),\n        ('delayed_durability', l.delayed_durability, l.prev_delayed_durability),\n        ('is_accelerated_database_recovery_on', l.is_accelerated_database_recovery_on, l.prev_is_accelerated_database_recovery_on),\n        ('is_memory_optimized_enabled', l.is_memory_optimized_enabled, l.prev_is_memory_optimized_enabled),\n        ('is_optimized_locking_on', l.is_optimized_locking_on, l.prev_is_optimized_locking_on)\n    ) AS s(setting_name, new_value, old_value)\n)\nSELECT\n    w.capture_time AS \"Change Time\",\n    srv.name AS \"Server\",\n    w.database_name AS \"Database\",\n    w.setting_name AS \"Setting\",\n    w.old_value AS \"Old Value\",\n    w.new_value AS \"New Value\",\n    CASE\n        WHEN w.old_value IS NULL AND w.new_value IS NOT NULL THEN 'Set to: ' || w.new_value\n        WHEN w.old_value IS NOT NULL AND w.new_value IS NULL\n            THEN 'Cleared (was: ' || w.old_value || ')'\n        ELSE 'Changed from ' || COALESCE(w.old_value, '') || ' to '\n             || COALESCE(w.new_value, '')\n    END AS \"Change\"\nFROM walked AS w\nJOIN config.config_monitored_servers AS srv ON srv.server_id = w.server_id\nWHERE w.prev_capture IS NOT NULL\n  AND w.old_value IS DISTINCT FROM w.new_value\n  AND $__timeFilter(w.capture_time)\nORDER BY w.capture_time DESC, w.database_name, w.setting_name\n"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "row",
+      "title": "Trace Flag Changes",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "panels": []
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Trace Flag Changes",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 11,
+        "w": 24,
+        "x": 0,
+        "y": 25
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Change Type"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "enabled": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "disabled": {
+                        "color": "red",
+                        "index": 1
+                      },
+                      "modified": {
+                        "color": "yellow",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Change Time",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH captures AS (\n    SELECT DISTINCT tf.server_id, tf.capture_time\n    FROM collect.v_trace_flags AS tf\n    WHERE tf.server_id IN (${server:csv})\n      AND tf.capture_time <= $__timeTo()\n),\npaired AS (\n    SELECT server_id, capture_time,\n           LAG(capture_time) OVER (PARTITION BY server_id ORDER BY capture_time)\n               AS prev_capture\n    FROM captures\n),\nflags AS (\n    SELECT DISTINCT tf.server_id, tf.trace_flag\n    FROM collect.v_trace_flags AS tf\n    WHERE tf.server_id IN (${server:csv})\n      AND tf.capture_time <= $__timeTo()\n),\ndiffed AS (\n    SELECT\n        p.server_id,\n        p.capture_time,\n        f.trace_flag,\n        prv.status AS prev_status,\n        cur.status AS new_status,\n        COALESCE(cur.is_global, prv.is_global) AS is_global,\n        COALESCE(cur.is_session, prv.is_session) AS is_session,\n        CASE\n            WHEN prv.trace_flag IS NULL THEN 'enabled'\n            WHEN cur.trace_flag IS NULL THEN 'disabled'\n            ELSE 'modified'\n        END AS change_type\n    FROM paired AS p\n    JOIN flags AS f ON f.server_id = p.server_id\n    LEFT JOIN collect.v_trace_flags AS cur\n        ON cur.server_id = p.server_id\n       AND cur.capture_time = p.capture_time\n       AND cur.trace_flag = f.trace_flag\n    LEFT JOIN collect.v_trace_flags AS prv\n        ON prv.server_id = p.server_id\n       AND prv.capture_time = p.prev_capture\n       AND prv.trace_flag = f.trace_flag\n    WHERE p.prev_capture IS NOT NULL\n      /* Present in neither capture is not a change, it is a flag that exists elsewhere in\n         the window; the two set-membership arms below are the enable/disable cases. */\n      AND (cur.trace_flag IS NOT NULL OR prv.trace_flag IS NOT NULL)\n      AND (prv.trace_flag IS NULL\n           OR cur.trace_flag IS NULL\n           OR prv.status IS DISTINCT FROM cur.status\n           OR prv.is_global IS DISTINCT FROM cur.is_global\n           OR prv.is_session IS DISTINCT FROM cur.is_session)\n)\nSELECT\n    d.capture_time AS \"Change Time\",\n    srv.name AS \"Server\",\n    d.trace_flag AS \"Trace Flag\",\n    d.change_type AS \"Change Type\",\n    CASE WHEN d.prev_status IS NULL THEN '' WHEN d.prev_status THEN 'ON' ELSE 'OFF' END\n        AS \"Previous Status\",\n    CASE WHEN d.new_status IS NULL THEN '' WHEN d.new_status THEN 'ON' ELSE 'OFF' END\n        AS \"New Status\",\n    CASE WHEN d.is_global THEN 'GLOBAL' WHEN d.is_session THEN 'SESSION' ELSE 'UNKNOWN' END\n        AS \"Scope\",\n    CASE d.change_type\n        WHEN 'enabled' THEN 'Trace flag ' || d.trace_flag || ' ENABLED'\n        WHEN 'disabled' THEN 'Trace flag ' || d.trace_flag || ' DISABLED'\n        WHEN 'modified' THEN 'Trace flag ' || d.trace_flag || ' scope changed'\n        ELSE 'Status unchanged'\n    END AS \"Change\"\nFROM diffed AS d\nJOIN config.config_monitored_servers AS srv ON srv.server_id = d.server_id\nWHERE $__timeFilter(d.capture_time)\nORDER BY d.capture_time DESC, d.trace_flag\n"
+        }
+      ]
+    }
+  ]
+}

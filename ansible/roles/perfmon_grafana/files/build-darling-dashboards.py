@@ -17,7 +17,11 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 # pylint: disable=wrong-import-position
 from darling_defs._shared import OUT  # noqa: E402
+from darling_defs.collection_health import collection_health  # noqa: E402
+from darling_defs.config_changes import config_changes  # noqa: E402
+from darling_defs.configuration import configuration  # noqa: E402
 from darling_defs.cpu import cpu  # noqa: E402
+from darling_defs.daily_summary import daily_summary  # noqa: E402
 from darling_defs.file_io import file_io  # noqa: E402
 from darling_defs.latch_spinlock import latch_spinlock  # noqa: E402
 from darling_defs.memory import memory  # noqa: E402
@@ -28,7 +32,11 @@ from darling_defs.tempdb import tempdb  # noqa: E402
 from darling_defs.waits import waits  # noqa: E402
 
 DASHBOARDS = [
+    collection_health,
+    config_changes,
+    configuration,
     cpu,
+    daily_summary,
     file_io,
     latch_spinlock,
     memory,

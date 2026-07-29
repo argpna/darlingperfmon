@@ -7,6 +7,8 @@ CpuSchedulerMetrics.BuildMetrics (PerformanceMonitor.Common).
 from ._shared import (
     collector,
     dashboard,
+    fixed,
+    n0,
     reset_id,
     server_filter,
     server_join,
@@ -66,23 +68,12 @@ ORDER BY 1
 """
 
 
-def _n0(expr: str) -> str:
-    """C# N0: thousands-separated integer."""
-    return f"to_char({expr}, 'FM999,999,999,990')"
-
-
-def _fixed(expr: str, places: int) -> str:
-    """C# F1/F2: fixed decimal places, no thousands separator."""
-    mask = "FM999999990" + ("." + "0" * places if places else "")
-    return f"to_char(round(({expr})::numeric, {places}), '{mask}')"
-
-
 def _kb_as_gb(expr: str) -> str:
     """C# FormatKbAsGb: GB to one decimal at 1 GB and above, otherwise whole MB."""
     return f"""CASE
             WHEN {expr} / 1048576.0 >= 1
-            THEN {_fixed(f'{expr} / 1048576.0', 1)} || ' GB'
-            ELSE {_fixed(f'{expr} / 1024.0', 0)} || ' MB'
+            THEN {fixed(f'{expr} / 1048576.0', 1)} || ' GB'
+            ELSE {fixed(f'{expr} / 1024.0', 0)} || ' MB'
         END"""
 
 
@@ -119,61 +110,61 @@ def _scheduler_snapshot_sql() -> str:
     rows = [
         ("Pressure Level", "l.pressure_level", "l.pressure_level NOT LIKE 'NORMAL%'"),
         ("Recommendation", "l.recommendation", "false"),
-        ("Schedulers", _n0("l.scheduler_count"), "false"),
-        ("Logical CPUs", _n0("l.cpu_count"), "false"),
+        ("Schedulers", n0("l.scheduler_count"), "false"),
+        ("Logical CPUs", n0("l.cpu_count"), "false"),
         (
             "NUMA Nodes (online / total)",
             "l.nodes_online_count || ' / ' || l.total_node_count",
             "false",
         ),
-        ("Offline CPUs", _n0("l.offline_cpu_count"), "l.offline_cpu_warning"),
-        ("Max Worker Threads", _n0("l.max_workers_count"), "false"),
+        ("Offline CPUs", n0("l.offline_cpu_count"), "l.offline_cpu_warning"),
+        ("Max Worker Threads", n0("l.max_workers_count"), "false"),
         (
             "Current Workers",
-            _n0("l.total_current_workers_count"),
+            n0("l.total_current_workers_count"),
             "l.worker_thread_exhaustion_warning",
         ),
         (
             "Worker Utilization %",
-            _fixed("l.worker_util", 1),
+            fixed("l.worker_util", 1),
             "l.worker_thread_exhaustion_warning",
         ),
         (
             "Runnable Tasks",
-            _n0("l.total_runnable_tasks_count"),
+            n0("l.total_runnable_tasks_count"),
             "l.runnable_tasks_warning",
         ),
         (
             "Avg Runnable / Scheduler",
-            _fixed("l.avg_runnable_tasks_count", 2),
+            fixed("l.avg_runnable_tasks_count", 2),
             "l.runnable_tasks_warning",
         ),
-        ("Work Queue Length", _n0("l.total_work_queue_count"), "false"),
-        ("Active Requests", _n0("l.total_active_request_count"), "false"),
+        ("Work Queue Length", n0("l.total_work_queue_count"), "false"),
+        ("Active Requests", n0("l.total_active_request_count"), "false"),
         (
             "Queued Requests",
-            _n0("l.total_queued_request_count"),
+            n0("l.total_queued_request_count"),
             "l.queued_requests_warning",
         ),
-        ("Blocked Tasks", _n0("l.total_blocked_task_count"), "l.blocked_tasks_warning"),
+        ("Blocked Tasks", n0("l.total_blocked_task_count"), "l.blocked_tasks_warning"),
         (
             "Active Parallel Threads",
-            _n0("l.total_active_parallel_thread_count"),
+            n0("l.total_active_parallel_thread_count"),
             "false",
         ),
         (
             "Runnable Requests",
-            _na("l.runnable_request_count", _n0("l.runnable_request_count")),
+            _na("l.runnable_request_count", n0("l.runnable_request_count")),
             "false",
         ),
         (
             "Total Requests",
-            _na("l.total_request_count", _n0("l.total_request_count")),
+            _na("l.total_request_count", n0("l.total_request_count")),
             "false",
         ),
         (
             "Runnable %",
-            _na("l.runnable_percent", _fixed("l.runnable_percent", 2)),
+            _na("l.runnable_percent", fixed("l.runnable_percent", 2)),
             "false",
         ),
         ("Total Physical Memory", _kb_as_gb("l.total_physical_memory_kb"), "false"),

@@ -71,7 +71,8 @@ WHERE $__timeFilter(qs.{CAGG_TIME_COL})
   AND {server_filter('qs.server_id')}
 GROUP BY qs.server_name, qs.database_name, qs.query_hash
 """,
-        }
+        },
+        base="query_stats",
     )
 
     cpu_trend_sql = tiered(
@@ -106,7 +107,8 @@ WHERE $__timeFilter(qs.{CAGG_TIME_COL})
   AND {server_filter('qs.server_id')}
 GROUP BY qs.{CAGG_TIME_COL}, qs.server_name
 """,
-        }
+        },
+        base="query_stats",
     )
 
     y = subtab(

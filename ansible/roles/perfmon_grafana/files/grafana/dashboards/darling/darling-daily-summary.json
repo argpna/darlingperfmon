@@ -1,0 +1,474 @@
+{
+  "uid": "darling-daily-summary",
+  "title": "Daily Summary",
+  "tags": [
+    "perfmon"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "refresh": "5m",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "state-timeline",
+      "title": "Performance Calendar",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "fillOpacity": 90,
+            "lineWidth": 0
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "1": {
+                  "text": "Healthy",
+                  "color": "green",
+                  "index": 0
+                },
+                "2": {
+                  "text": "Warning",
+                  "color": "yellow",
+                  "index": 1
+                },
+                "3": {
+                  "text": "Critical",
+                  "color": "red",
+                  "index": 2
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showValue": "auto",
+        "mergeValues": true,
+        "alignValue": "center",
+        "rowHeight": 0.9,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH d AS (SELECT * FROM (\nWITH wait_per_type AS (\n    SELECT ws.server_id, date_trunc('day', ws.collection_time) AS d, ws.wait_type,\n           SUM(ws.delta_wait_time_ms) AS ms\n    FROM collect.v_wait_stats AS ws\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n      AND ws.delta_wait_time_ms > 0\n    GROUP BY 1, 2, 3\n),\nwait_totals AS (\n    SELECT server_id, d, SUM(ms) / 1000.0 AS total_wait_sec\n    FROM wait_per_type GROUP BY 1, 2\n),\nwait_top AS (\n    /* Per-day top wait type = the wait with the most delta time that day. */\n    SELECT DISTINCT ON (server_id, d) server_id, d, wait_type AS top_wait_type\n    FROM wait_per_type ORDER BY server_id, d, ms DESC\n),\nwaits AS (\n    SELECT t.server_id, t.d, t.total_wait_sec, tp.top_wait_type\n    FROM wait_totals t\n    LEFT JOIN wait_top tp ON tp.server_id = t.server_id AND tp.d = t.d\n),\nqueries AS (\n    SELECT server_id, date_trunc('day', bucket) AS d,\n           COUNT(DISTINCT query_hash) AS c\n    FROM collect.query_stats_daily\n    WHERE $__timeFilter(bucket) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\ndeadlocks AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d, COUNT(*) AS c\n    FROM collect.v_deadlocks\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\nbpr AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) AS c, MAX(wait_time_ms) AS max_wait_ms\n    FROM collect.v_blocked_process_reports\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\ndmv AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) AS c, MAX(wait_time_ms) AS max_wait_ms\n    FROM collect.v_dmv_blocking_snapshots\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\ncpu AS (\n    /* Total host CPU = SQL + other-process (NULL on Linux -> 0), matching the alert engine;\n       sustained >= 80 samples drive the day's band. */\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) FILTER (\n               WHERE (sqlserver_cpu_utilization\n                      + COALESCE(other_process_cpu_utilization, 0)) >= 80) AS c\n    FROM collect.v_cpu_utilization_stats\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\ncoll AS (\n    /* Any run marks the day as collected, so a quiet monitored day still bands Healthy. */\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) AS runs,\n           COUNT(*) FILTER (WHERE status = 'ERROR') AS errs\n    FROM collect.v_collection_log\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\nmem AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) FILTER (\n               WHERE memory_indicators_process >= 2\n                  OR memory_indicators_system >= 2) AS pressure,\n           COUNT(*) FILTER (WHERE memory_indicators_process >= 3) AS critical\n    FROM collect.v_memory_pressure_events\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\nalerts AS (\n    /* Actionable alerts only: no dismissed rows, no resolution notices. The suffix list\n       mirrors AlertMetricClassifier.IsResolution and must match it exactly - widening one\n       without the other counts recoveries as actionable alerts. */\n    SELECT server_id, date_trunc('day', alert_time) AS d, COUNT(*) AS c\n    FROM config.config_alert_log\n    WHERE $__timeFilter(alert_time)\n      AND server_id IN (${server:csv})\n      AND dismissed = FALSE\n      AND metric_name NOT LIKE '%Cleared%'\n      AND metric_name NOT LIKE '%Resolved%'\n      AND metric_name NOT LIKE '%Restored%'\n      AND metric_name NOT LIKE '%Resumed%'\n      AND metric_name NOT LIKE '%Restarted%'\n      AND metric_name NOT LIKE '%Recovered%'\n      AND metric_name NOT LIKE '%Reconnected%'\n    GROUP BY 1, 2\n),\nday_spine AS (\n    SELECT server_id, d FROM waits\n    UNION SELECT server_id, d FROM queries\n    UNION SELECT server_id, d FROM deadlocks\n    UNION SELECT server_id, d FROM bpr\n    UNION SELECT server_id, d FROM dmv\n    UNION SELECT server_id, d FROM cpu\n    UNION SELECT server_id, d FROM coll\n    UNION SELECT server_id, d FROM mem\n    UNION SELECT server_id, d FROM alerts\n)\nSELECT\n    s.d AS day,\n    s.server_id,\n    COALESCE(w.total_wait_sec, 0) AS total_wait_sec,\n    w.top_wait_type,\n    COALESCE(q.c, 0) AS unique_queries,\n    COALESCE(dl.c, 0) AS deadlock_count,\n    COALESCE(NULLIF(b.c, 0), dm.c, 0) AS blocking_events,\n    COALESCE(cp.c, 0) AS high_cpu_events,\n    COALESCE(cl.errs, 0) AS collection_errors,\n    COALESCE(m.pressure, 0) AS memory_pressure_events,\n    COALESCE(m.critical, 0) AS memory_critical_events,\n    COALESCE(al.c, 0) AS alert_count,\n    /* Peak block wait from the SAME source the count came from (BPR preferred, DMV-snapshot\n       fallback), so the blocking reason reconciles with the count. */\n    COALESCE(CASE WHEN COALESCE(b.c, 0) > 0 THEN b.max_wait_ms ELSE dm.max_wait_ms END, 0)\n        AS peak_block_wait_ms\nFROM day_spine s\nLEFT JOIN waits w ON w.server_id = s.server_id AND w.d = s.d\nLEFT JOIN queries q ON q.server_id = s.server_id AND q.d = s.d\nLEFT JOIN deadlocks dl ON dl.server_id = s.server_id AND dl.d = s.d\nLEFT JOIN bpr b ON b.server_id = s.server_id AND b.d = s.d\nLEFT JOIN dmv dm ON dm.server_id = s.server_id AND dm.d = s.d\nLEFT JOIN cpu cp ON cp.server_id = s.server_id AND cp.d = s.d\nLEFT JOIN coll cl ON cl.server_id = s.server_id AND cl.d = s.d\nLEFT JOIN mem m ON m.server_id = s.server_id AND m.d = s.d\nLEFT JOIN alerts al ON al.server_id = s.server_id AND al.d = s.d\n) AS daily_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'daily'\nUNION ALL\nSELECT * FROM (\nWITH wait_per_type AS (\n    SELECT ws.server_id, date_trunc('day', ws.collection_time) AS d, ws.wait_type,\n           SUM(ws.delta_wait_time_ms) AS ms\n    FROM collect.v_wait_stats AS ws\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n      AND ws.delta_wait_time_ms > 0\n    GROUP BY 1, 2, 3\n),\nwait_totals AS (\n    SELECT server_id, d, SUM(ms) / 1000.0 AS total_wait_sec\n    FROM wait_per_type GROUP BY 1, 2\n),\nwait_top AS (\n    /* Per-day top wait type = the wait with the most delta time that day. */\n    SELECT DISTINCT ON (server_id, d) server_id, d, wait_type AS top_wait_type\n    FROM wait_per_type ORDER BY server_id, d, ms DESC\n),\nwaits AS (\n    SELECT t.server_id, t.d, t.total_wait_sec, tp.top_wait_type\n    FROM wait_totals t\n    LEFT JOIN wait_top tp ON tp.server_id = t.server_id AND tp.d = t.d\n),\nqueries AS (\n    SELECT server_id, date_trunc('day', bucket) AS d,\n           COUNT(DISTINCT query_hash) AS c\n    FROM collect.query_stats_hourly\n    WHERE $__timeFilter(bucket) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\ndeadlocks AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d, COUNT(*) AS c\n    FROM collect.v_deadlocks\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\nbpr AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) AS c, MAX(wait_time_ms) AS max_wait_ms\n    FROM collect.v_blocked_process_reports\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\ndmv AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) AS c, MAX(wait_time_ms) AS max_wait_ms\n    FROM collect.v_dmv_blocking_snapshots\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\ncpu AS (\n    /* Total host CPU = SQL + other-process (NULL on Linux -> 0), matching the alert engine;\n       sustained >= 80 samples drive the day's band. */\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) FILTER (\n               WHERE (sqlserver_cpu_utilization\n                      + COALESCE(other_process_cpu_utilization, 0)) >= 80) AS c\n    FROM collect.v_cpu_utilization_stats\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\ncoll AS (\n    /* Any run marks the day as collected, so a quiet monitored day still bands Healthy. */\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) AS runs,\n           COUNT(*) FILTER (WHERE status = 'ERROR') AS errs\n    FROM collect.v_collection_log\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\nmem AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) FILTER (\n               WHERE memory_indicators_process >= 2\n                  OR memory_indicators_system >= 2) AS pressure,\n           COUNT(*) FILTER (WHERE memory_indicators_process >= 3) AS critical\n    FROM collect.v_memory_pressure_events\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\nalerts AS (\n    /* Actionable alerts only: no dismissed rows, no resolution notices. The suffix list\n       mirrors AlertMetricClassifier.IsResolution and must match it exactly - widening one\n       without the other counts recoveries as actionable alerts. */\n    SELECT server_id, date_trunc('day', alert_time) AS d, COUNT(*) AS c\n    FROM config.config_alert_log\n    WHERE $__timeFilter(alert_time)\n      AND server_id IN (${server:csv})\n      AND dismissed = FALSE\n      AND metric_name NOT LIKE '%Cleared%'\n      AND metric_name NOT LIKE '%Resolved%'\n      AND metric_name NOT LIKE '%Restored%'\n      AND metric_name NOT LIKE '%Resumed%'\n      AND metric_name NOT LIKE '%Restarted%'\n      AND metric_name NOT LIKE '%Recovered%'\n      AND metric_name NOT LIKE '%Reconnected%'\n    GROUP BY 1, 2\n),\nday_spine AS (\n    SELECT server_id, d FROM waits\n    UNION SELECT server_id, d FROM queries\n    UNION SELECT server_id, d FROM deadlocks\n    UNION SELECT server_id, d FROM bpr\n    UNION SELECT server_id, d FROM dmv\n    UNION SELECT server_id, d FROM cpu\n    UNION SELECT server_id, d FROM coll\n    UNION SELECT server_id, d FROM mem\n    UNION SELECT server_id, d FROM alerts\n)\nSELECT\n    s.d AS day,\n    s.server_id,\n    COALESCE(w.total_wait_sec, 0) AS total_wait_sec,\n    w.top_wait_type,\n    COALESCE(q.c, 0) AS unique_queries,\n    COALESCE(dl.c, 0) AS deadlock_count,\n    COALESCE(NULLIF(b.c, 0), dm.c, 0) AS blocking_events,\n    COALESCE(cp.c, 0) AS high_cpu_events,\n    COALESCE(cl.errs, 0) AS collection_errors,\n    COALESCE(m.pressure, 0) AS memory_pressure_events,\n    COALESCE(m.critical, 0) AS memory_critical_events,\n    COALESCE(al.c, 0) AS alert_count,\n    /* Peak block wait from the SAME source the count came from (BPR preferred, DMV-snapshot\n       fallback), so the blocking reason reconciles with the count. */\n    COALESCE(CASE WHEN COALESCE(b.c, 0) > 0 THEN b.max_wait_ms ELSE dm.max_wait_ms END, 0)\n        AS peak_block_wait_ms\nFROM day_spine s\nLEFT JOIN waits w ON w.server_id = s.server_id AND w.d = s.d\nLEFT JOIN queries q ON q.server_id = s.server_id AND q.d = s.d\nLEFT JOIN deadlocks dl ON dl.server_id = s.server_id AND dl.d = s.d\nLEFT JOIN bpr b ON b.server_id = s.server_id AND b.d = s.d\nLEFT JOIN dmv dm ON dm.server_id = s.server_id AND dm.d = s.d\nLEFT JOIN cpu cp ON cp.server_id = s.server_id AND cp.d = s.d\nLEFT JOIN coll cl ON cl.server_id = s.server_id AND cl.d = s.d\nLEFT JOIN mem m ON m.server_id = s.server_id AND m.d = s.d\nLEFT JOIN alerts al ON al.server_id = s.server_id AND al.d = s.d\n) AS hourly_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'hourly'\nUNION ALL\nSELECT * FROM (\nWITH wait_per_type AS (\n    SELECT ws.server_id, date_trunc('day', ws.collection_time) AS d, ws.wait_type,\n           SUM(ws.delta_wait_time_ms) AS ms\n    FROM collect.v_wait_stats AS ws\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n      AND ws.delta_wait_time_ms > 0\n    GROUP BY 1, 2, 3\n),\nwait_totals AS (\n    SELECT server_id, d, SUM(ms) / 1000.0 AS total_wait_sec\n    FROM wait_per_type GROUP BY 1, 2\n),\nwait_top AS (\n    /* Per-day top wait type = the wait with the most delta time that day. */\n    SELECT DISTINCT ON (server_id, d) server_id, d, wait_type AS top_wait_type\n    FROM wait_per_type ORDER BY server_id, d, ms DESC\n),\nwaits AS (\n    SELECT t.server_id, t.d, t.total_wait_sec, tp.top_wait_type\n    FROM wait_totals t\n    LEFT JOIN wait_top tp ON tp.server_id = t.server_id AND tp.d = t.d\n),\nqueries AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(DISTINCT query_hash) AS c\n    FROM collect.v_query_stats\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\ndeadlocks AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d, COUNT(*) AS c\n    FROM collect.v_deadlocks\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\nbpr AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) AS c, MAX(wait_time_ms) AS max_wait_ms\n    FROM collect.v_blocked_process_reports\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\ndmv AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) AS c, MAX(wait_time_ms) AS max_wait_ms\n    FROM collect.v_dmv_blocking_snapshots\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\ncpu AS (\n    /* Total host CPU = SQL + other-process (NULL on Linux -> 0), matching the alert engine;\n       sustained >= 80 samples drive the day's band. */\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) FILTER (\n               WHERE (sqlserver_cpu_utilization\n                      + COALESCE(other_process_cpu_utilization, 0)) >= 80) AS c\n    FROM collect.v_cpu_utilization_stats\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\ncoll AS (\n    /* Any run marks the day as collected, so a quiet monitored day still bands Healthy. */\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) AS runs,\n           COUNT(*) FILTER (WHERE status = 'ERROR') AS errs\n    FROM collect.v_collection_log\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\nmem AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) FILTER (\n               WHERE memory_indicators_process >= 2\n                  OR memory_indicators_system >= 2) AS pressure,\n           COUNT(*) FILTER (WHERE memory_indicators_process >= 3) AS critical\n    FROM collect.v_memory_pressure_events\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\nalerts AS (\n    /* Actionable alerts only: no dismissed rows, no resolution notices. The suffix list\n       mirrors AlertMetricClassifier.IsResolution and must match it exactly - widening one\n       without the other counts recoveries as actionable alerts. */\n    SELECT server_id, date_trunc('day', alert_time) AS d, COUNT(*) AS c\n    FROM config.config_alert_log\n    WHERE $__timeFilter(alert_time)\n      AND server_id IN (${server:csv})\n      AND dismissed = FALSE\n      AND metric_name NOT LIKE '%Cleared%'\n      AND metric_name NOT LIKE '%Resolved%'\n      AND metric_name NOT LIKE '%Restored%'\n      AND metric_name NOT LIKE '%Resumed%'\n      AND metric_name NOT LIKE '%Restarted%'\n      AND metric_name NOT LIKE '%Recovered%'\n      AND metric_name NOT LIKE '%Reconnected%'\n    GROUP BY 1, 2\n),\nday_spine AS (\n    SELECT server_id, d FROM waits\n    UNION SELECT server_id, d FROM queries\n    UNION SELECT server_id, d FROM deadlocks\n    UNION SELECT server_id, d FROM bpr\n    UNION SELECT server_id, d FROM dmv\n    UNION SELECT server_id, d FROM cpu\n    UNION SELECT server_id, d FROM coll\n    UNION SELECT server_id, d FROM mem\n    UNION SELECT server_id, d FROM alerts\n)\nSELECT\n    s.d AS day,\n    s.server_id,\n    COALESCE(w.total_wait_sec, 0) AS total_wait_sec,\n    w.top_wait_type,\n    COALESCE(q.c, 0) AS unique_queries,\n    COALESCE(dl.c, 0) AS deadlock_count,\n    COALESCE(NULLIF(b.c, 0), dm.c, 0) AS blocking_events,\n    COALESCE(cp.c, 0) AS high_cpu_events,\n    COALESCE(cl.errs, 0) AS collection_errors,\n    COALESCE(m.pressure, 0) AS memory_pressure_events,\n    COALESCE(m.critical, 0) AS memory_critical_events,\n    COALESCE(al.c, 0) AS alert_count,\n    /* Peak block wait from the SAME source the count came from (BPR preferred, DMV-snapshot\n       fallback), so the blocking reason reconciles with the count. */\n    COALESCE(CASE WHEN COALESCE(b.c, 0) > 0 THEN b.max_wait_ms ELSE dm.max_wait_ms END, 0)\n        AS peak_block_wait_ms\nFROM day_spine s\nLEFT JOIN waits w ON w.server_id = s.server_id AND w.d = s.d\nLEFT JOIN queries q ON q.server_id = s.server_id AND q.d = s.d\nLEFT JOIN deadlocks dl ON dl.server_id = s.server_id AND dl.d = s.d\nLEFT JOIN bpr b ON b.server_id = s.server_id AND b.d = s.d\nLEFT JOIN dmv dm ON dm.server_id = s.server_id AND dm.d = s.d\nLEFT JOIN cpu cp ON cp.server_id = s.server_id AND cp.d = s.d\nLEFT JOIN coll cl ON cl.server_id = s.server_id AND cl.d = s.d\nLEFT JOIN mem m ON m.server_id = s.server_id AND m.d = s.d\nLEFT JOIN alerts al ON al.server_id = s.server_id AND al.d = s.d\n) AS raw_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'raw')\nSELECT d.day AS time, srv.name AS metric, CASE\n        WHEN d.deadlock_count > 0\n          OR d.collection_errors > 0\n          OR d.memory_critical_events > 0\n          OR d.high_cpu_events >= 6\n          OR d.blocking_events >= 11\n        THEN 3\n        WHEN d.high_cpu_events >= 1\n          OR d.blocking_events >= 1\n          OR d.memory_pressure_events > 0\n          OR d.alert_count >= 1\n        THEN 2\n        ELSE 1\n    END AS band\nFROM d\nJOIN config.config_monitored_servers AS srv ON srv.server_id = d.server_id\nORDER BY 1\n"
+        }
+      ],
+      "description": "Composite daily health, one band per day. A day with no collection at all is absent rather than banded."
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Daily Detail",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Health"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Healthy": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "Warning": {
+                        "color": "yellow",
+                        "index": 1
+                      },
+                      "Critical": {
+                        "color": "red",
+                        "index": 2
+                      },
+                      "Unknown": {
+                        "color": "text",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total Wait"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Peak Block"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Deadlocks"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Collection Errors"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "High-CPU Samples"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 6
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Blocking Events"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 11
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Severe Memory"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Day",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH d AS (SELECT * FROM (\nWITH wait_per_type AS (\n    SELECT ws.server_id, date_trunc('day', ws.collection_time) AS d, ws.wait_type,\n           SUM(ws.delta_wait_time_ms) AS ms\n    FROM collect.v_wait_stats AS ws\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n      AND ws.delta_wait_time_ms > 0\n    GROUP BY 1, 2, 3\n),\nwait_totals AS (\n    SELECT server_id, d, SUM(ms) / 1000.0 AS total_wait_sec\n    FROM wait_per_type GROUP BY 1, 2\n),\nwait_top AS (\n    /* Per-day top wait type = the wait with the most delta time that day. */\n    SELECT DISTINCT ON (server_id, d) server_id, d, wait_type AS top_wait_type\n    FROM wait_per_type ORDER BY server_id, d, ms DESC\n),\nwaits AS (\n    SELECT t.server_id, t.d, t.total_wait_sec, tp.top_wait_type\n    FROM wait_totals t\n    LEFT JOIN wait_top tp ON tp.server_id = t.server_id AND tp.d = t.d\n),\nqueries AS (\n    SELECT server_id, date_trunc('day', bucket) AS d,\n           COUNT(DISTINCT query_hash) AS c\n    FROM collect.query_stats_daily\n    WHERE $__timeFilter(bucket) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\ndeadlocks AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d, COUNT(*) AS c\n    FROM collect.v_deadlocks\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\nbpr AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) AS c, MAX(wait_time_ms) AS max_wait_ms\n    FROM collect.v_blocked_process_reports\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\ndmv AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) AS c, MAX(wait_time_ms) AS max_wait_ms\n    FROM collect.v_dmv_blocking_snapshots\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\ncpu AS (\n    /* Total host CPU = SQL + other-process (NULL on Linux -> 0), matching the alert engine;\n       sustained >= 80 samples drive the day's band. */\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) FILTER (\n               WHERE (sqlserver_cpu_utilization\n                      + COALESCE(other_process_cpu_utilization, 0)) >= 80) AS c\n    FROM collect.v_cpu_utilization_stats\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\ncoll AS (\n    /* Any run marks the day as collected, so a quiet monitored day still bands Healthy. */\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) AS runs,\n           COUNT(*) FILTER (WHERE status = 'ERROR') AS errs\n    FROM collect.v_collection_log\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\nmem AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) FILTER (\n               WHERE memory_indicators_process >= 2\n                  OR memory_indicators_system >= 2) AS pressure,\n           COUNT(*) FILTER (WHERE memory_indicators_process >= 3) AS critical\n    FROM collect.v_memory_pressure_events\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\nalerts AS (\n    /* Actionable alerts only: no dismissed rows, no resolution notices. The suffix list\n       mirrors AlertMetricClassifier.IsResolution and must match it exactly - widening one\n       without the other counts recoveries as actionable alerts. */\n    SELECT server_id, date_trunc('day', alert_time) AS d, COUNT(*) AS c\n    FROM config.config_alert_log\n    WHERE $__timeFilter(alert_time)\n      AND server_id IN (${server:csv})\n      AND dismissed = FALSE\n      AND metric_name NOT LIKE '%Cleared%'\n      AND metric_name NOT LIKE '%Resolved%'\n      AND metric_name NOT LIKE '%Restored%'\n      AND metric_name NOT LIKE '%Resumed%'\n      AND metric_name NOT LIKE '%Restarted%'\n      AND metric_name NOT LIKE '%Recovered%'\n      AND metric_name NOT LIKE '%Reconnected%'\n    GROUP BY 1, 2\n),\nday_spine AS (\n    SELECT server_id, d FROM waits\n    UNION SELECT server_id, d FROM queries\n    UNION SELECT server_id, d FROM deadlocks\n    UNION SELECT server_id, d FROM bpr\n    UNION SELECT server_id, d FROM dmv\n    UNION SELECT server_id, d FROM cpu\n    UNION SELECT server_id, d FROM coll\n    UNION SELECT server_id, d FROM mem\n    UNION SELECT server_id, d FROM alerts\n)\nSELECT\n    s.d AS day,\n    s.server_id,\n    COALESCE(w.total_wait_sec, 0) AS total_wait_sec,\n    w.top_wait_type,\n    COALESCE(q.c, 0) AS unique_queries,\n    COALESCE(dl.c, 0) AS deadlock_count,\n    COALESCE(NULLIF(b.c, 0), dm.c, 0) AS blocking_events,\n    COALESCE(cp.c, 0) AS high_cpu_events,\n    COALESCE(cl.errs, 0) AS collection_errors,\n    COALESCE(m.pressure, 0) AS memory_pressure_events,\n    COALESCE(m.critical, 0) AS memory_critical_events,\n    COALESCE(al.c, 0) AS alert_count,\n    /* Peak block wait from the SAME source the count came from (BPR preferred, DMV-snapshot\n       fallback), so the blocking reason reconciles with the count. */\n    COALESCE(CASE WHEN COALESCE(b.c, 0) > 0 THEN b.max_wait_ms ELSE dm.max_wait_ms END, 0)\n        AS peak_block_wait_ms\nFROM day_spine s\nLEFT JOIN waits w ON w.server_id = s.server_id AND w.d = s.d\nLEFT JOIN queries q ON q.server_id = s.server_id AND q.d = s.d\nLEFT JOIN deadlocks dl ON dl.server_id = s.server_id AND dl.d = s.d\nLEFT JOIN bpr b ON b.server_id = s.server_id AND b.d = s.d\nLEFT JOIN dmv dm ON dm.server_id = s.server_id AND dm.d = s.d\nLEFT JOIN cpu cp ON cp.server_id = s.server_id AND cp.d = s.d\nLEFT JOIN coll cl ON cl.server_id = s.server_id AND cl.d = s.d\nLEFT JOIN mem m ON m.server_id = s.server_id AND m.d = s.d\nLEFT JOIN alerts al ON al.server_id = s.server_id AND al.d = s.d\n) AS daily_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'daily'\nUNION ALL\nSELECT * FROM (\nWITH wait_per_type AS (\n    SELECT ws.server_id, date_trunc('day', ws.collection_time) AS d, ws.wait_type,\n           SUM(ws.delta_wait_time_ms) AS ms\n    FROM collect.v_wait_stats AS ws\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n      AND ws.delta_wait_time_ms > 0\n    GROUP BY 1, 2, 3\n),\nwait_totals AS (\n    SELECT server_id, d, SUM(ms) / 1000.0 AS total_wait_sec\n    FROM wait_per_type GROUP BY 1, 2\n),\nwait_top AS (\n    /* Per-day top wait type = the wait with the most delta time that day. */\n    SELECT DISTINCT ON (server_id, d) server_id, d, wait_type AS top_wait_type\n    FROM wait_per_type ORDER BY server_id, d, ms DESC\n),\nwaits AS (\n    SELECT t.server_id, t.d, t.total_wait_sec, tp.top_wait_type\n    FROM wait_totals t\n    LEFT JOIN wait_top tp ON tp.server_id = t.server_id AND tp.d = t.d\n),\nqueries AS (\n    SELECT server_id, date_trunc('day', bucket) AS d,\n           COUNT(DISTINCT query_hash) AS c\n    FROM collect.query_stats_hourly\n    WHERE $__timeFilter(bucket) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\ndeadlocks AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d, COUNT(*) AS c\n    FROM collect.v_deadlocks\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\nbpr AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) AS c, MAX(wait_time_ms) AS max_wait_ms\n    FROM collect.v_blocked_process_reports\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\ndmv AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) AS c, MAX(wait_time_ms) AS max_wait_ms\n    FROM collect.v_dmv_blocking_snapshots\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\ncpu AS (\n    /* Total host CPU = SQL + other-process (NULL on Linux -> 0), matching the alert engine;\n       sustained >= 80 samples drive the day's band. */\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) FILTER (\n               WHERE (sqlserver_cpu_utilization\n                      + COALESCE(other_process_cpu_utilization, 0)) >= 80) AS c\n    FROM collect.v_cpu_utilization_stats\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\ncoll AS (\n    /* Any run marks the day as collected, so a quiet monitored day still bands Healthy. */\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) AS runs,\n           COUNT(*) FILTER (WHERE status = 'ERROR') AS errs\n    FROM collect.v_collection_log\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\nmem AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) FILTER (\n               WHERE memory_indicators_process >= 2\n                  OR memory_indicators_system >= 2) AS pressure,\n           COUNT(*) FILTER (WHERE memory_indicators_process >= 3) AS critical\n    FROM collect.v_memory_pressure_events\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\nalerts AS (\n    /* Actionable alerts only: no dismissed rows, no resolution notices. The suffix list\n       mirrors AlertMetricClassifier.IsResolution and must match it exactly - widening one\n       without the other counts recoveries as actionable alerts. */\n    SELECT server_id, date_trunc('day', alert_time) AS d, COUNT(*) AS c\n    FROM config.config_alert_log\n    WHERE $__timeFilter(alert_time)\n      AND server_id IN (${server:csv})\n      AND dismissed = FALSE\n      AND metric_name NOT LIKE '%Cleared%'\n      AND metric_name NOT LIKE '%Resolved%'\n      AND metric_name NOT LIKE '%Restored%'\n      AND metric_name NOT LIKE '%Resumed%'\n      AND metric_name NOT LIKE '%Restarted%'\n      AND metric_name NOT LIKE '%Recovered%'\n      AND metric_name NOT LIKE '%Reconnected%'\n    GROUP BY 1, 2\n),\nday_spine AS (\n    SELECT server_id, d FROM waits\n    UNION SELECT server_id, d FROM queries\n    UNION SELECT server_id, d FROM deadlocks\n    UNION SELECT server_id, d FROM bpr\n    UNION SELECT server_id, d FROM dmv\n    UNION SELECT server_id, d FROM cpu\n    UNION SELECT server_id, d FROM coll\n    UNION SELECT server_id, d FROM mem\n    UNION SELECT server_id, d FROM alerts\n)\nSELECT\n    s.d AS day,\n    s.server_id,\n    COALESCE(w.total_wait_sec, 0) AS total_wait_sec,\n    w.top_wait_type,\n    COALESCE(q.c, 0) AS unique_queries,\n    COALESCE(dl.c, 0) AS deadlock_count,\n    COALESCE(NULLIF(b.c, 0), dm.c, 0) AS blocking_events,\n    COALESCE(cp.c, 0) AS high_cpu_events,\n    COALESCE(cl.errs, 0) AS collection_errors,\n    COALESCE(m.pressure, 0) AS memory_pressure_events,\n    COALESCE(m.critical, 0) AS memory_critical_events,\n    COALESCE(al.c, 0) AS alert_count,\n    /* Peak block wait from the SAME source the count came from (BPR preferred, DMV-snapshot\n       fallback), so the blocking reason reconciles with the count. */\n    COALESCE(CASE WHEN COALESCE(b.c, 0) > 0 THEN b.max_wait_ms ELSE dm.max_wait_ms END, 0)\n        AS peak_block_wait_ms\nFROM day_spine s\nLEFT JOIN waits w ON w.server_id = s.server_id AND w.d = s.d\nLEFT JOIN queries q ON q.server_id = s.server_id AND q.d = s.d\nLEFT JOIN deadlocks dl ON dl.server_id = s.server_id AND dl.d = s.d\nLEFT JOIN bpr b ON b.server_id = s.server_id AND b.d = s.d\nLEFT JOIN dmv dm ON dm.server_id = s.server_id AND dm.d = s.d\nLEFT JOIN cpu cp ON cp.server_id = s.server_id AND cp.d = s.d\nLEFT JOIN coll cl ON cl.server_id = s.server_id AND cl.d = s.d\nLEFT JOIN mem m ON m.server_id = s.server_id AND m.d = s.d\nLEFT JOIN alerts al ON al.server_id = s.server_id AND al.d = s.d\n) AS hourly_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'hourly'\nUNION ALL\nSELECT * FROM (\nWITH wait_per_type AS (\n    SELECT ws.server_id, date_trunc('day', ws.collection_time) AS d, ws.wait_type,\n           SUM(ws.delta_wait_time_ms) AS ms\n    FROM collect.v_wait_stats AS ws\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n      AND ws.delta_wait_time_ms > 0\n    GROUP BY 1, 2, 3\n),\nwait_totals AS (\n    SELECT server_id, d, SUM(ms) / 1000.0 AS total_wait_sec\n    FROM wait_per_type GROUP BY 1, 2\n),\nwait_top AS (\n    /* Per-day top wait type = the wait with the most delta time that day. */\n    SELECT DISTINCT ON (server_id, d) server_id, d, wait_type AS top_wait_type\n    FROM wait_per_type ORDER BY server_id, d, ms DESC\n),\nwaits AS (\n    SELECT t.server_id, t.d, t.total_wait_sec, tp.top_wait_type\n    FROM wait_totals t\n    LEFT JOIN wait_top tp ON tp.server_id = t.server_id AND tp.d = t.d\n),\nqueries AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(DISTINCT query_hash) AS c\n    FROM collect.v_query_stats\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\ndeadlocks AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d, COUNT(*) AS c\n    FROM collect.v_deadlocks\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\nbpr AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) AS c, MAX(wait_time_ms) AS max_wait_ms\n    FROM collect.v_blocked_process_reports\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\ndmv AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) AS c, MAX(wait_time_ms) AS max_wait_ms\n    FROM collect.v_dmv_blocking_snapshots\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\ncpu AS (\n    /* Total host CPU = SQL + other-process (NULL on Linux -> 0), matching the alert engine;\n       sustained >= 80 samples drive the day's band. */\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) FILTER (\n               WHERE (sqlserver_cpu_utilization\n                      + COALESCE(other_process_cpu_utilization, 0)) >= 80) AS c\n    FROM collect.v_cpu_utilization_stats\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\ncoll AS (\n    /* Any run marks the day as collected, so a quiet monitored day still bands Healthy. */\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) AS runs,\n           COUNT(*) FILTER (WHERE status = 'ERROR') AS errs\n    FROM collect.v_collection_log\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\nmem AS (\n    SELECT server_id, date_trunc('day', collection_time) AS d,\n           COUNT(*) FILTER (\n               WHERE memory_indicators_process >= 2\n                  OR memory_indicators_system >= 2) AS pressure,\n           COUNT(*) FILTER (WHERE memory_indicators_process >= 3) AS critical\n    FROM collect.v_memory_pressure_events\n    WHERE $__timeFilter(collection_time) AND server_id IN (${server:csv})\n    GROUP BY 1, 2\n),\nalerts AS (\n    /* Actionable alerts only: no dismissed rows, no resolution notices. The suffix list\n       mirrors AlertMetricClassifier.IsResolution and must match it exactly - widening one\n       without the other counts recoveries as actionable alerts. */\n    SELECT server_id, date_trunc('day', alert_time) AS d, COUNT(*) AS c\n    FROM config.config_alert_log\n    WHERE $__timeFilter(alert_time)\n      AND server_id IN (${server:csv})\n      AND dismissed = FALSE\n      AND metric_name NOT LIKE '%Cleared%'\n      AND metric_name NOT LIKE '%Resolved%'\n      AND metric_name NOT LIKE '%Restored%'\n      AND metric_name NOT LIKE '%Resumed%'\n      AND metric_name NOT LIKE '%Restarted%'\n      AND metric_name NOT LIKE '%Recovered%'\n      AND metric_name NOT LIKE '%Reconnected%'\n    GROUP BY 1, 2\n),\nday_spine AS (\n    SELECT server_id, d FROM waits\n    UNION SELECT server_id, d FROM queries\n    UNION SELECT server_id, d FROM deadlocks\n    UNION SELECT server_id, d FROM bpr\n    UNION SELECT server_id, d FROM dmv\n    UNION SELECT server_id, d FROM cpu\n    UNION SELECT server_id, d FROM coll\n    UNION SELECT server_id, d FROM mem\n    UNION SELECT server_id, d FROM alerts\n)\nSELECT\n    s.d AS day,\n    s.server_id,\n    COALESCE(w.total_wait_sec, 0) AS total_wait_sec,\n    w.top_wait_type,\n    COALESCE(q.c, 0) AS unique_queries,\n    COALESCE(dl.c, 0) AS deadlock_count,\n    COALESCE(NULLIF(b.c, 0), dm.c, 0) AS blocking_events,\n    COALESCE(cp.c, 0) AS high_cpu_events,\n    COALESCE(cl.errs, 0) AS collection_errors,\n    COALESCE(m.pressure, 0) AS memory_pressure_events,\n    COALESCE(m.critical, 0) AS memory_critical_events,\n    COALESCE(al.c, 0) AS alert_count,\n    /* Peak block wait from the SAME source the count came from (BPR preferred, DMV-snapshot\n       fallback), so the blocking reason reconciles with the count. */\n    COALESCE(CASE WHEN COALESCE(b.c, 0) > 0 THEN b.max_wait_ms ELSE dm.max_wait_ms END, 0)\n        AS peak_block_wait_ms\nFROM day_spine s\nLEFT JOIN waits w ON w.server_id = s.server_id AND w.d = s.d\nLEFT JOIN queries q ON q.server_id = s.server_id AND q.d = s.d\nLEFT JOIN deadlocks dl ON dl.server_id = s.server_id AND dl.d = s.d\nLEFT JOIN bpr b ON b.server_id = s.server_id AND b.d = s.d\nLEFT JOIN dmv dm ON dm.server_id = s.server_id AND dm.d = s.d\nLEFT JOIN cpu cp ON cp.server_id = s.server_id AND cp.d = s.d\nLEFT JOIN coll cl ON cl.server_id = s.server_id AND cl.d = s.d\nLEFT JOIN mem m ON m.server_id = s.server_id AND m.d = s.d\nLEFT JOIN alerts al ON al.server_id = s.server_id AND al.d = s.d\n) AS raw_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'raw')\nSELECT\n    d.day AS \"Day\",\n    srv.name AS \"Server\",\n    CASE CASE\n        WHEN d.deadlock_count > 0\n          OR d.collection_errors > 0\n          OR d.memory_critical_events > 0\n          OR d.high_cpu_events >= 6\n          OR d.blocking_events >= 11\n        THEN 3\n        WHEN d.high_cpu_events >= 1\n          OR d.blocking_events >= 1\n          OR d.memory_pressure_events > 0\n          OR d.alert_count >= 1\n        THEN 2\n        ELSE 1\n    END WHEN 1 THEN 'Healthy' WHEN 2 THEN 'Warning' WHEN 3 THEN 'Critical' END AS \"Health\",\n    COALESCE(NULLIF(concat_ws(', ',\n        CASE WHEN d.deadlock_count > 0\n        THEN to_char(d.deadlock_count, 'FM999,999,999,990') || ' ' || CASE WHEN d.deadlock_count = 1 THEN 'deadlock' ELSE 'deadlocks' END\n    END,\n        CASE WHEN d.collection_errors > 0\n        THEN to_char(d.collection_errors, 'FM999,999,999,990') || ' ' || CASE WHEN d.collection_errors = 1 THEN 'collection error' ELSE 'collection errors' END\n    END,\n        CASE WHEN d.high_cpu_events > 0\n        THEN to_char(d.high_cpu_events, 'FM999,999,999,990') || ' ' || CASE WHEN d.high_cpu_events = 1 THEN 'high-CPU sample' ELSE 'high-CPU samples' END\n    END,\n        CASE WHEN d.blocking_events > 0\n        THEN to_char(d.blocking_events, 'FM999,999,999,990')\n             || CASE WHEN d.blocking_events = 1 THEN ' blocking event' ELSE ' blocking events' END\n             || CASE WHEN d.peak_block_wait_ms > 0\n                     THEN ' (peak block ' || CASE\n        WHEN d.peak_block_wait_ms < 1000 THEN to_char(d.peak_block_wait_ms, 'FM999,999,999,990') || ' ms'\n        WHEN d.peak_block_wait_ms < 60000 THEN to_char(round(((d.peak_block_wait_ms) / 1000.0)::numeric, 1), 'FM999999990.0') || ' s'\n        ELSE to_char(round(((d.peak_block_wait_ms) / 60000.0)::numeric, 1), 'FM999999990.0') || ' min'\n    END || ')'\n                     ELSE '' END\n    END,\n        CASE WHEN d.memory_critical_events > 0\n        THEN to_char(d.memory_critical_events, 'FM999,999,999,990') || ' ' || CASE WHEN d.memory_critical_events = 1 THEN 'severe memory-pressure event' ELSE 'severe memory-pressure events' END\n    END,\n        CASE WHEN GREATEST(0, d.memory_pressure_events - d.memory_critical_events) > 0\n        THEN to_char(GREATEST(0, d.memory_pressure_events - d.memory_critical_events), 'FM999,999,999,990') || ' ' || CASE WHEN GREATEST(0, d.memory_pressure_events - d.memory_critical_events) = 1 THEN 'memory-pressure event' ELSE 'memory-pressure events' END\n    END,\n        CASE WHEN d.alert_count > 0\n        THEN to_char(d.alert_count, 'FM999,999,999,990') || ' ' || CASE WHEN d.alert_count = 1 THEN 'alert' ELSE 'alerts' END\n    END\n    ), ''), 'No issues detected.') AS \"Why\",\n    COALESCE(NULLIF(d.top_wait_type, ''), 'none') AS \"Top Wait\",\n    d.total_wait_sec AS \"Total Wait\",\n    d.unique_queries AS \"Unique Queries\",\n    d.high_cpu_events AS \"High-CPU Samples\",\n    d.deadlock_count AS \"Deadlocks\",\n    d.blocking_events AS \"Blocking Events\",\n    d.peak_block_wait_ms AS \"Peak Block\",\n    d.memory_pressure_events AS \"Memory Pressure\",\n    d.memory_critical_events AS \"Severe Memory\",\n    d.collection_errors AS \"Collection Errors\",\n    d.alert_count AS \"Alerts\"\nFROM d\nJOIN config.config_monitored_servers AS srv ON srv.server_id = d.server_id\nORDER BY d.day DESC, srv.name\n"
+        }
+      ]
+    }
+  ]
+}

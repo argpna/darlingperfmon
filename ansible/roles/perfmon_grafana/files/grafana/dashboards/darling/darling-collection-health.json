@@ -1,0 +1,594 @@
+{
+  "uid": "darling-collection-health",
+  "title": "Collection Health",
+  "tags": [
+    "perfmon"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Health Summary",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Permission-Denied Collectors",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT COUNT(DISTINCT cl.collector_name) AS \"Permission-Denied Collectors\"\nFROM collect.v_collection_log AS cl\nWHERE cl.collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '7 days'\n  AND cl.server_id IN (${server:csv})\n  AND cl.status = 'PERMISSIONS'\n"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Collector Health",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 13,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "HEALTHY": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "WARNING": {
+                        "color": "yellow",
+                        "index": 1
+                      },
+                      "STALE": {
+                        "color": "orange",
+                        "index": 2
+                      },
+                      "FAILING": {
+                        "color": "red",
+                        "index": 3
+                      },
+                      "NO_PERMISSIONS": {
+                        "color": "purple",
+                        "index": 4
+                      },
+                      "NEVER_RUN": {
+                        "color": "text",
+                        "index": 5
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg Duration"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Fail %"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Fail %"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 20.0
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Errors"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Status",
+            "desc": false
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH agg AS (\n    SELECT\n        cl.server_id,\n        cl.collector_name,\n        COUNT(*) AS total_runs,\n        SUM(CASE WHEN cl.status = 'SUCCESS' THEN 1 ELSE 0 END) AS success_count,\n        SUM(CASE WHEN cl.status = 'ERROR' THEN 1 ELSE 0 END) AS error_count,\n        AVG(cl.duration_ms) AS avg_duration_ms,\n        /* SKIPPED counts as a healthy run: dedup and version-gated collectors no-op\n           without being stale. */\n        MAX(CASE WHEN cl.status IN ('SUCCESS', 'SKIPPED') THEN cl.collection_time END)\n            AS last_success_time,\n        MAX(cl.collection_time) AS last_run_time,\n        MAX(CASE WHEN cl.status IN ('ERROR', 'PERMISSIONS') THEN cl.error_message END)\n            AS last_error,\n        MAX(CASE WHEN cl.status IN ('ERROR', 'PERMISSIONS') THEN cl.collection_time END)\n            AS last_error_time,\n        SUM(CASE WHEN cl.status = 'PERMISSIONS' THEN 1 ELSE 0 END)\n            AS permission_denied_count,\n        /* YIELDED = the 1s lock-timeout guard fired: deliberate and benign for collection,\n           counted apart from errors because it says something about the monitored server's\n           lock contention rather than about monitoring. */\n        SUM(CASE WHEN cl.status = 'YIELDED' THEN 1 ELSE 0 END) AS yield_count\n    FROM collect.v_collection_log AS cl\n    WHERE cl.collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '7 days'\n      AND cl.server_id IN (${server:csv})\n    GROUP BY cl.server_id, cl.collector_name\n),\ncadence(collector_name, frequency_minutes) AS (VALUES\n        ('ag_database_replica_states', 1),\n        ('ag_replica_states', 1),\n        ('agent_status', 5),\n        ('blocked_process_report', 1),\n        ('cpu_scheduler_stats', 1),\n        ('cpu_utilization', 1),\n        ('database_config', 0),\n        ('database_scoped_config', 0),\n        ('database_size_stats', 60),\n        ('deadlocks', 1),\n        ('default_trace_events', 5),\n        ('dmv_blocking_snapshot', 1),\n        ('file_io_stats', 1),\n        ('index_object_stats', 1440),\n        ('job_history', 5),\n        ('latch_stats', 1),\n        ('long_query_completions', 1),\n        ('memory_clerks', 5),\n        ('memory_grant_stats', 1),\n        ('memory_pressure_events', 5),\n        ('memory_stats', 1),\n        ('perfmon_stats', 1),\n        ('plan_cache_stats', 5),\n        ('procedure_stats', 1),\n        ('query_snapshots', 1),\n        ('query_stats', 1),\n        ('query_store', 5),\n        ('running_jobs', 5),\n        ('server_config', 0),\n        ('server_properties', 0),\n        ('session_stats', 5),\n        ('session_summary_stats', 5),\n        ('spinlock_stats', 1),\n        ('system_health_events', 5),\n        ('tempdb_stats', 1),\n        ('trace_flags', 0),\n        ('wait_stats', 1),\n        ('waiting_tasks', 1)\n),\na AS (\n    SELECT\n        agg.*,\n        COALESCE(c.frequency_minutes, 0) AS frequency_minutes,\n        CASE WHEN agg.total_runs > 0\n             THEN agg.error_count::double precision / agg.total_runs * 100\n             ELSE 0 END AS failure_rate,\n        /* Upstream's \"never succeeded\" sentinel, so a collector with no success ever lands\n           past every threshold instead of comparing against NULL. */\n        COALESCE(EXTRACT(EPOCH FROM ((now() AT TIME ZONE 'UTC') - agg.last_success_time))\n                 / 3600.0, 999) AS hours_since_success\n    FROM agg\n    LEFT JOIN cadence c ON c.collector_name = agg.collector_name\n)\nSELECT\n    srv.name AS \"Server\",\n    a.collector_name AS \"Collector\",\n    CASE\n        WHEN a.total_runs = 0 THEN 'NEVER_RUN'\n        WHEN a.permission_denied_count > 0 AND a.error_count = 0 AND a.success_count = 0\n            THEN 'NO_PERMISSIONS'\n        WHEN a.collector_name IN ('server_config', 'database_config', 'database_scoped_config', 'trace_flags', 'server_properties')\n            THEN CASE WHEN a.failure_rate > 20.0 THEN 'WARNING'\n                      ELSE 'HEALTHY' END\n        WHEN a.hours_since_success\n             > GREATEST(24.0,\n                        2.0 * a.frequency_minutes / 60.0)\n            THEN 'FAILING'\n        WHEN a.hours_since_success\n             > GREATEST(4.0,\n                        1.5 * a.frequency_minutes / 60.0)\n            THEN 'STALE'\n        WHEN a.failure_rate > 20.0 THEN 'WARNING'\n        ELSE 'HEALTHY'\n    END AS \"Status\",\n    a.total_runs AS \"Runs\",\n    a.success_count AS \"Success\",\n    a.error_count AS \"Errors\",\n    a.yield_count AS \"Yields\",\n    a.permission_denied_count AS \"Denied\",\n    a.failure_rate AS \"Fail %\",\n    a.avg_duration_ms AS \"Avg Duration\",\n    a.last_success_time AS \"Last Success\",\n    a.last_run_time AS \"Last Run\",\n    a.last_error_time AS \"Last Error At\",\n    a.last_error AS \"Last Error\"\nFROM a\nJOIN config.config_monitored_servers AS srv ON srv.server_id = a.server_id\nORDER BY srv.name, a.collector_name\n"
+        }
+      ],
+      "description": "Trailing 7 days, independent of the dashboard time range - staleness banding needs a stable horizon."
+    },
+    {
+      "id": 4,
+      "type": "row",
+      "title": "Collection Log",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "panels": []
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Recent Collection Runs",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 13,
+        "w": 24,
+        "x": 0,
+        "y": 19
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "SUCCESS": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "SKIPPED": {
+                        "color": "text",
+                        "index": 1
+                      },
+                      "YIELDED": {
+                        "color": "yellow",
+                        "index": 2
+                      },
+                      "PERMISSIONS": {
+                        "color": "purple",
+                        "index": 3
+                      },
+                      "ERROR": {
+                        "color": "red",
+                        "index": 4
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Duration"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "SQL (ms)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Store (ms)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Time",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    cl.collection_time AS \"Time\",\n    srv.name AS \"Server\",\n    cl.collector_name AS \"Collector\",\n    cl.status AS \"Status\",\n    cl.duration_ms AS \"Duration\",\n    cl.sql_duration_ms AS \"SQL (ms)\",\n    cl.duckdb_duration_ms AS \"Store (ms)\",\n    cl.rows_collected AS \"Rows\",\n    cl.error_message AS \"Error\"\nFROM collect.v_collection_log AS cl\nJOIN config.config_monitored_servers AS srv ON srv.server_id = cl.server_id\nWHERE $__timeFilter(cl.collection_time)\n  AND cl.server_id IN (${server:csv})\nORDER BY cl.collection_time DESC\nLIMIT 500\n"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "row",
+      "title": "Duration Trends",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 32
+      },
+      "panels": []
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Collector Duration",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 11,
+        "w": 24,
+        "x": 0,
+        "y": 33
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Duration (ms)"
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    cl.collection_time AS time,\n    srv.name || ' - ' || cl.collector_name AS metric,\n    cl.duration_ms AS value\nFROM collect.v_collection_log AS cl\nJOIN config.config_monitored_servers AS srv ON srv.server_id = cl.server_id\nWHERE $__timeFilter(cl.collection_time)\n  AND cl.server_id IN (${server:csv})\n  AND cl.status = 'SUCCESS'\n  AND cl.duration_ms IS NOT NULL\nORDER BY 1\n"
+        }
+      ]
+    }
+  ]
+}

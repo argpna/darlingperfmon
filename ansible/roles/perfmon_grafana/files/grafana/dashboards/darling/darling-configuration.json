@@ -1,0 +1,592 @@
+{
+  "uid": "darling-configuration",
+  "title": "Configuration",
+  "tags": [
+    "perfmon"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      },
+      {
+        "name": "database",
+        "label": "Database",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "\nSELECT DISTINCT dc.database_name\nFROM collect.v_database_config AS dc\nWHERE dc.server_id IN (${server:csv})\nORDER BY 1\n",
+        "definition": "\nSELECT DISTINCT dc.database_name\nFROM collect.v_database_config AS dc\nWHERE dc.server_id IN (${server:csv})\nORDER BY 1\n",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "refresh": 2,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "allValue": "*",
+        "sort": 0,
+        "description": "Scopes the database and scoped-configuration grids."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Server Configuration",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "sys.configurations",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Values Match"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Yes": {
+                        "color": "text",
+                        "index": 0
+                      },
+                      "No": {
+                        "color": "orange",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    srv.name AS \"Server\",\n    sc.configuration_name AS \"Setting\",\n    sc.value_configured AS \"Configured\",\n    sc.value_in_use AS \"In Use\",\n    CASE WHEN sc.is_dynamic THEN 'Yes' ELSE 'No' END AS \"Dynamic\",\n    CASE WHEN sc.is_advanced THEN 'Yes' ELSE 'No' END AS \"Advanced\",\n    /* ValuesMatch on the row class: a mismatch is a setting awaiting a restart. */\n    CASE WHEN sc.value_configured = sc.value_in_use THEN 'Yes' ELSE 'No' END AS \"Values Match\"\nFROM collect.v_server_config AS sc\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sc.server_id\nWHERE sc.server_id IN (${server:csv})\n  AND sc.capture_time = (\n        SELECT MAX(inner_cap.capture_time) FROM collect.v_server_config AS inner_cap\n        WHERE inner_cap.server_id = sc.server_id\n    )\nORDER BY srv.name, sc.configuration_name\n"
+        }
+      ],
+      "description": "Latest capture per server, not the dashboard time range."
+    },
+    {
+      "id": 3,
+      "type": "row",
+      "title": "Database Configuration",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 13
+      },
+      "panels": []
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "sys.databases",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 14
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Auto Shrink"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Yes": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "No": {
+                        "color": "text",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Auto Close"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Yes": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "No": {
+                        "color": "text",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Trustworthy"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Yes": {
+                        "color": "orange",
+                        "index": 0
+                      },
+                      "No": {
+                        "color": "text",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Compat Level"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "orange",
+                      "value": null
+                    },
+                    {
+                      "color": "text",
+                      "value": 150
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    srv.name AS \"Server\",\n    dc.database_name AS \"Database\",\n    dc.state_desc AS \"State\",\n    dc.compatibility_level AS \"Compat Level\",\n    dc.collation_name AS \"Collation\",\n    dc.recovery_model AS \"Recovery Model\",\n    CASE WHEN dc.is_read_only THEN 'Yes' ELSE 'No' END AS \"Read Only\",\n    CASE WHEN dc.is_auto_close_on THEN 'Yes' ELSE 'No' END AS \"Auto Close\",\n    CASE WHEN dc.is_auto_shrink_on THEN 'Yes' ELSE 'No' END AS \"Auto Shrink\",\n    CASE WHEN dc.is_auto_create_stats_on THEN 'Yes' ELSE 'No' END AS \"Auto Create Stats\",\n    CASE WHEN dc.is_auto_update_stats_on THEN 'Yes' ELSE 'No' END AS \"Auto Update Stats\",\n    CASE WHEN dc.is_auto_update_stats_async_on THEN 'Yes' ELSE 'No' END AS \"Auto Update Stats Async\",\n    CASE WHEN dc.is_read_committed_snapshot_on THEN 'Yes' ELSE 'No' END AS \"RCSI\",\n    dc.snapshot_isolation_state AS \"Snapshot Isolation\",\n    CASE WHEN dc.is_parameterization_forced THEN 'Yes' ELSE 'No' END AS \"Forced Parameterization\",\n    CASE WHEN dc.is_query_store_on THEN 'Yes' ELSE 'No' END AS \"Query Store\",\n    CASE WHEN dc.is_encrypted THEN 'Yes' ELSE 'No' END AS \"Encrypted\",\n    CASE WHEN dc.is_trustworthy_on THEN 'Yes' ELSE 'No' END AS \"Trustworthy\",\n    CASE WHEN dc.is_db_chaining_on THEN 'Yes' ELSE 'No' END AS \"DB Chaining\",\n    CASE WHEN dc.is_broker_enabled THEN 'Yes' ELSE 'No' END AS \"Broker\",\n    CASE WHEN dc.is_cdc_enabled THEN 'Yes' ELSE 'No' END AS \"CDC\",\n    CASE WHEN dc.is_mixed_page_allocation_on THEN 'Yes' ELSE 'No' END AS \"Mixed Page Allocation\",\n    dc.log_reuse_wait_desc AS \"Log Reuse Wait\",\n    dc.page_verify_option AS \"Page Verify\",\n    dc.target_recovery_time_seconds AS \"Target Recovery (s)\",\n    dc.delayed_durability AS \"Delayed Durability\",\n    CASE WHEN dc.is_accelerated_database_recovery_on THEN 'Yes' ELSE 'No' END AS \"ADR\",\n    CASE WHEN dc.is_memory_optimized_enabled THEN 'Yes' ELSE 'No' END AS \"Memory Optimized\",\n    CASE WHEN dc.is_optimized_locking_on THEN 'Yes' ELSE 'No' END AS \"Optimized Locking\"\nFROM collect.v_database_config AS dc\nJOIN config.config_monitored_servers AS srv ON srv.server_id = dc.server_id\nWHERE dc.server_id IN (${server:csv})\n  AND dc.capture_time = (\n        SELECT MAX(inner_cap.capture_time) FROM collect.v_database_config AS inner_cap\n        WHERE inner_cap.server_id = dc.server_id\n    )\n  AND (ARRAY[${database:sqlstring}] @> ARRAY['*'] OR dc.database_name = ANY(ARRAY[${database:sqlstring}]))\nORDER BY srv.name, dc.database_name\n"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "row",
+      "title": "Scoped Configuration",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 26
+      },
+      "panels": []
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Database Scoped Configuration",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 27
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    srv.name AS \"Server\",\n    dsc.database_name AS \"Database\",\n    dsc.configuration_name AS \"Setting\",\n    dsc.value AS \"Value\",\n    dsc.value_for_secondary AS \"Value For Secondary\"\nFROM collect.v_database_scoped_config AS dsc\nJOIN config.config_monitored_servers AS srv ON srv.server_id = dsc.server_id\nWHERE dsc.server_id IN (${server:csv})\n  AND dsc.capture_time = (\n        SELECT MAX(inner_cap.capture_time) FROM collect.v_database_scoped_config AS inner_cap\n        WHERE inner_cap.server_id = dsc.server_id\n    )\n  AND (ARRAY[${database:sqlstring}] @> ARRAY['*'] OR dsc.database_name = ANY(ARRAY[${database:sqlstring}]))\nORDER BY srv.name, dsc.database_name, dsc.configuration_name\n"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "row",
+      "title": "Trace Flags",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 39
+      },
+      "panels": []
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Trace Flags",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 40
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Enabled": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "Disabled": {
+                        "color": "text",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    srv.name AS \"Server\",\n    tf.trace_flag AS \"Trace Flag\",\n    CASE WHEN tf.status THEN 'Enabled' ELSE 'Disabled' END AS \"Status\",\n    CASE WHEN tf.is_global THEN 'Yes' ELSE 'No' END AS \"Global\",\n    CASE WHEN tf.is_session THEN 'Yes' ELSE 'No' END AS \"Session\"\nFROM collect.v_trace_flags AS tf\nJOIN config.config_monitored_servers AS srv ON srv.server_id = tf.server_id\nWHERE tf.server_id IN (${server:csv})\n  AND tf.capture_time = (\n        SELECT MAX(inner_cap.capture_time) FROM collect.v_trace_flags AS inner_cap\n        WHERE inner_cap.server_id = tf.server_id\n    )\nORDER BY srv.name, tf.trace_flag\n"
+        }
+      ]
+    }
+  ]
+}

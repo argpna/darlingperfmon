@@ -84,6 +84,60 @@ class PanelKit:
             "targets": targets,
         }
 
+    def state_timeline(
+        self,
+        title: str,
+        x: int,
+        y: int,
+        w: int,
+        h: int,
+        sql: str,
+        states: list[tuple[int, str, str]],
+        description: str | None = None,
+    ) -> dict:
+        """Build a state-timeline panel: one colored band per state run, per series.
+
+        states are (stored value, display text, color). The query returns time / series
+        name / numeric state, and value mappings turn each level into a labelled band -
+        a string value column would not survive the time_series frame conversion.
+        """
+        panel = {
+            "id": self.nid(),
+            "type": "state-timeline",
+            "title": title,
+            "datasource": self._ds,
+            "gridPos": {"h": h, "w": w, "x": x, "y": y},
+            "fieldConfig": {
+                "defaults": {
+                    "color": {"mode": "thresholds"},
+                    "custom": {"fillOpacity": 90, "lineWidth": 0},
+                    "mappings": [
+                        {
+                            "type": "value",
+                            "options": {
+                                str(value): {"text": text, "color": color, "index": i}
+                                for i, (value, text, color) in enumerate(states)
+                            },
+                        }
+                    ],
+                    "thresholds": self.thresholds(("text", None)),
+                },
+                "overrides": [],
+            },
+            "options": {
+                "showValue": "auto",
+                "mergeValues": True,
+                "alignValue": "center",
+                "rowHeight": 0.9,
+                "legend": {"displayMode": "list", "placement": "bottom"},
+                "tooltip": {"mode": "single", "sort": "none"},
+            },
+            "targets": [self._target(sql)],
+        }
+        if description:
+            panel["description"] = description
+        return panel
+
     def text_panel(self, title, x, y, w, h, content):
         """Build a markdown text panel."""
         return {

@@ -55,9 +55,9 @@ DURATION_STATUS_COLORS = {
 # sample_time is the exception - it is server-local and needs the de-skew cpu.py carries.
 
 # Retention tiers - a panel outrunning its table's horizon returns a short series, not an
-# error. Only query_stats/procedure_stats/query_store_stats have a retention policy (4d raw,
-# 21d *_hourly, indefinite *_daily); every other collector is kept indefinitely, so tiered()
-# is for those three and their rollups.
+# error. Every collector table is purged at its own horizon (30d for most), but only
+# query_stats/procedure_stats/query_store_stats drop raw EARLIER than their rollups reach
+# (4d raw, 21d *_hourly, indefinite *_daily), so tiered() is for those three alone.
 #
 # *_baseline aggregates are NOT a retention tier - they are a separate shape built for
 # anomaly detection (cpu_utilization_baseline carries sum/sumsq/count for stddev). Read
@@ -187,12 +187,71 @@ def tier_guard(tier: str, present: set[str] | None = None) -> str:
     return " AND ".join(clauses) if clauses else "true"
 
 
-def tiered(branches: dict[str, str]) -> str:
+def _floor(base: str, tier: str) -> str:
+    """How far back a tier has actually materialized, as an uncorrelated scalar subquery.
+
+    Keep it uncorrelated: Postgres lifts it into an InitPlan, so a guard built from these
+    still collapses to a One-Time Filter and an unrouted branch is never executed. Tie it to
+    an outer-query column and that folding stops.
+    """
+    if tier == "raw":
+        return f"(SELECT min(collection_time) FROM {collector(base)})"
+    return f"(SELECT min({CAGG_TIME_COL}) FROM {rollup(base, tier)})"
+
+
+def _resolved_tier(base: str, present: set[str]) -> str:
+    """Expression yielding the tier that can actually answer the window.
+
+    Age picks a tier; measured coverage can then demote it. A rollup built WITH NO DATA over
+    pre-existing history serves only what it materialized, so age alone routes windows onto a
+    rollup that answers them EMPTY while raw still holds every row. The demotion is
+    comparative, never absolute: a tier is abandoned only when a lower one is measured to
+    reach further back, which keeps a healthy store (raw ~4 days against the rollups' weeks)
+    from dropping to raw and returning less.
+
+    Upstream ref: RetentionTierRouter.Resolve, TierCoverage (#1759). The availability half of
+    upstream's gate (#1664) is not portable here - a store without the rollups cannot even
+    parse SQL naming them, so that one needs a build-time decision, not a runtime predicate.
+    """
+    covers = {t: f"{_floor(base, t)} <= $__timeFrom()" for t in present}
+    infinity = "'infinity'::timestamp"
+
+    def reaches(candidate: str, incumbent: str) -> str:
+        return f"{_floor(base, candidate)} < COALESCE({_floor(base, incumbent)}, {infinity})"
+
+    def demote(tier: str) -> str:
+        """The coverage ladder below `tier`, mirroring the C# fallthrough order."""
+        if tier == "raw":
+            return "'raw'"
+        rungs = [f"WHEN {covers[tier]} THEN '{tier}'"]
+        if tier == "daily" and "hourly" in present:
+            deeper = reaches("hourly", "daily")
+            rungs.append(f"WHEN {deeper} AND {covers['hourly']} THEN 'hourly'")
+            if "raw" in present:
+                rungs.append(f"WHEN {deeper} AND {reaches('raw', 'hourly')} THEN 'raw'")
+            rungs.append(f"WHEN {deeper} THEN 'hourly'")
+        if "raw" in present:
+            rungs.append(f"WHEN {reaches('raw', tier)} THEN 'raw'")
+        return "CASE " + " ".join(rungs) + f" ELSE '{tier}' END"
+
+    ordered = [name for name, _ in _TIERS if name in present]
+    arms = " ".join(
+        f"WHEN {tier_guard(tier, present)} THEN {demote(tier)}" for tier in ordered
+    )
+    return f"CASE {arms} END"
+
+
+def tiered(branches: dict[str, str], base: str | None = None) -> str:
     """Combine per-tier SELECTs into one query, guarded so exactly one tier runs.
 
     branches maps tier ("raw"/"hourly"/"daily") to a complete SELECT. Each is wrapped in its
     guard rather than the caller appending one, so a branch cannot escape routing and
     duplicate the result. An omitted tier's age range falls to the next coarser branch.
+
+    base names the raw collector table the branches read. Pass it whenever the rollups exist,
+    so routing is gated on measured coverage as well as age - see _resolved_tier(). Age-only
+    routing is what returns an empty panel on a store whose rollups have not yet materialized
+    the window.
 
     Branch projections must agree on column names and order; the CAGGs reshape their metrics
     (delta columns become *_sum/*_min/*_max over CAGG_TIME_COL), so each branch spells out
@@ -204,9 +263,10 @@ def tiered(branches: dict[str, str]) -> str:
     if not branches:
         raise ValueError("tiered() needs at least one branch")
     present = set(branches)
+    resolved = _resolved_tier(base, present) if base else None
     parts = [
         f"SELECT * FROM (\n{sql.strip()}\n) AS {tier}_tier"
-        f" WHERE {tier_guard(tier, present)}"
+        f" WHERE {f'({resolved}) = {tier!r}' if resolved else tier_guard(tier, present)}"
         for tier, sql in sorted(branches.items())
     ]
     return "\nUNION ALL\n".join(parts)
@@ -238,6 +298,26 @@ def multi_filter(col: str, var: str) -> str:
     return f"({values} @> ARRAY['*'] OR {col} = ANY({values}))"
 
 
+def n0(expr: str) -> str:
+    """C# N0: thousands-separated integer."""
+    return f"to_char({expr}, 'FM999,999,999,990')"
+
+
+def fixed(expr: str, places: int) -> str:
+    """C# F1/F2: fixed decimal places, no thousands separator."""
+    mask = "FM999999990" + ("." + "0" * places if places else "")
+    return f"to_char(round(({expr})::numeric, {places}), '{mask}')"
+
+
+def duration_ms(expr: str) -> str:
+    """Compact ms duration, matching DailyHealthBandCalculator.FormatDurationMs."""
+    return f"""CASE
+        WHEN {expr} < 1000 THEN {n0(expr)} || ' ms'
+        WHEN {expr} < 60000 THEN {fixed(f'({expr}) / 1000.0', 1)} || ' s'
+        ELSE {fixed(f'({expr}) / 60000.0', 1)} || ' min'
+    END"""
+
+
 def time_bucket(interval: str, col: str = "collection_time") -> str:
     """TimescaleDB time_bucket() - takes arbitrary intervals, unlike date_trunc."""
     return f"time_bucket(INTERVAL '{interval}', {col})"
@@ -263,6 +343,7 @@ thresholds = _kit.thresholds
 timeseries = _kit.timeseries
 text_panel = _kit.text_panel
 stat = _kit.stat
+state_timeline = _kit.state_timeline
 table = _kit.table
 bargauge = _kit.bargauge
 row = _kit.row
@@ -416,7 +497,10 @@ __all__ = [
     "collector",
     "custom_var",
     "dashboard",
+    "duration_ms",
+    "fixed",
     "flow",
+    "n0",
     "multi_filter",
     "nid",
     "query_var",
@@ -430,6 +514,7 @@ __all__ = [
     "server_var",
     "stat",
     "stat_grid",
+    "state_timeline",
     "status_colors",
     "subtab",
     "table",
