@@ -50,12 +50,14 @@ DURATION_STATUS_COLORS = {
     "Stalled": "red",
 }
 
-# Timestamps are UTC in naive `timestamp` columns, so $__timeFilter() is correct as-is and
-# no timezone helper is needed. The MSSQL line's tz_* helpers have no counterpart here.
+# collection_time is UTC in a naive `timestamp` column, so $__timeFilter() is correct as-is
+# and the MSSQL line's tz_* helpers have no counterpart here. cpu_utilization_stats'
+# sample_time is the exception - it is server-local and needs the de-skew cpu.py carries.
 
 # Retention tiers - a panel outrunning its table's horizon returns a short series, not an
-# error. Retention: raw collectors ~30d, but query/procedure/query_store only 4d raw, with
-# *_hourly at 21d and *_daily indefinite. Route with tiered() rather than picking by hand.
+# error. Only query_stats/procedure_stats/query_store_stats have a retention policy (4d raw,
+# 21d *_hourly, indefinite *_daily); every other collector is kept indefinitely, so tiered()
+# is for those three and their rollups.
 #
 # *_baseline aggregates are NOT a retention tier - they are a separate shape built for
 # anomaly detection (cpu_utilization_baseline carries sum/sumsq/count for stddev). Read
@@ -218,6 +220,24 @@ def server_filter(col: str = "server_id") -> str:
     return f"{col} IN (${{server:csv}})"
 
 
+SERVER_REGISTRY = "config.config_monitored_servers"
+
+
+def server_join(col: str, alias: str = "srv") -> str:
+    """Join the fleet registry for the server name to label a series or column with.
+
+    collect.* denormalizes server_name as the HOST; the registry's name is what $server
+    shows, so labels come from there and the two always agree.
+    """
+    return f"JOIN {SERVER_REGISTRY} AS {alias} ON {alias}.server_id = {col}"
+
+
+def multi_filter(col: str, var: str) -> str:
+    """Filter a text column by a multi-select variable whose "All" expands to '*'."""
+    values = f"ARRAY[${{{var}:sqlstring}}]"
+    return f"({values} @> ARRAY['*'] OR {col} = ANY({values}))"
+
+
 def time_bucket(interval: str, col: str = "collection_time") -> str:
     """TimescaleDB time_bucket() - takes arbitrary intervals, unlike date_trunc."""
     return f"time_bucket(INTERVAL '{interval}', {col})"
@@ -275,6 +295,56 @@ def server_var(multi: bool = True):
         "includeAll": multi,
         "sort": 1,
         "description": "Monitored SQL Server instance, from Darling's fleet registry.",
+    }
+
+
+def query_var(
+    name: str,
+    label: str,
+    query: str,
+    description: str,
+    multi: bool = True,
+    all_value: str = "*",
+):
+    """Build a query-backed template variable, defaulting to All.
+
+    all_value pairs with multi_filter(): one token stands in for the whole list, so a
+    dashboard's default load does not interpolate every value into every panel.
+    """
+    return {
+        "name": name,
+        "label": label,
+        "type": "query",
+        "datasource": DS,
+        "query": query,
+        "definition": query,
+        "current": {"text": ["All"], "value": ["$__all"]},
+        "options": [],
+        "refresh": 2,
+        "hide": 0,
+        "multi": multi,
+        "includeAll": True,
+        "allValue": all_value,
+        "sort": 0,
+        "description": description,
+    }
+
+
+def custom_var(name: str, label: str, options: list[str], description: str):
+    """Build a single-select variable over a fixed option list, defaulting to the first."""
+    return {
+        "name": name,
+        "label": label,
+        "type": "custom",
+        "query": ",".join(options),
+        "current": {"text": options[0], "value": options[0]},
+        "options": [
+            {"text": o, "value": o, "selected": i == 0} for i, o in enumerate(options)
+        ],
+        "hide": 0,
+        "multi": False,
+        "includeAll": False,
+        "description": description,
     }
 
 
@@ -344,14 +414,19 @@ __all__ = [
     "col_thresholds",
     "col_unit",
     "collector",
+    "custom_var",
     "dashboard",
     "flow",
+    "multi_filter",
     "nid",
+    "query_var",
     "reflow",
     "reset_id",
     "rollup",
     "row",
+    "SERVER_REGISTRY",
     "server_filter",
+    "server_join",
     "server_var",
     "stat",
     "stat_grid",

@@ -1,0 +1,839 @@
+{
+  "uid": "darling-memory",
+  "title": "Memory",
+  "tags": [
+    "perfmon"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      },
+      {
+        "name": "clerk_type",
+        "label": "Memory clerk",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "\nSELECT mc.clerk_type\nFROM collect.v_memory_clerks AS mc\nWHERE $__timeFilter(mc.collection_time)\n  AND mc.server_id IN (${server:csv})\nGROUP BY mc.clerk_type\nORDER BY SUM(mc.memory_mb) DESC\n",
+        "definition": "\nSELECT mc.clerk_type\nFROM collect.v_memory_clerks AS mc\nWHERE $__timeFilter(mc.collection_time)\n  AND mc.server_id IN (${server:csv})\nGROUP BY mc.clerk_type\nORDER BY SUM(mc.memory_mb) DESC\n",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "refresh": 2,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "allValue": "*",
+        "sort": 0,
+        "description": "Memory clerks collected over the window, heaviest first. All plots the top 5."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Overview",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Memory Summary",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Physical Memory"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decmbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "SQL Server Memory"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decmbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Target Memory"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decmbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Buffer Pool"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decmbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Plan Cache"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decmbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Available Physical"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decmbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total Page File"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decmbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Available Page File"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decmbytes"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT DISTINCT ON (ms.server_id)\n    srv.name AS \"Server\",\n    ms.collection_time AS \"Collected\",\n    ms.total_physical_memory_mb AS \"Physical Memory\",\n    ms.total_server_memory_mb AS \"SQL Server Memory\",\n    ms.target_server_memory_mb AS \"Target Memory\",\n    ms.buffer_pool_mb AS \"Buffer Pool\",\n    ms.plan_cache_mb AS \"Plan Cache\",\n    ms.available_physical_memory_mb AS \"Available Physical\",\n    ms.total_page_file_mb AS \"Total Page File\",\n    ms.available_page_file_mb AS \"Available Page File\",\n    ms.system_memory_state AS \"System Memory State\",\n    ms.sql_memory_model AS \"Memory Model\"\nFROM collect.v_memory_stats AS ms\nJOIN config.config_monitored_servers AS srv ON srv.server_id = ms.server_id\nWHERE ms.server_id IN (${server:csv})\nORDER BY ms.server_id, ms.collection_time DESC\n"
+        }
+      ],
+      "description": "Latest collected memory state, independent of the time range."
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Memory Trend",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Memory (GB)"
+          },
+          "unit": "decgbytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    ms.collection_time AS time,\n    srv.name || ' - ' || s.series AS metric,\n    s.value / 1024.0 AS value\nFROM collect.v_memory_stats AS ms\nJOIN config.config_monitored_servers AS srv ON srv.server_id = ms.server_id\nCROSS JOIN LATERAL (VALUES\n    ('Total Server Memory', ms.total_server_memory_mb),\n    ('Target Memory', ms.target_server_memory_mb),\n    ('Buffer Pool', ms.buffer_pool_mb)\n) AS s(series, value)\nWHERE $__timeFilter(ms.collection_time)\n  AND ms.server_id IN (${server:csv})\nUNION ALL\nSELECT\n    mg.collection_time AS time,\n    srv.name || ' - Memory Grants' AS metric,\n    SUM(mg.granted_memory_mb) / 1024.0 AS value\nFROM collect.v_memory_grant_stats AS mg\nJOIN config.config_monitored_servers AS srv ON srv.server_id = mg.server_id\nWHERE $__timeFilter(mg.collection_time)\n  AND mg.server_id IN (${server:csv})\nGROUP BY mg.collection_time, srv.name\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "row",
+      "title": "Memory Clerks",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
+      "panels": []
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Memory Clerks",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Memory (MB)"
+          },
+          "unit": "decmbytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH ranked AS (\n\n    SELECT\n        mc.server_id,\n        srv.name AS server_label,\n        mc.clerk_type\n    FROM collect.v_memory_clerks AS mc\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = mc.server_id\n    WHERE $__timeFilter(mc.collection_time)\n      AND mc.server_id IN (${server:csv})\n      AND (ARRAY[${clerk_type:sqlstring}] @> ARRAY['*'] OR mc.clerk_type = ANY(ARRAY[${clerk_type:sqlstring}]))\n    GROUP BY mc.server_id, srv.name, mc.clerk_type\n    ORDER BY SUM(mc.memory_mb) DESC\n    LIMIT 5\n\n)\nSELECT\n    mc.collection_time AS time,\n    r.server_label || ' - ' || mc.clerk_type AS metric,\n    mc.memory_mb AS value\nFROM collect.v_memory_clerks AS mc\nJOIN ranked AS r\n  ON r.server_id = mc.server_id\n AND r.clerk_type = mc.clerk_type\nWHERE $__timeFilter(mc.collection_time)\n  AND mc.server_id IN (${server:csv})\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Clerk Summary",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 28
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Non-BP Total (MB)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decmbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Top Non-BP Clerk (MB)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decmbytes"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH ranked AS (\n\n    SELECT\n        mc.server_id,\n        srv.name AS server_label,\n        mc.clerk_type\n    FROM collect.v_memory_clerks AS mc\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = mc.server_id\n    WHERE $__timeFilter(mc.collection_time)\n      AND mc.server_id IN (${server:csv})\n      AND (ARRAY[${clerk_type:sqlstring}] @> ARRAY['*'] OR mc.clerk_type = ANY(ARRAY[${clerk_type:sqlstring}]))\n    GROUP BY mc.server_id, srv.name, mc.clerk_type\n    ORDER BY SUM(mc.memory_mb) DESC\n    LIMIT 5\n\n),\nlatest AS (\n    SELECT DISTINCT ON (mc.server_id, mc.clerk_type)\n        r.server_label,\n        mc.clerk_type,\n        mc.memory_mb\n    FROM collect.v_memory_clerks AS mc\n    JOIN ranked AS r\n      ON r.server_id = mc.server_id\n     AND r.clerk_type = mc.clerk_type\n    WHERE $__timeFilter(mc.collection_time)\n      AND mc.server_id IN (${server:csv})\n    ORDER BY mc.server_id, mc.clerk_type, mc.collection_time DESC\n),\nnon_bp AS (\n    SELECT *\n    FROM latest\n    WHERE clerk_type NOT ILIKE '%BUFFERPOOL%'\n)\nSELECT DISTINCT ON (n.server_label)\n    n.server_label AS \"Server\",\n    SUM(n.memory_mb) OVER (PARTITION BY n.server_label) AS \"Non-BP Total (MB)\",\n    regexp_replace(n.clerk_type, '^MEMORYCLERK_', '') AS \"Top Non-BP Clerk\",\n    n.memory_mb AS \"Top Non-BP Clerk (MB)\"\nFROM non_bp AS n\nORDER BY n.server_label, n.memory_mb DESC\n"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "row",
+      "title": "Memory Grants",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 33
+      },
+      "panels": []
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Memory Grant Sizing",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 34
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Memory (MB)"
+          },
+          "unit": "decmbytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    mg.collection_time AS time,\n    srv.name || ' - Pool ' || mg.pool_id || ': ' || s.series AS metric,\n    SUM(s.value) AS value\nFROM collect.v_memory_grant_stats AS mg\nJOIN config.config_monitored_servers AS srv ON srv.server_id = mg.server_id\nCROSS JOIN LATERAL (VALUES\n    ('Available MB', mg.available_memory_mb),\n    ('Granted MB', mg.granted_memory_mb),\n    ('Used MB', mg.used_memory_mb),\n    ('Target MB', mg.target_memory_mb),\n    ('Max Target MB', mg.max_target_memory_mb)\n) AS s(series, value)\nWHERE $__timeFilter(mg.collection_time)\n  AND mg.server_id IN (${server:csv})\nGROUP BY mg.collection_time, srv.name, mg.pool_id, s.series\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Memory Grant Activity",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 43
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Count"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    mg.collection_time AS time,\n    srv.name || ' - Pool ' || mg.pool_id || ': ' || s.series AS metric,\n    SUM(s.value) AS value\nFROM collect.v_memory_grant_stats AS mg\nJOIN config.config_monitored_servers AS srv ON srv.server_id = mg.server_id\nCROSS JOIN LATERAL (VALUES\n    ('Grantees', mg.grantee_count),\n    ('Waiters', mg.waiter_count),\n    ('Timeouts', mg.timeout_error_count_delta),\n    ('Forced Grants', mg.forced_grant_count_delta)\n) AS s(series, value)\nWHERE $__timeFilter(mg.collection_time)\n  AND mg.server_id IN (${server:csv})\nGROUP BY mg.collection_time, srv.name, mg.pool_id, s.series\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Plan Cache",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 52
+      },
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Plan Cache Size",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 53
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Plan Cache Size (MB)"
+          },
+          "unit": "decmbytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    pc.collection_time AS time,\n    srv.name || ' - ' || s.series AS metric,\n    SUM(s.value) AS value\nFROM collect.v_plan_cache_stats AS pc\nJOIN config.config_monitored_servers AS srv ON srv.server_id = pc.server_id\nCROSS JOIN LATERAL (VALUES\n    ('Single-Use', pc.single_use_size_mb),\n    ('Multi-Use', pc.multi_use_size_mb)\n) AS s(series, value)\nWHERE $__timeFilter(pc.collection_time)\n  AND pc.server_id IN (${server:csv})\nGROUP BY pc.collection_time, srv.name, s.series\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Plan Cache Summary",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 62
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH latest AS (\n    SELECT\n        pc.server_id,\n        srv.name AS server_label,\n        MAX(pc.collection_time) AS mx\n    FROM collect.v_plan_cache_stats AS pc\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = pc.server_id\n    WHERE $__timeFilter(pc.collection_time)\n      AND pc.server_id IN (${server:csv})\n    GROUP BY pc.server_id, srv.name\n),\ntotals AS (\n    SELECT\n        l.server_label,\n        COALESCE(SUM(pc.total_plans), 0) AS total_plans,\n        COALESCE(SUM(pc.single_use_plans), 0) AS single_use_plans,\n        MIN(pc.oldest_plan_create_time) AS oldest_plan_create_time\n    FROM latest AS l\n    JOIN collect.v_plan_cache_stats AS pc\n      ON pc.server_id = l.server_id\n     AND pc.collection_time = l.mx\n    GROUP BY l.server_label\n),\nclassified AS (\n    SELECT\n        t.*,\n        CASE\n            WHEN t.total_plans > 0\n            THEN t.single_use_plans * 100.0 / t.total_plans\n            ELSE 0\n        END AS single_use_percent\n    FROM totals AS t\n)\nSELECT\n    c.server_label AS \"Server\",\n    c.total_plans AS \"Total Plans\",\n    c.oldest_plan_create_time AS \"Oldest Plan\",\n    CASE\n        WHEN c.single_use_percent > 50 THEN 'CRITICAL'\n        WHEN c.single_use_percent > 30 THEN 'HIGH'\n        WHEN c.single_use_percent > 20 THEN 'MEDIUM'\n        ELSE 'NORMAL'\n    END AS \"Bloat Level\",\n    CASE\n        WHEN c.single_use_percent > 20\n        THEN 'Check for unparameterized queries / Consider Forced Parameterization'\n        ELSE 'Plan cache composition is healthy'\n    END AS \"Recommendation\"\nFROM classified AS c\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "row",
+      "title": "Memory Pressure Events",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 67
+      },
+      "panels": []
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Memory Pressure Events",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 68
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "axisLabel": "Pressure Events per Hour"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    date_trunc('hour', mpe.sample_time) AS time,\n    srv.name || ' - ' || s.series AS metric,\n    COUNT(*) AS value\nFROM collect.v_memory_pressure_events AS mpe\nJOIN config.config_monitored_servers AS srv ON srv.server_id = mpe.server_id\nCROSS JOIN LATERAL (VALUES\n    ('SQL Server (medium)', mpe.memory_indicators_process = 2),\n    ('SQL Server (severe)', mpe.memory_indicators_process >= 3),\n    ('Operating System (medium)', mpe.memory_indicators_system = 2),\n    ('Operating System (severe)', mpe.memory_indicators_system >= 3)\n) AS s(series, hit)\nWHERE $__timeFilter(mpe.sample_time)\n  AND mpe.server_id IN (${server:csv})\n  AND (mpe.memory_indicators_process >= 2 OR mpe.memory_indicators_system >= 2)\n  AND s.hit\nGROUP BY 1, 2\nORDER BY 1\n"
+        }
+      ]
+    }
+  ]
+}

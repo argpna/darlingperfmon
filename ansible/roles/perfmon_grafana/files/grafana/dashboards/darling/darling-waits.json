@@ -1,6 +1,6 @@
 {
   "uid": "darling-waits",
-  "title": "Waits",
+  "title": "Wait Stats",
   "tags": [
     "perfmon"
   ],
@@ -61,36 +61,50 @@
         "includeAll": true,
         "sort": 1,
         "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      },
+      {
+        "name": "wait_type",
+        "label": "Wait type",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "\nSELECT ws.wait_type\nFROM collect.v_wait_stats AS ws\nWHERE $__timeFilter(ws.collection_time)\n  AND ws.server_id IN (${server:csv})\nGROUP BY ws.wait_type\nORDER BY SUM(ws.delta_wait_time_ms) DESC\n",
+        "definition": "\nSELECT ws.wait_type\nFROM collect.v_wait_stats AS ws\nWHERE $__timeFilter(ws.collection_time)\n  AND ws.server_id IN (${server:csv})\nGROUP BY ws.wait_type\nORDER BY SUM(ws.delta_wait_time_ms) DESC\n",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "refresh": 2,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "allValue": "*",
+        "sort": 0,
+        "description": "Wait types collected over the window, heaviest first. All plots the top 20."
       }
     ]
   },
   "panels": [
     {
       "id": 1,
-      "type": "row",
-      "title": "Server Trends",
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
-      "panels": []
-    },
-    {
-      "id": 2,
       "type": "timeseries",
-      "title": "Wait ms/sec",
+      "title": "Wait Time (ms/sec)",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "darling"
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
+        "h": 10,
+        "w": 24,
         "x": 0,
-        "y": 1
+        "y": 0
       },
       "fieldConfig": {
         "defaults": {
@@ -107,7 +121,8 @@
             "stacking": {
               "mode": "none",
               "group": "A"
-            }
+            },
+            "axisLabel": "ms/sec"
           },
           "unit": "ms"
         },
@@ -135,23 +150,23 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nWITH agg AS (\n    SELECT\n        ws.collection_time,\n        ws.server_name,\n        SUM(ws.delta_wait_time_ms) AS total_wait_ms\n    FROM collect.v_wait_stats AS ws\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n    GROUP BY ws.collection_time, ws.server_name\n),\ntimed AS (\n    SELECT\n        collection_time,\n        server_name,\n        total_wait_ms,\n        EXTRACT(EPOCH FROM (collection_time\n            - LAG(collection_time) OVER (PARTITION BY server_name\n                                         ORDER BY collection_time))) AS interval_seconds\n    FROM agg\n)\nSELECT\n    collection_time AS time,\n    server_name AS metric,\n    (total_wait_ms / interval_seconds)::numeric(18, 4) AS wait_ms_sec\nFROM timed\nWHERE interval_seconds > 0\nORDER BY 1\n"
+          "rawSql": "\nWITH ranked AS (\n    SELECT\n        ws.server_id,\n        srv.name AS server_label,\n        ws.wait_type\n    FROM collect.v_wait_stats AS ws\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = ws.server_id\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n      AND (ARRAY[${wait_type:sqlstring}] @> ARRAY['*'] OR ws.wait_type = ANY(ARRAY[${wait_type:sqlstring}]))\n    GROUP BY ws.server_id, srv.name, ws.wait_type\n    ORDER BY SUM(ws.delta_wait_time_ms) DESC\n    LIMIT 20\n),\nwindowed AS (\n    SELECT\n        r.server_label,\n        ws.wait_type,\n        ws.collection_time,\n        ws.delta_wait_time_ms,\n        ws.delta_signal_wait_time_ms,\n        ws.delta_waiting_tasks,\n        EXTRACT(EPOCH FROM (date_trunc('second', ws.collection_time)\n            - date_trunc('second', LAG(ws.collection_time) OVER (\n                PARTITION BY ws.server_id, ws.wait_type\n                ORDER BY ws.collection_time)))) AS interval_seconds\n    FROM collect.v_wait_stats AS ws\n    JOIN ranked AS r\n      ON r.server_id = ws.server_id\n     AND r.wait_type = ws.wait_type\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n)\nSELECT\n    collection_time AS time,\n    server_label || ' - ' || wait_type AS metric,\n    CASE\n        WHEN interval_seconds > 0\n        THEN delta_wait_time_ms::double precision / interval_seconds\n        ELSE 0\n    END AS value\nFROM windowed\nORDER BY 1\n"
         }
       ]
     },
     {
-      "id": 3,
+      "id": 2,
       "type": "timeseries",
-      "title": "Signal vs Resource Waits",
+      "title": "Avg Wait Time (ms/wait)",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "darling"
       },
       "gridPos": {
-        "h": 8,
+        "h": 9,
         "w": 12,
-        "x": 12,
-        "y": 1
+        "x": 0,
+        "y": 10
       },
       "fieldConfig": {
         "defaults": {
@@ -166,9 +181,10 @@
             "showPoints": "never",
             "spanNulls": true,
             "stacking": {
-              "mode": "normal",
+              "mode": "none",
               "group": "A"
-            }
+            },
+            "axisLabel": "ms/wait"
           },
           "unit": "ms"
         },
@@ -196,61 +212,57 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nWITH agg AS (\n    SELECT\n        ws.collection_time,\n        SUM(ws.delta_signal_wait_time_ms) AS signal_ms,\n        SUM(ws.delta_wait_time_ms) - SUM(ws.delta_signal_wait_time_ms) AS resource_ms\n    FROM collect.v_wait_stats AS ws\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n    GROUP BY ws.collection_time\n)\nSELECT\n    collection_time AS time,\n    signal_ms AS \"Signal (CPU) ms\",\n    resource_ms AS \"Resource ms\"\nFROM agg\nORDER BY 1\n"
+          "rawSql": "\nWITH ranked AS (\n    SELECT\n        ws.server_id,\n        srv.name AS server_label,\n        ws.wait_type\n    FROM collect.v_wait_stats AS ws\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = ws.server_id\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n      AND (ARRAY[${wait_type:sqlstring}] @> ARRAY['*'] OR ws.wait_type = ANY(ARRAY[${wait_type:sqlstring}]))\n    GROUP BY ws.server_id, srv.name, ws.wait_type\n    ORDER BY SUM(ws.delta_wait_time_ms) DESC\n    LIMIT 20\n),\nwindowed AS (\n    SELECT\n        r.server_label,\n        ws.wait_type,\n        ws.collection_time,\n        ws.delta_wait_time_ms,\n        ws.delta_signal_wait_time_ms,\n        ws.delta_waiting_tasks,\n        EXTRACT(EPOCH FROM (date_trunc('second', ws.collection_time)\n            - date_trunc('second', LAG(ws.collection_time) OVER (\n                PARTITION BY ws.server_id, ws.wait_type\n                ORDER BY ws.collection_time)))) AS interval_seconds\n    FROM collect.v_wait_stats AS ws\n    JOIN ranked AS r\n      ON r.server_id = ws.server_id\n     AND r.wait_type = ws.wait_type\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n)\nSELECT\n    collection_time AS time,\n    server_label || ' - ' || wait_type AS metric,\n    CASE\n        WHEN delta_waiting_tasks > 0\n        THEN delta_wait_time_ms::double precision / delta_waiting_tasks\n        ELSE 0\n    END AS value\nFROM windowed\nORDER BY 1\n"
         }
       ]
     },
     {
-      "id": 4,
-      "type": "table",
-      "title": "Top Waits",
+      "id": 3,
+      "type": "timeseries",
+      "title": "Signal Wait Time (ms/sec)",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "darling"
       },
       "gridPos": {
-        "h": 10,
-        "w": 24,
-        "x": 0,
-        "y": 9
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 10
       },
       "fieldConfig": {
         "defaults": {
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            },
-            "filterable": true
+          "color": {
+            "mode": "palette-classic"
           },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "ms/sec"
+          },
+          "unit": "ms"
         },
         "overrides": []
       },
       "options": {
-        "showHeader": true,
-        "cellHeight": "sm",
-        "footer": {
-          "show": false,
-          "reducer": [
-            "sum"
-          ],
-          "fields": ""
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
         },
-        "sortBy": [
-          {
-            "displayName": "Wait Time (ms)",
-            "desc": true
-          }
-        ]
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "targets": [
         {
@@ -260,9 +272,9 @@
             "uid": "darling"
           },
           "editorMode": "code",
-          "format": "table",
+          "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nSELECT\n    ws.server_name AS \"Server\",\n    ws.wait_type AS \"Wait Type\",\n    SUM(ws.delta_wait_time_ms) AS \"Wait Time (ms)\",\n    SUM(ws.delta_signal_wait_time_ms) AS \"Signal Wait (ms)\",\n    SUM(ws.delta_waiting_tasks) AS \"Waiting Tasks\",\n    CASE\n        WHEN SUM(ws.delta_waiting_tasks) > 0\n        THEN (SUM(ws.delta_wait_time_ms)::numeric\n              / SUM(ws.delta_waiting_tasks))::numeric(18, 2)\n    END AS \"Avg Wait (ms)\"\nFROM collect.v_wait_stats AS ws\nWHERE $__timeFilter(ws.collection_time)\n  AND ws.server_id IN (${server:csv})\nGROUP BY ws.server_name, ws.wait_type\nHAVING SUM(ws.delta_wait_time_ms) > 0\nORDER BY 3 DESC\nLIMIT 50\n"
+          "rawSql": "\nWITH ranked AS (\n    SELECT\n        ws.server_id,\n        srv.name AS server_label,\n        ws.wait_type\n    FROM collect.v_wait_stats AS ws\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = ws.server_id\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n      AND (ARRAY[${wait_type:sqlstring}] @> ARRAY['*'] OR ws.wait_type = ANY(ARRAY[${wait_type:sqlstring}]))\n    GROUP BY ws.server_id, srv.name, ws.wait_type\n    ORDER BY SUM(ws.delta_wait_time_ms) DESC\n    LIMIT 20\n),\nwindowed AS (\n    SELECT\n        r.server_label,\n        ws.wait_type,\n        ws.collection_time,\n        ws.delta_wait_time_ms,\n        ws.delta_signal_wait_time_ms,\n        ws.delta_waiting_tasks,\n        EXTRACT(EPOCH FROM (date_trunc('second', ws.collection_time)\n            - date_trunc('second', LAG(ws.collection_time) OVER (\n                PARTITION BY ws.server_id, ws.wait_type\n                ORDER BY ws.collection_time)))) AS interval_seconds\n    FROM collect.v_wait_stats AS ws\n    JOIN ranked AS r\n      ON r.server_id = ws.server_id\n     AND r.wait_type = ws.wait_type\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n)\nSELECT\n    collection_time AS time,\n    server_label || ' - ' || wait_type AS metric,\n    CASE\n        WHEN interval_seconds > 0\n        THEN delta_signal_wait_time_ms::double precision / interval_seconds\n        ELSE 0\n    END AS value\nFROM windowed\nORDER BY 1\n"
         }
       ]
     }
