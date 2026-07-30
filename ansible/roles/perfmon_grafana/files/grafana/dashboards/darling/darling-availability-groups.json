@@ -1,0 +1,432 @@
+{
+  "uid": "darling-availability-groups",
+  "title": "Availability Groups",
+  "tags": [
+    "perfmon"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon Dashboards",
+      "type": "dashboards",
+      "url": ""
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "finops"
+      ],
+      "targetBlank": false,
+      "title": "All FinOps Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Summary",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "text",
+      "title": "No Availability Groups",
+      "gridPos": {
+        "h": 2,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "\nNo Availability Groups observed on any monitored server, until data is collected. The AG\ncollectors write no rows for an instance that hosts none, and they do not run against Azure\nSQL Database - zero rows here is the normal result on most fleets.\n"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Availability Groups",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 3
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH latest AS (\n    SELECT r.server_id, r.server_name, r.collection_time, r.ag_name, r.replica_server_name,\n           r.role_desc, r.is_local, r.operational_state_desc, r.connected_state_desc,\n           r.recovery_health_desc, r.synchronization_health_desc, r.availability_mode_desc,\n           r.failover_mode_desc, r.endpoint_url\n    FROM collect.ag_replica_states AS r\n    JOIN (\n        SELECT server_id, MAX(collection_time) AS max_collection_time\n        FROM collect.ag_replica_states\n        GROUP BY server_id\n    ) AS latest\n      ON r.server_id = latest.server_id\n      AND r.collection_time = latest.max_collection_time\n)\nSELECT COUNT(DISTINCT UPPER(latest.ag_name)) AS \"Availability Groups\"\nFROM latest\nJOIN config.config_monitored_servers AS srv ON srv.server_id = latest.server_id\nWHERE latest.server_id IN (${server:csv})\n"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Reporting Servers",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 3
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH latest AS (\n    SELECT r.server_id, r.server_name, r.collection_time, r.ag_name, r.replica_server_name,\n           r.role_desc, r.is_local, r.operational_state_desc, r.connected_state_desc,\n           r.recovery_health_desc, r.synchronization_health_desc, r.availability_mode_desc,\n           r.failover_mode_desc, r.endpoint_url\n    FROM collect.ag_replica_states AS r\n    JOIN (\n        SELECT server_id, MAX(collection_time) AS max_collection_time\n        FROM collect.ag_replica_states\n        GROUP BY server_id\n    ) AS latest\n      ON r.server_id = latest.server_id\n      AND r.collection_time = latest.max_collection_time\n)\nSELECT COUNT(DISTINCT latest.server_id) AS \"Reporting Servers\"\nFROM latest\nJOIN config.config_monitored_servers AS srv ON srv.server_id = latest.server_id\nWHERE latest.server_id IN (${server:csv})\n"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Views",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 3
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH latest AS (\n    SELECT r.server_id, r.server_name, r.collection_time, r.ag_name, r.replica_server_name,\n           r.role_desc, r.is_local, r.operational_state_desc, r.connected_state_desc,\n           r.recovery_health_desc, r.synchronization_health_desc, r.availability_mode_desc,\n           r.failover_mode_desc, r.endpoint_url\n    FROM collect.ag_replica_states AS r\n    JOIN (\n        SELECT server_id, MAX(collection_time) AS max_collection_time\n        FROM collect.ag_replica_states\n        GROUP BY server_id\n    ) AS latest\n      ON r.server_id = latest.server_id\n      AND r.collection_time = latest.max_collection_time\n)\nSELECT COUNT(DISTINCT (latest.server_id, UPPER(latest.ag_name))) AS \"Views\"\nFROM latest\nJOIN config.config_monitored_servers AS srv ON srv.server_id = latest.server_id\nWHERE latest.server_id IN (${server:csv})\n"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "row",
+      "title": "Clusters",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 7
+      },
+      "panels": []
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Availability Groups",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "AG"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "View replicas & databases",
+                    "url": "/d/darling-availability-group-detail?${__url_time_range}&var-ag=${__data.fields.AG}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Severity"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Healthy": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "Warning": {
+                        "color": "yellow",
+                        "index": 1
+                      },
+                      "Critical": {
+                        "color": "red",
+                        "index": 2
+                      },
+                      "Unknown": {
+                        "color": "text",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Severity",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH replica_latest AS (\n    SELECT r.server_id, r.server_name, r.collection_time, r.ag_name, r.replica_server_name,\n           r.role_desc, r.is_local, r.operational_state_desc, r.connected_state_desc,\n           r.recovery_health_desc, r.synchronization_health_desc, r.availability_mode_desc,\n           r.failover_mode_desc, r.endpoint_url\n    FROM collect.ag_replica_states AS r\n    JOIN (\n        SELECT server_id, MAX(collection_time) AS max_collection_time\n        FROM collect.ag_replica_states\n        GROUP BY server_id\n    ) AS latest\n      ON r.server_id = latest.server_id\n      AND r.collection_time = latest.max_collection_time\n),\ndatabase_latest AS (\n    SELECT d.server_id, d.server_name, d.collection_time, d.ag_name, d.database_name,\n           d.replica_server_name, d.is_local, d.synchronization_state_desc,\n           d.log_send_queue_size, d.redo_queue_size, d.log_send_rate, d.redo_rate,\n           d.is_suspended, d.suspend_reason_desc, d.availability_mode_desc,\n           d.secondary_lag_seconds\n    FROM collect.ag_database_replica_states AS d\n    JOIN (\n        SELECT server_id, MAX(collection_time) AS max_collection_time\n        FROM collect.ag_database_replica_states\n        GROUP BY server_id\n    ) AS latest\n      ON d.server_id = latest.server_id\n      AND d.collection_time = latest.max_collection_time\n),\n\n    replica_agg AS (\n        SELECT\n            UPPER(r.ag_name) AS ag_key,\n            MAX(r.ag_name) AS ag_name,\n            COUNT(DISTINCT r.server_id) AS reporting_servers,\n            COUNT(DISTINCT r.replica_server_name) AS replica_count,\n            STRING_AGG(\n                DISTINCT CASE WHEN UPPER(r.role_desc) = 'PRIMARY'\n                              THEN r.replica_server_name END,\n                ', '\n            ) AS primaries,\n            MAX(GREATEST(\n        CASE UPPER(r.synchronization_health_desc)\n            WHEN 'HEALTHY' THEN 1 WHEN 'PARTIALLY_HEALTHY' THEN 2\n            WHEN 'NOT_HEALTHY' THEN 3 ELSE 0 END,\n        CASE UPPER(r.connected_state_desc)\n            WHEN 'CONNECTED' THEN 1 WHEN 'DISCONNECTED' THEN 3 ELSE 0 END,\n        CASE UPPER(r.operational_state_desc)\n            WHEN 'ONLINE' THEN 1 WHEN 'PENDING' THEN 2 WHEN 'PENDING_FAILOVER' THEN 2\n            WHEN 'OFFLINE' THEN 3 WHEN 'FAILED' THEN 3 WHEN 'FAILED_NO_QUORUM' THEN 3\n            ELSE 0 END,\n        CASE UPPER(r.recovery_health_desc)\n            WHEN 'ONLINE' THEN 1 WHEN 'ONLINE_IN_PROGRESS' THEN 2 ELSE 0 END,\n        CASE UPPER(r.role_desc)\n            WHEN 'PRIMARY' THEN 1 WHEN 'SECONDARY' THEN 1 WHEN 'RESOLVING' THEN 2 ELSE 0 END\n    )) AS replica_worst_sev\n        FROM replica_latest AS r\n        WHERE r.ag_name IS NOT NULL AND r.server_id IN (${server:csv})\n        GROUP BY UPPER(r.ag_name)\n    )\n,\n\n    database_agg AS (\n        SELECT\n            UPPER(d.ag_name) AS ag_key,\n            COUNT(DISTINCT d.database_name) AS database_count,\n            MAX(CASE\n        WHEN d.is_suspended THEN 3\n        WHEN UPPER(d.synchronization_state_desc) = 'SYNCHRONIZED' THEN 1\n        WHEN UPPER(d.synchronization_state_desc) = 'SYNCHRONIZING' THEN\n            CASE WHEN UPPER(d.availability_mode_desc) = 'ASYNCHRONOUS_COMMIT' THEN 1\n                 ELSE 2 END\n        WHEN UPPER(d.synchronization_state_desc) = 'NOT SYNCHRONIZING' THEN 3\n        WHEN UPPER(d.synchronization_state_desc) IN ('REVERTING', 'INITIALIZING') THEN 2\n        ELSE 0\n    END) AS database_worst_sev\n        FROM database_latest AS d\n        WHERE d.ag_name IS NOT NULL AND d.server_id IN (${server:csv})\n        GROUP BY UPPER(d.ag_name)\n    )\n\nSELECT\n    ra.ag_name AS \"AG\",\n    COALESCE(ra.primaries, 'No primary reported') AS \"Primary\",\n    ra.reporting_servers AS \"Reporting Servers\",\n    ra.replica_count AS \"Replicas\",\n    COALESCE(da.database_count, 0) AS \"Databases\",\n    CASE GREATEST(ra.replica_worst_sev, COALESCE(da.database_worst_sev, 0))\n        WHEN 3 THEN 'Critical' WHEN 2 THEN 'Warning' WHEN 1 THEN 'Healthy' ELSE 'Unknown' END\n        AS \"Severity\"\nFROM replica_agg ra\nLEFT JOIN database_agg da ON da.ag_key = ra.ag_key\nORDER BY ra.ag_name\n"
+        }
+      ],
+      "description": "One row per AG, rolled up across every reporting server. Click an AG to see its per-replica and per-database detail."
+    }
+  ]
+}

@@ -17,6 +17,10 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 # pylint: disable=wrong-import-position
 from darling_defs._shared import OUT  # noqa: E402
+from darling_defs.availability_groups import (  # noqa: E402
+    availability_group_detail,
+    availability_groups,
+)
 from darling_defs.collection_health import collection_health  # noqa: E402
 from darling_defs.config_changes import config_changes  # noqa: E402
 from darling_defs.configuration import configuration  # noqa: E402
@@ -47,6 +51,8 @@ from darling_defs.finops.storage_growth import storage_growth  # noqa: E402
 from darling_defs.finops.utilization import utilization  # noqa: E402
 
 DASHBOARDS = [
+    availability_groups,
+    availability_group_detail,
     collection_health,
     config_changes,
     configuration,

@@ -1,0 +1,364 @@
+{
+  "uid": "darling-availability-group-detail",
+  "title": "Availability Group Detail",
+  "tags": [
+    "perfmon-detail",
+    "nav-only"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "refresh": "",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      },
+      {
+        "name": "ag",
+        "label": "Availability Group",
+        "type": "textbox",
+        "current": {
+          "text": "*",
+          "value": "*"
+        },
+        "options": [
+          {
+            "text": "*",
+            "value": "*"
+          }
+        ],
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Replica Topology",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "AG Replicas",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Severity"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Healthy": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "Warning": {
+                        "color": "yellow",
+                        "index": 1
+                      },
+                      "Critical": {
+                        "color": "red",
+                        "index": 2
+                      },
+                      "Unknown": {
+                        "color": "text",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Severity",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH latest AS (\n    SELECT r.server_id, r.server_name, r.collection_time, r.ag_name, r.replica_server_name,\n           r.role_desc, r.is_local, r.operational_state_desc, r.connected_state_desc,\n           r.recovery_health_desc, r.synchronization_health_desc, r.availability_mode_desc,\n           r.failover_mode_desc, r.endpoint_url\n    FROM collect.ag_replica_states AS r\n    JOIN (\n        SELECT server_id, MAX(collection_time) AS max_collection_time\n        FROM collect.ag_replica_states\n        GROUP BY server_id\n    ) AS latest\n      ON r.server_id = latest.server_id\n      AND r.collection_time = latest.max_collection_time\n)\nSELECT\n    srv.name AS \"Server\",\n    latest.ag_name AS \"AG\",\n    latest.replica_server_name AS \"Replica\",\n    CASE WHEN latest.is_local THEN 'Yes' WHEN latest.is_local = false THEN 'No' ELSE '\u2014' END AS \"Local\",\n    latest.role_desc AS \"Role\",\n    latest.operational_state_desc AS \"Operational State\",\n    latest.connected_state_desc AS \"Connected State\",\n    latest.recovery_health_desc AS \"Recovery Health\",\n    latest.synchronization_health_desc AS \"Sync Health\",\n    latest.availability_mode_desc AS \"Availability Mode\",\n    latest.failover_mode_desc AS \"Failover Mode\",\n    latest.endpoint_url AS \"Endpoint URL\",\n    CASE GREATEST(\n        CASE UPPER(latest.synchronization_health_desc)\n            WHEN 'HEALTHY' THEN 1 WHEN 'PARTIALLY_HEALTHY' THEN 2\n            WHEN 'NOT_HEALTHY' THEN 3 ELSE 0 END,\n        CASE UPPER(latest.connected_state_desc)\n            WHEN 'CONNECTED' THEN 1 WHEN 'DISCONNECTED' THEN 3 ELSE 0 END,\n        CASE UPPER(latest.operational_state_desc)\n            WHEN 'ONLINE' THEN 1 WHEN 'PENDING' THEN 2 WHEN 'PENDING_FAILOVER' THEN 2\n            WHEN 'OFFLINE' THEN 3 WHEN 'FAILED' THEN 3 WHEN 'FAILED_NO_QUORUM' THEN 3\n            ELSE 0 END,\n        CASE UPPER(latest.recovery_health_desc)\n            WHEN 'ONLINE' THEN 1 WHEN 'ONLINE_IN_PROGRESS' THEN 2 ELSE 0 END,\n        CASE UPPER(latest.role_desc)\n            WHEN 'PRIMARY' THEN 1 WHEN 'SECONDARY' THEN 1 WHEN 'RESOLVING' THEN 2 ELSE 0 END\n    )\n        WHEN 3 THEN 'Critical' WHEN 2 THEN 'Warning' WHEN 1 THEN 'Healthy' ELSE 'Unknown' END AS \"Severity\",\n    latest.collection_time AS \"Collected\"\nFROM latest\nJOIN config.config_monitored_servers AS srv ON srv.server_id = latest.server_id\nWHERE latest.server_id IN (${server:csv})\n  AND (${ag:sqlstring} = '*' OR ${ag:sqlstring} = '' OR UPPER(latest.ag_name) = UPPER(${ag:sqlstring}))\nORDER BY latest.ag_name, srv.name, latest.replica_server_name\n"
+        }
+      ],
+      "description": "Latest snapshot per reporting server, not the dashboard time range. One row per (reporting server, AG, replica) - a replica with multiple monitored reporters appears once per reporter, since each reports a different perspective."
+    },
+    {
+      "id": 3,
+      "type": "row",
+      "title": "Database Replication",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 11
+      },
+      "panels": []
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "AG Database Replica States",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Sync Severity"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Healthy": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "Warning": {
+                        "color": "yellow",
+                        "index": 1
+                      },
+                      "Critical": {
+                        "color": "red",
+                        "index": 2
+                      },
+                      "Unknown": {
+                        "color": "text",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Est Send Drain (min)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "m"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Est Redo Drain (min)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "m"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Lag (s)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Sync Severity",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH latest AS (\n    SELECT d.server_id, d.server_name, d.collection_time, d.ag_name, d.database_name,\n           d.replica_server_name, d.is_local, d.synchronization_state_desc,\n           d.log_send_queue_size, d.redo_queue_size, d.log_send_rate, d.redo_rate,\n           d.is_suspended, d.suspend_reason_desc, d.availability_mode_desc,\n           d.secondary_lag_seconds\n    FROM collect.ag_database_replica_states AS d\n    JOIN (\n        SELECT server_id, MAX(collection_time) AS max_collection_time\n        FROM collect.ag_database_replica_states\n        GROUP BY server_id\n    ) AS latest\n      ON d.server_id = latest.server_id\n      AND d.collection_time = latest.max_collection_time\n)\nSELECT\n    srv.name AS \"Server\",\n    latest.ag_name AS \"AG\",\n    latest.database_name AS \"Database\",\n    latest.replica_server_name AS \"Replica\",\n    CASE WHEN latest.is_local THEN 'Yes' WHEN latest.is_local = false THEN 'No' ELSE '\u2014' END AS \"Local\",\n    latest.synchronization_state_desc AS \"Sync State\",\n    latest.availability_mode_desc AS \"Availability Mode\",\n    latest.log_send_queue_size AS \"Send Queue (KB)\",\n    latest.redo_queue_size AS \"Redo Queue (KB)\",\n    latest.log_send_rate AS \"Send Rate (KB/s)\",\n    latest.redo_rate AS \"Redo Rate (KB/s)\",\n    latest.secondary_lag_seconds AS \"Lag (s)\",\n    CASE\n        WHEN latest.log_send_queue_size IS NULL THEN NULL\n        WHEN latest.log_send_queue_size <= 0 THEN 0\n        WHEN latest.log_send_rate IS NULL OR latest.log_send_rate <= 0 THEN NULL\n        ELSE round((latest.log_send_queue_size::numeric / latest.log_send_rate) / 60.0, 2)\n    END\n        AS \"Est Send Drain (min)\",\n    CASE\n        WHEN latest.redo_queue_size IS NULL THEN NULL\n        WHEN latest.redo_queue_size <= 0 THEN 0\n        WHEN latest.redo_rate IS NULL OR latest.redo_rate <= 0 THEN NULL\n        ELSE round((latest.redo_queue_size::numeric / latest.redo_rate) / 60.0, 2)\n    END\n        AS \"Est Redo Drain (min)\",\n    CASE WHEN latest.is_suspended THEN 'Yes' WHEN latest.is_suspended = false THEN 'No' ELSE '\u2014' END AS \"Suspended\",\n    latest.suspend_reason_desc AS \"Suspend Reason\",\n    CASE\n        WHEN latest.is_suspended THEN\n            CASE WHEN NULLIF(TRIM(latest.suspend_reason_desc), '') IS NULL THEN 'Suspended'\n                 ELSE 'Suspended: ' || latest.suspend_reason_desc END\n        WHEN latest.is_suspended = false THEN 'Moving'\n        ELSE '\u2014'\n    END AS \"Data Movement\",\n    CASE CASE\n        WHEN latest.is_suspended THEN 3\n        WHEN UPPER(latest.synchronization_state_desc) = 'SYNCHRONIZED' THEN 1\n        WHEN UPPER(latest.synchronization_state_desc) = 'SYNCHRONIZING' THEN\n            CASE WHEN UPPER(latest.availability_mode_desc) = 'ASYNCHRONOUS_COMMIT' THEN 1\n                 ELSE 2 END\n        WHEN UPPER(latest.synchronization_state_desc) = 'NOT SYNCHRONIZING' THEN 3\n        WHEN UPPER(latest.synchronization_state_desc) IN ('REVERTING', 'INITIALIZING') THEN 2\n        ELSE 0\n    END\n        WHEN 3 THEN 'Critical' WHEN 2 THEN 'Warning' WHEN 1 THEN 'Healthy' ELSE 'Unknown' END AS \"Sync Severity\",\n    latest.collection_time AS \"Collected\"\nFROM latest\nJOIN config.config_monitored_servers AS srv ON srv.server_id = latest.server_id\nWHERE latest.server_id IN (${server:csv})\n  AND (${ag:sqlstring} = '*' OR ${ag:sqlstring} = '' OR UPPER(latest.ag_name) = UPPER(${ag:sqlstring}))\nORDER BY latest.ag_name, srv.name, latest.database_name, latest.replica_server_name\n"
+        }
+      ],
+      "description": "Latest snapshot per reporting server. While suspended, the queue and drain estimates freeze rather than grow - Suspended/Data Movement carry that context, so a frozen-looking row is not necessarily caught up."
+    }
+  ]
+}
