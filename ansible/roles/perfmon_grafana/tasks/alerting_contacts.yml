@@ -1,0 +1,165 @@
+---
+# Contact points, mute timings, and the notification-policy route. Shared by both editions'
+# alerting tasks (alerting.yml, alerting_darling.yml) - these are org-wide Grafana resources,
+# not tied to which schema the alert rules read from.
+#
+# Uses ansible.builtin.uri throughout. The grafana.grafana.alert_contact_point module is not
+# idempotent on Grafana 12: it always POSTs and retries on HTTP 500 for duplicates, but Grafana 12
+# returns 409 Conflict instead. The module does not handle 409 and errors on the second run.
+# Workaround: GET existing UIDs, then PUT for known UIDs and POST for new ones.
+
+- name: Set present contact points
+  ansible.builtin.set_fact:
+    _present_cps: >-
+      {{ (perfmon_alert_contact_points | rejectattr('state', 'defined') | list)
+         + (perfmon_alert_contact_points | selectattr('state', 'defined') | rejectattr('state', 'equalto', 'absent') | list) }}
+
+- name: Get current contact points
+  ansible.builtin.uri:
+    url: "{{ grafana_url }}/api/v1/provisioning/contact-points"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ grafana_api_key }}"
+    status_code: [200]
+  register: _current_cps
+  delegate_to: localhost
+  no_log: true
+
+- name: Update contact points
+  ansible.builtin.uri:
+    url: "{{ grafana_url }}/api/v1/provisioning/contact-points/{{ item.uid }}"
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ grafana_api_key }}"
+    body_format: json
+    body: "{{ item }}"
+    status_code: [200, 202]
+  loop: "{{ _present_cps | selectattr('uid', 'in', _current_cps.json | map(attribute='uid') | list) | list }}"
+  loop_control:
+    label: "{{ item.uid }}"
+  changed_when: false
+  delegate_to: localhost
+  no_log: true
+
+- name: Create contact points
+  ansible.builtin.uri:
+    url: "{{ grafana_url }}/api/v1/provisioning/contact-points"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ grafana_api_key }}"
+    body_format: json
+    body: "{{ item }}"
+    status_code: [200, 201, 202]
+  loop: "{{ _present_cps | rejectattr('uid', 'in', _current_cps.json | map(attribute='uid') | list) | list }}"
+  loop_control:
+    label: "{{ item.uid }}"
+  changed_when: false
+  delegate_to: localhost
+  no_log: true
+
+- name: Delete absent contact points
+  ansible.builtin.uri:
+    url: "{{ grafana_url }}/api/v1/provisioning/contact-points/{{ item.uid }}"
+    method: DELETE
+    headers:
+      Authorization: "Bearer {{ grafana_api_key }}"
+    status_code: [200, 202, 204, 404]
+  loop: "{{ perfmon_alert_contact_points | selectattr('state', 'defined') | selectattr('state', 'equalto', 'absent') | list }}"
+  loop_control:
+    label: "{{ item.uid }}"
+  changed_when: false
+  delegate_to: localhost
+  no_log: true
+
+- name: Assert mute timing names use perfmon- prefix
+  ansible.builtin.assert:
+    that: item.name is match('^perfmon-')
+    fail_msg: "Mute timing '{{ item.name }}' must use a 'perfmon-' prefix to be managed by this role"
+    quiet: true
+  loop: "{{ perfmon_alert_mute_timings }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Get all mute timings
+  ansible.builtin.uri:
+    url: "{{ grafana_url }}/api/v1/provisioning/mute-timings"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ grafana_api_key }}"
+    status_code: [200]
+  register: _all_mute_timings
+  delegate_to: localhost
+  no_log: true
+
+- name: Remove orphaned mute timings
+  ansible.builtin.uri:
+    url: "{{ grafana_url }}/api/v1/provisioning/mute-timings/{{ item | urlencode }}"
+    method: DELETE
+    headers:
+      Authorization: "Bearer {{ grafana_api_key }}"
+    status_code: [200, 204, 404]
+  loop: >-
+    {{ (_all_mute_timings.json | selectattr('name', 'match', '^perfmon-') | map(attribute='name') | list)
+       | difference(perfmon_alert_mute_timings | map(attribute='name') | list) }}
+  loop_control:
+    label: "{{ item }}"
+  when: perfmon_prune_orphaned | bool
+  changed_when: false
+  delegate_to: localhost
+  no_log: true
+
+- name: Update mute timings
+  ansible.builtin.uri:
+    url: "{{ grafana_url }}/api/v1/provisioning/mute-timings/{{ item.name | urlencode }}"
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ grafana_api_key }}"
+    body_format: json
+    body: "{{ item }}"
+    status_code: [200, 202]
+  loop: "{{ perfmon_alert_mute_timings | selectattr('name', 'in', _all_mute_timings.json | map(attribute='name') | list) | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  changed_when: false
+  delegate_to: localhost
+  no_log: true
+
+- name: Create mute timings
+  ansible.builtin.uri:
+    url: "{{ grafana_url }}/api/v1/provisioning/mute-timings"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ grafana_api_key }}"
+    body_format: json
+    body: "{{ item }}"
+    status_code: [200, 201, 202]
+  loop: "{{ perfmon_alert_mute_timings | rejectattr('name', 'in', _all_mute_timings.json | map(attribute='name') | list) | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  changed_when: false
+  delegate_to: localhost
+  no_log: true
+
+- name: Upsert perfmon route in Grafana notification policy
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ role_path }}/files/upsert_notification_route.py"
+      - --grafana-url
+      - "{{ grafana_url }}"
+      - --receiver
+      - "{{ perfmon_alert_receiver_name | trim }}"
+      - --group-wait
+      - "{{ perfmon_alert_group_wait }}"
+      - --group-interval
+      - "{{ perfmon_alert_group_interval }}"
+      - --repeat-interval
+      - "{{ perfmon_alert_repeat_interval }}"
+      - --group-by
+      - "{{ perfmon_alert_group_by }}"
+  environment:
+    GRAFANA_API_KEY: "{{ grafana_api_key }}"
+  when: perfmon_alert_contact_points | length > 0
+  changed_when: false
+  delegate_to: localhost
+  no_log: true

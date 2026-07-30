@@ -1,0 +1,93 @@
+---
+# Renders one edition's alert-rule template per instance, merges the resulting groups, and
+# PUTs each rule group into its folder. Shared by alerting.yml (dashboard, MSSQL) and
+# alerting_darling.yml (Darling, Postgres) - parameterized by the caller via:
+#   _alerting_template_path: absolute path to the rules-instance*.yaml.j2 template
+#   _alerting_folder_uid:    the Grafana folder uid rule groups are provisioned into
+#
+# A rule's uid must be unique within its OWN template's namespace (perfmon-* vs darling-*), but
+# both editions loop over the same perfmon_instances, so the two are provisioned into different
+# folders and never collide.
+
+- name: Initialize rule group accumulator
+  ansible.builtin.set_fact:
+    _perfmon_rule_groups: []
+
+- name: Collect alert rule groups per instance
+  ansible.builtin.set_fact:
+    _perfmon_rule_groups: >-
+      {{ _perfmon_rule_groups +
+         (lookup('template', _alerting_template_path) | from_yaml).groups
+         | map('combine', {'_instance': item.inventory_hostname}) | list }}
+  loop: "{{ perfmon_instances }}"
+  loop_control:
+    label: "{{ item.inventory_hostname }}"
+  delegate_to: localhost
+
+- name: Merge alert rule groups across instances
+  ansible.builtin.set_fact:
+    _perfmon_merged_groups: "{{ _perfmon_rule_groups | groupby('name') | map('list') | list }}"
+
+- name: Validate rule group interval format
+  ansible.builtin.assert:
+    that: item[1][0].interval is match('^[0-9]+(s|m|h|d)$')
+    fail_msg: >-
+      Rule group '{{ item[0] }}' has interval '{{ item[1][0].interval }}', which does not match
+      the supported <number><unit> format, unit must be one of - s, m, h, d.
+    quiet: true
+  loop: "{{ _perfmon_merged_groups }}"
+  loop_control:
+    label: "{{ item[0] }}"
+
+- name: Get existing rule groups
+  ansible.builtin.uri:
+    url: >-
+      {{ grafana_url }}/api/v1/provisioning/folder/{{ _alerting_folder_uid
+      }}/rule-groups/{{ item[0] | urlencode }}
+    method: GET
+    headers:
+      Authorization: "Bearer {{ grafana_api_key }}"
+    status_code: [200, 404]
+  register: _existing_rule_groups
+  loop: "{{ _perfmon_merged_groups }}"
+  loop_control:
+    label: "{{ item[0] }}"
+  changed_when: false
+  delegate_to: localhost
+  no_log: true
+
+- name: Provision alert rule groups
+  ansible.builtin.uri:
+    url: >-
+      {{ grafana_url }}/api/v1/provisioning/folder/{{ _alerting_folder_uid
+      }}/rule-groups/{{ item[0] | urlencode }}
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ grafana_api_key }}"
+    body_format: json
+    body: >-
+      {{ {
+        'title': item[0],
+        'interval': (item[1][0].interval | regex_search('^([0-9]+)(s|m|h|d)$', '\1') | first | int)
+          * {'s': 1, 'm': 60, 'h': 3600, 'd': 86400}[item[1][0].interval | regex_search('^([0-9]+)(s|m|h|d)$', '\2') | first],
+        'rules': _this_run_rules + _existing_rules_kept
+      } }}
+    status_code: [200, 202]
+  vars:
+    _this_run_rules: "{{ item[1] | map(attribute='rules') | sum(start=[]) }}"
+    _this_run_uids: "{{ _this_run_rules | map(attribute='uid') | list }}"
+    _known_instances: "{{ perfmon_instances | map(attribute='inventory_hostname') | list }}"
+    _existing_rules_raw: >-
+      {{ (_existing_rule_groups.results[ansible_loop.index0].json.rules | default([]))
+         if _existing_rule_groups.results[ansible_loop.index0].status == 200 else [] }}
+    _existing_rules_unsuperseded: "{{ _existing_rules_raw | rejectattr('uid', 'in', _this_run_uids) | list }}"
+    _existing_rules_kept: >-
+      {{ (_existing_rules_unsuperseded | selectattr('labels.instance', 'in', _known_instances) | list)
+         if perfmon_prune_orphaned | bool else _existing_rules_unsuperseded }}
+  loop: "{{ _perfmon_merged_groups }}"
+  loop_control:
+    label: "{{ item[0] }}"
+    extended: true
+  changed_when: false
+  delegate_to: localhost
+  no_log: true

@@ -81,3 +81,9 @@ perfmon_darling_pg_database: darling
 perfmon_darling_pg_user: viewer
 # perfmon_darling_pg_password: set in inventory group_vars or vault
 perfmon_darling_pg_sslmode: disable
+
+# Darling-line alert thresholds (rules-instance-darling.yaml.j2). Every other alert reuses the
+# perfmon_alert_* defaults above unchanged; these two differ in default or in kind - see
+# rules-instance-darling.yaml.j2.
+perfmon_alert_darling_cpu_pct: 80
+perfmon_alert_darling_blocking_count: 1

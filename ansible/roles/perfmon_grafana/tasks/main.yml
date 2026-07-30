@@ -101,10 +101,14 @@
   when: perfmon_edition == 'darling'
   tags: dashboards
 
-# No Darling equivalent yet: the rules target per-instance MSSQL datasources and live DMVs.
 - name: Provision alerting resources
   ansible.builtin.import_tasks: alerting.yml
   when: perfmon_edition == 'dashboard'
+  tags: alerting
+
+- name: Provision Darling alerting resources
+  ansible.builtin.import_tasks: alerting_darling.yml
+  when: perfmon_edition == 'darling'
   tags: alerting
 
 - name: Remove all provisioned resources
