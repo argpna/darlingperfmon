@@ -288,6 +288,74 @@ class PanelKit:
             "targets": [self._target(sql, "table")],
         }
 
+    def heatmap(
+        self,
+        title: str,
+        x: int,
+        y: int,
+        w: int,
+        h: int,
+        sql: str,
+        description: str | None = None,
+    ) -> dict:
+        """Build a heatmap panel from long-format (time, metric, value) rows.
+
+        format="time_series" pivots the query into one numeric series per distinct
+        `metric` value, and calculate=False renders each series as one Y-axis row -
+        so `metric` should already be a bucket label, not a raw scalar to histogram.
+        """
+        panel = {
+            "id": self.nid(),
+            "type": "heatmap",
+            "title": title,
+            "datasource": self._ds,
+            "gridPos": {"h": h, "w": w, "x": x, "y": y},
+            "options": {
+                "calculate": False,
+                "calculation": {},
+                "cellGap": 2,
+                "cellRadius": 0,
+                "color": {
+                    "mode": "scheme",
+                    "scheme": "Viridis",
+                    "steps": 64,
+                    "reverse": False,
+                    "exponent": 0.5,
+                    "scale": "exponential",
+                },
+                "exemplars": {"color": "rgba(255,0,255,0.7)"},
+                "filterValues": {"le": 1e-9},
+                "legend": {"show": True},
+                "rowsFrame": {"layout": "auto", "value": ""},
+                "tooltip": {
+                    "maxHeight": 600,
+                    "mode": "single",
+                    "yHistogram": False,
+                    "showColorScale": True,
+                },
+                "yAxis": {
+                    "axisPlacement": "left",
+                    "decimals": 0,
+                    "labelRotation": -90,
+                    "reverse": False,
+                    "unit": "short",
+                },
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "custom": {
+                        "scaleDistribution": {"type": "linear"},
+                        "hideFrom": {"legend": False, "tooltip": False, "viz": False},
+                    }
+                },
+                "overrides": [],
+            },
+            "targets": [self._target(sql, "time_series")],
+        }
+        if description:
+            panel["description"] = description
+        return panel
+
     def row(self, title: str, y: int, repeat: str | None = None) -> dict:
         """Build a collapsible row panel used as a section header."""
         r = {

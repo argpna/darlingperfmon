@@ -355,6 +355,7 @@ stat = _kit.stat
 state_timeline = _kit.state_timeline
 table = _kit.table
 bargauge = _kit.bargauge
+heatmap = _kit.heatmap
 row = _kit.row
 flow = _kit.flow
 stat_grid = _kit.stat_grid
@@ -572,6 +573,7 @@ __all__ = [
     "finops_dashboard",
     "fixed",
     "flow",
+    "heatmap",
     "n0",
     "multi_filter",
     "nid",

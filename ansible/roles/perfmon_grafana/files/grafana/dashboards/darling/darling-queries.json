@@ -74,6 +74,135 @@
         "includeAll": true,
         "sort": 1,
         "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      },
+      {
+        "name": "database",
+        "label": "Database",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "\nSELECT DISTINCT database_name\nFROM collect.v_query_stats\nWHERE server_id IN (${server:csv})\nORDER BY 1\n",
+        "definition": "\nSELECT DISTINCT database_name\nFROM collect.v_query_stats\nWHERE server_id IN (${server:csv})\nORDER BY 1\n",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "refresh": 2,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 0,
+        "description": "Optional database filter, shared across every Queries sub-tab."
+      },
+      {
+        "name": "topn",
+        "label": "Top N",
+        "type": "custom",
+        "query": "25,10,50,100",
+        "current": {
+          "text": "25",
+          "value": "25"
+        },
+        "options": [
+          {
+            "text": "25",
+            "value": "25",
+            "selected": true
+          },
+          {
+            "text": "10",
+            "value": "10",
+            "selected": false
+          },
+          {
+            "text": "50",
+            "value": "50",
+            "selected": false
+          },
+          {
+            "text": "100",
+            "value": "100",
+            "selected": false
+          }
+        ],
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "description": "Row cap for the grids."
+      },
+      {
+        "name": "comparison_baseline",
+        "label": "Comparison Baseline",
+        "type": "custom",
+        "query": "Yesterday,Last Week",
+        "current": {
+          "text": "Yesterday",
+          "value": "Yesterday"
+        },
+        "options": [
+          {
+            "text": "Yesterday",
+            "value": "Yesterday",
+            "selected": true
+          },
+          {
+            "text": "Last Week",
+            "value": "Last Week",
+            "selected": false
+          }
+        ],
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "description": "Baseline window offset for the vs-baseline comparison tables."
+      },
+      {
+        "name": "heatmap_metric",
+        "label": "Heatmap Metric",
+        "type": "custom",
+        "query": "Duration,CPU,Logical Reads,Logical Writes,Execution Count",
+        "current": {
+          "text": "Duration",
+          "value": "Duration"
+        },
+        "options": [
+          {
+            "text": "Duration",
+            "value": "Duration",
+            "selected": true
+          },
+          {
+            "text": "CPU",
+            "value": "CPU",
+            "selected": false
+          },
+          {
+            "text": "Logical Reads",
+            "value": "Logical Reads",
+            "selected": false
+          },
+          {
+            "text": "Logical Writes",
+            "value": "Logical Writes",
+            "selected": false
+          },
+          {
+            "text": "Execution Count",
+            "value": "Execution Count",
+            "selected": false
+          }
+        ],
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "description": "Per-execution metric the Query Heatmap buckets rows by."
       }
     ]
   },
@@ -81,7 +210,7 @@
     {
       "id": 1,
       "type": "row",
-      "title": "Top Resource Consumers",
+      "title": "Performance Trends",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -94,14 +223,14 @@
     {
       "id": 2,
       "type": "timeseries",
-      "title": "Query CPU",
+      "title": "Query Duration (elapsed ms/s)",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "darling"
       },
       "gridPos": {
-        "h": 9,
-        "w": 24,
+        "h": 8,
+        "w": 6,
         "x": 0,
         "y": 1
       },
@@ -148,23 +277,280 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT * FROM (\nSELECT\n    qs.bucket AS time,\n    qs.server_name AS metric,\n    SUM(qs.worker_time_sum) / 1000.0 AS cpu_ms\nFROM collect.query_stats_daily AS qs\nWHERE $__timeFilter(qs.bucket)\n  AND qs.server_id IN (${server:csv})\nGROUP BY qs.bucket, qs.server_name\n) AS daily_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'daily'\nUNION ALL\nSELECT * FROM (\nSELECT\n    qs.bucket AS time,\n    qs.server_name AS metric,\n    SUM(qs.worker_time_sum) / 1000.0 AS cpu_ms\nFROM collect.query_stats_hourly AS qs\nWHERE $__timeFilter(qs.bucket)\n  AND qs.server_id IN (${server:csv})\nGROUP BY qs.bucket, qs.server_name\n) AS hourly_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'hourly'\nUNION ALL\nSELECT * FROM (\nSELECT\n    qs.collection_time AS time,\n    qs.server_name AS metric,\n    SUM(qs.delta_worker_time) / 1000.0 AS cpu_ms\nFROM collect.v_query_stats AS qs\nWHERE $__timeFilter(qs.collection_time)\n  AND qs.server_id IN (${server:csv})\nGROUP BY qs.collection_time, qs.server_name\n) AS raw_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'raw'\nORDER BY 1"
+          "rawSql": "SELECT * FROM (\nSELECT\n    b.bucket AS time,\n    srv.name AS metric,\n    SUM(b.elapsed_time_sum) / 1000.0 / 86400.0 AS value\nFROM collect.query_stats_daily AS b\nJOIN config.config_monitored_servers AS srv ON srv.server_id = b.server_id\nWHERE $__timeFilter(b.bucket)\n  AND b.server_id IN (${server:csv})\nGROUP BY b.bucket, srv.name\n) AS daily_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'daily'\nUNION ALL\nSELECT * FROM (\nSELECT\n    b.bucket AS time,\n    srv.name AS metric,\n    SUM(b.elapsed_time_sum) / 1000.0 / 3600.0 AS value\nFROM collect.query_stats_hourly AS b\nJOIN config.config_monitored_servers AS srv ON srv.server_id = b.server_id\nWHERE $__timeFilter(b.bucket)\n  AND b.server_id IN (${server:csv})\nGROUP BY b.bucket, srv.name\n) AS hourly_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'hourly'\nUNION ALL\nSELECT * FROM (\nSELECT\n    t.time AS time,\n    srv.name AS metric,\n    CASE WHEN t.interval_seconds > 0 THEN t.raw_value / t.interval_seconds ELSE 0 END AS value\nFROM (\n    SELECT\n        server_id,\n        collection_time AS time,\n        SUM(delta_elapsed_time) / 1000.0 AS raw_value,\n        extract(epoch FROM (\n            date_trunc('second', collection_time)\n            - date_trunc('second', LAG(collection_time) OVER (PARTITION BY server_id ORDER BY collection_time))\n        )) AS interval_seconds\n    FROM collect.v_query_stats\n    WHERE $__timeFilter(collection_time)\n      AND server_id IN (${server:csv})\n    GROUP BY server_id, collection_time\n) AS t\nJOIN config.config_monitored_servers AS srv ON srv.server_id = t.server_id\n) AS raw_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'raw'\nORDER BY 1"
         }
       ]
     },
     {
       "id": 3,
-      "type": "table",
-      "title": "Top Queries by CPU",
+      "type": "timeseries",
+      "title": "Procedure Duration (elapsed ms/s)",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "darling"
       },
       "gridPos": {
-        "h": 12,
+        "h": 8,
+        "w": 6,
+        "x": 6,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT * FROM (\nSELECT\n    b.bucket AS time,\n    srv.name AS metric,\n    SUM(b.elapsed_time_sum) / 1000.0 / 86400.0 AS value\nFROM collect.procedure_stats_daily AS b\nJOIN config.config_monitored_servers AS srv ON srv.server_id = b.server_id\nWHERE $__timeFilter(b.bucket)\n  AND b.server_id IN (${server:csv})\nGROUP BY b.bucket, srv.name\n) AS daily_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.procedure_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.procedure_stats) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.procedure_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.procedure_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.procedure_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.procedure_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.procedure_stats) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.procedure_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.procedure_stats) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'daily'\nUNION ALL\nSELECT * FROM (\nSELECT\n    b.bucket AS time,\n    srv.name AS metric,\n    SUM(b.elapsed_time_sum) / 1000.0 / 3600.0 AS value\nFROM collect.procedure_stats_hourly AS b\nJOIN config.config_monitored_servers AS srv ON srv.server_id = b.server_id\nWHERE $__timeFilter(b.bucket)\n  AND b.server_id IN (${server:csv})\nGROUP BY b.bucket, srv.name\n) AS hourly_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.procedure_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.procedure_stats) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.procedure_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.procedure_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.procedure_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.procedure_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.procedure_stats) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.procedure_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.procedure_stats) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'hourly'\nUNION ALL\nSELECT * FROM (\nSELECT\n    t.time AS time,\n    srv.name AS metric,\n    CASE WHEN t.interval_seconds > 0 THEN t.raw_value / t.interval_seconds ELSE 0 END AS value\nFROM (\n    SELECT\n        server_id,\n        collection_time AS time,\n        SUM(delta_elapsed_time) / 1000.0 AS raw_value,\n        extract(epoch FROM (\n            date_trunc('second', collection_time)\n            - date_trunc('second', LAG(collection_time) OVER (PARTITION BY server_id ORDER BY collection_time))\n        )) AS interval_seconds\n    FROM collect.procedure_stats\n    WHERE $__timeFilter(collection_time)\n      AND server_id IN (${server:csv})\n    GROUP BY server_id, collection_time\n) AS t\nJOIN config.config_monitored_servers AS srv ON srv.server_id = t.server_id\n) AS raw_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.procedure_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.procedure_stats) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.procedure_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.procedure_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.procedure_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.procedure_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.procedure_stats) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.procedure_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.procedure_stats) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'raw'\nORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Query Store Duration (elapsed ms/s)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT * FROM (\nSELECT\n    b.bucket AS time,\n    srv.name AS metric,\n    SUM(b.duration_us_weighted_sum) / 1000.0 / 86400.0 AS value\nFROM collect.query_store_stats_daily AS b\nJOIN config.config_monitored_servers AS srv ON srv.server_id = b.server_id\nWHERE $__timeFilter(b.bucket)\n  AND b.server_id IN (${server:csv})\nGROUP BY b.bucket, srv.name\n) AS daily_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_store_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_store_stats) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_store_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_store_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_store_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_store_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_store_stats) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_store_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_store_stats) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'daily'\nUNION ALL\nSELECT * FROM (\nSELECT\n    b.bucket AS time,\n    srv.name AS metric,\n    SUM(b.duration_us_weighted_sum) / 1000.0 / 3600.0 AS value\nFROM collect.query_store_stats_hourly AS b\nJOIN config.config_monitored_servers AS srv ON srv.server_id = b.server_id\nWHERE $__timeFilter(b.bucket)\n  AND b.server_id IN (${server:csv})\nGROUP BY b.bucket, srv.name\n) AS hourly_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_store_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_store_stats) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_store_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_store_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_store_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_store_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_store_stats) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_store_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_store_stats) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'hourly'\nUNION ALL\nSELECT * FROM (\nSELECT\n    t.time AS time,\n    srv.name AS metric,\n    CASE WHEN t.interval_seconds > 0 THEN t.raw_value / t.interval_seconds ELSE 0 END AS value\nFROM (\n    SELECT\n        server_id,\n        collection_time AS time,\n        SUM(execution_count * avg_duration_us) / 1000.0 AS raw_value,\n        extract(epoch FROM (\n            date_trunc('second', collection_time)\n            - date_trunc('second', LAG(collection_time) OVER (PARTITION BY server_id ORDER BY collection_time))\n        )) AS interval_seconds\n    FROM collect.v_query_store_stats\n    WHERE $__timeFilter(collection_time)\n      AND server_id IN (${server:csv})\n    GROUP BY server_id, collection_time\n) AS t\nJOIN config.config_monitored_servers AS srv ON srv.server_id = t.server_id\n) AS raw_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_store_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_store_stats) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_store_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_store_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_store_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_store_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_store_stats) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_store_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_store_stats) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'raw'\nORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Execution Count (executions/s)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT * FROM (\nSELECT\n    b.bucket AS time,\n    srv.name AS metric,\n    SUM(b.execution_count_sum) / 86400.0 AS value\nFROM collect.query_stats_daily AS b\nJOIN config.config_monitored_servers AS srv ON srv.server_id = b.server_id\nWHERE $__timeFilter(b.bucket)\n  AND b.server_id IN (${server:csv})\nGROUP BY b.bucket, srv.name\n) AS daily_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'daily'\nUNION ALL\nSELECT * FROM (\nSELECT\n    b.bucket AS time,\n    srv.name AS metric,\n    SUM(b.execution_count_sum) / 3600.0 AS value\nFROM collect.query_stats_hourly AS b\nJOIN config.config_monitored_servers AS srv ON srv.server_id = b.server_id\nWHERE $__timeFilter(b.bucket)\n  AND b.server_id IN (${server:csv})\nGROUP BY b.bucket, srv.name\n) AS hourly_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'hourly'\nUNION ALL\nSELECT * FROM (\nSELECT\n    t.time AS time,\n    srv.name AS metric,\n    CASE WHEN t.interval_seconds > 0 THEN t.raw_value / t.interval_seconds ELSE 0 END AS value\nFROM (\n    SELECT\n        server_id,\n        collection_time AS time,\n        SUM(delta_execution_count) AS raw_value,\n        extract(epoch FROM (\n            date_trunc('second', collection_time)\n            - date_trunc('second', LAG(collection_time) OVER (PARTITION BY server_id ORDER BY collection_time))\n        )) AS interval_seconds\n    FROM collect.v_query_stats\n    WHERE $__timeFilter(collection_time)\n      AND server_id IN (${server:csv})\n    GROUP BY server_id, collection_time\n) AS t\nJOIN config.config_monitored_servers AS srv ON srv.server_id = t.server_id\n) AS raw_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'raw'\nORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "row",
+      "title": "Active Queries",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "panels": []
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Active Sessions (hourly)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 6,
         "w": 24,
         "x": 0,
         "y": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    date_trunc('hour', qs.collection_time) AS time,\n    srv.name AS metric,\n    COUNT(*) AS value\nFROM collect.v_query_snapshots AS qs\nJOIN config.config_monitored_servers AS srv ON srv.server_id = qs.server_id\nWHERE $__timeFilter(qs.collection_time)\n  AND qs.server_id IN (${server:csv})\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR qs.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nGROUP BY date_trunc('hour', qs.collection_time), srv.name\n\nORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Active queries (stored sp_WhoIsActive-style snapshots)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 16
       },
       "fieldConfig": {
         "defaults": {
@@ -199,7 +585,7 @@
         },
         "sortBy": [
           {
-            "displayName": "CPU (ms)",
+            "displayName": "Collected",
             "desc": true
           }
         ]
@@ -214,9 +600,1240 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT * FROM (\nSELECT\n    qs.server_name AS \"Server\",\n    qs.database_name AS \"Database\",\n    qs.query_hash AS \"Query Hash\",\n    SUM(qs.worker_time_sum) / 1000.0 AS \"CPU (ms)\",\n    SUM(qs.elapsed_time_sum) / 1000.0 AS \"Duration (ms)\",\n    SUM(qs.execution_count_sum) AS \"Executions\"\nFROM collect.query_stats_daily AS qs\nWHERE $__timeFilter(qs.bucket)\n  AND qs.server_id IN (${server:csv})\nGROUP BY qs.server_name, qs.database_name, qs.query_hash\n) AS daily_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'daily'\nUNION ALL\nSELECT * FROM (\nSELECT\n    qs.server_name AS \"Server\",\n    qs.database_name AS \"Database\",\n    qs.query_hash AS \"Query Hash\",\n    SUM(qs.worker_time_sum) / 1000.0 AS \"CPU (ms)\",\n    SUM(qs.elapsed_time_sum) / 1000.0 AS \"Duration (ms)\",\n    SUM(qs.execution_count_sum) AS \"Executions\"\nFROM collect.query_stats_hourly AS qs\nWHERE $__timeFilter(qs.bucket)\n  AND qs.server_id IN (${server:csv})\nGROUP BY qs.server_name, qs.database_name, qs.query_hash\n) AS hourly_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'hourly'\nUNION ALL\nSELECT * FROM (\nSELECT\n    qs.server_name AS \"Server\",\n    qs.database_name AS \"Database\",\n    qs.query_hash AS \"Query Hash\",\n    SUM(qs.delta_worker_time) / 1000.0 AS \"CPU (ms)\",\n    SUM(qs.delta_elapsed_time) / 1000.0 AS \"Duration (ms)\",\n    SUM(qs.delta_execution_count) AS \"Executions\"\nFROM collect.v_query_stats AS qs\nWHERE $__timeFilter(qs.collection_time)\n  AND qs.server_id IN (${server:csv})\nGROUP BY qs.server_name, qs.database_name, qs.query_hash\n) AS raw_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'raw'\nORDER BY \"CPU (ms)\" DESC\nLIMIT 50"
+          "rawSql": "\nSELECT\n    srv.name AS \"Server\",\n    qs.session_id AS \"SPID\",\n    qs.collection_time AS \"Collected\",\n    qs.database_name AS \"Database\",\n    qs.login_name AS \"Login\",\n    qs.host_name AS \"Host\",\n    qs.program_name AS \"Program\",\n    qs.status AS \"Status\",\n    qs.elapsed_time_formatted AS \"Elapsed\",\n    qs.cpu_time_ms AS \"CPU (ms)\",\n    qs.logical_reads AS \"Logical Reads\",\n    qs.reads AS \"Reads\",\n    qs.writes AS \"Writes\",\n    qs.wait_type AS \"Wait Type\",\n    qs.wait_time_ms AS \"Wait (ms)\",\n    qs.wait_resource AS \"Wait Resource\",\n    qs.blocking_session_id AS \"Blocking\",\n    qs.dop AS \"DOP\",\n    qs.parallel_worker_count AS \"Workers\",\n    qs.granted_query_memory_gb AS \"Memory (GB)\",\n    qs.transaction_isolation_level AS \"Isolation\",\n    qs.open_transaction_count AS \"Open Tran\",\n    qs.percent_complete AS \"% Done\",\n    qs.tran_start_time AS \"Tran Start\",\n    qs.query_hash AS \"Query Hash\",\n    (qs.query_plan IS NOT NULL) AS \"Has Query Plan\",\n    (qs.live_query_plan IS NOT NULL) AS \"Has Live Query Plan\",\n    qs.query_text AS \"Query Text\"\nFROM collect.v_query_snapshots AS qs\nJOIN config.config_monitored_servers AS srv ON srv.server_id = qs.server_id\nWHERE qs.server_id IN (${server:csv})\n  AND $__timeFilter(qs.collection_time)\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR qs.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n  AND qs.query_text NOT LIKE 'WAITFOR%'\nORDER BY qs.collection_time DESC, qs.cpu_time_ms DESC\n"
+        }
+      ],
+      "description": "Historical snapshots from collect.query_snapshots, bound by the dashboard time range. Current Active Queries (live DMV query against the monitored server) is not portable here - see the module docstring."
+    },
+    {
+      "id": 9,
+      "type": "row",
+      "title": "Top Queries by Duration",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 30
+      },
+      "panels": []
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Total CPU trend (hourly, fixed metric)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 16,
+        "x": 0,
+        "y": 31
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT * FROM (\nSELECT\n    date_trunc('hour', b.bucket) AS time,\n    srv.name AS metric,\n    SUM(b.worker_time_sum) / 1000.0 AS value\nFROM collect.query_stats_daily AS b\nJOIN config.config_monitored_servers AS srv ON srv.server_id = b.server_id\nWHERE $__timeFilter(b.bucket)\n  AND b.server_id IN (${server:csv})\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR b.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nGROUP BY date_trunc('hour', b.bucket), srv.name\n) AS daily_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'daily'\nUNION ALL\nSELECT * FROM (\nSELECT\n    date_trunc('hour', b.bucket) AS time,\n    srv.name AS metric,\n    SUM(b.worker_time_sum) / 1000.0 AS value\nFROM collect.query_stats_hourly AS b\nJOIN config.config_monitored_servers AS srv ON srv.server_id = b.server_id\nWHERE $__timeFilter(b.bucket)\n  AND b.server_id IN (${server:csv})\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR b.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nGROUP BY date_trunc('hour', b.bucket), srv.name\n) AS hourly_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'hourly'\nUNION ALL\nSELECT * FROM (\nSELECT\n    date_trunc('hour', t.collection_time) AS time,\n    srv.name AS metric,\n    SUM(t.delta_worker_time) / 1000.0 AS value\nFROM collect.v_query_stats AS t\nJOIN config.config_monitored_servers AS srv ON srv.server_id = t.server_id\nWHERE $__timeFilter(t.collection_time)\n  AND t.server_id IN (${server:csv})\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR t.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nGROUP BY date_trunc('hour', t.collection_time), srv.name\n) AS raw_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'raw'\nORDER BY 1"
         }
       ]
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "CPU by database",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 16,
+        "y": 31
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU (ms)"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT * FROM (\nSELECT database_name AS \"Database\", SUM(worker_time_sum) / 1000.0 AS \"CPU (ms)\"\nFROM collect.query_stats_daily\nWHERE $__timeFilter(bucket)\n  AND server_id IN (${server:csv})\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nGROUP BY database_name\n) AS daily_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'daily'\nUNION ALL\nSELECT * FROM (\nSELECT database_name AS \"Database\", SUM(worker_time_sum) / 1000.0 AS \"CPU (ms)\"\nFROM collect.query_stats_hourly\nWHERE $__timeFilter(bucket)\n  AND server_id IN (${server:csv})\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nGROUP BY database_name\n) AS hourly_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'hourly'\nUNION ALL\nSELECT * FROM (\nSELECT database_name AS \"Database\", SUM(delta_worker_time) / 1000.0 AS \"CPU (ms)\"\nFROM collect.v_query_stats\nWHERE $__timeFilter(collection_time)\n  AND server_id IN (${server:csv})\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nGROUP BY database_name\n) AS raw_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'raw'\nORDER BY \"CPU (ms)\" DESC\nLIMIT 15"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Top queries by duration",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 16,
+        "w": 24,
+        "x": 0,
+        "y": 37
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Executions"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total CPU (ms)"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total Duration (ms)"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total Reads"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Total Duration (ms)",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH ranked AS (\n    SELECT\n        qs.server_id,\n        qs.database_name,\n        qs.query_hash,\n        MAX(qs.last_execution_time) AS last_execution_time,\n        MAX(qs.creation_time) AS creation_time,\n        SUM(qs.delta_execution_count)::bigint AS total_executions,\n        SUM(qs.delta_worker_time)::bigint AS total_cpu_us,\n        SUM(qs.delta_elapsed_time)::bigint AS total_elapsed_us,\n        SUM(qs.delta_logical_reads)::bigint AS total_reads,\n        SUM(qs.delta_rows)::bigint AS total_rows,\n        SUM(qs.delta_logical_writes)::bigint AS total_writes,\n        SUM(qs.delta_physical_reads)::bigint AS total_physical_reads,\n        SUM(qs.delta_spills)::bigint AS total_spills,\n        MIN(qs.min_dop) AS min_dop,\n        MAX(qs.max_dop) AS max_dop,\n        MIN(qs.min_worker_time) AS min_worker_time,\n        MAX(qs.max_worker_time) AS max_worker_time,\n        MIN(qs.min_elapsed_time) AS min_elapsed_time,\n        MAX(qs.max_elapsed_time) AS max_elapsed_time,\n        MIN(qs.min_physical_reads) AS min_physical_reads,\n        MAX(qs.max_physical_reads) AS max_physical_reads,\n        MIN(qs.min_rows) AS min_rows,\n        MAX(qs.max_rows) AS max_rows,\n        MIN(qs.min_grant_kb) AS min_grant_kb,\n        MAX(qs.max_grant_kb) AS max_grant_kb,\n        MIN(qs.min_used_grant_kb) AS min_used_grant_kb,\n        MAX(qs.max_used_grant_kb) AS max_used_grant_kb,\n        MIN(qs.min_ideal_grant_kb) AS min_ideal_grant_kb,\n        MAX(qs.max_ideal_grant_kb) AS max_ideal_grant_kb,\n        MIN(qs.min_reserved_threads) AS min_reserved_threads,\n        MAX(qs.max_reserved_threads) AS max_reserved_threads,\n        MIN(qs.min_used_threads) AS min_used_threads,\n        MAX(qs.max_used_threads) AS max_used_threads,\n        MIN(qs.min_spills) AS min_spills,\n        MAX(qs.max_spills) AS max_spills,\n        MAX(qs.query_plan_hash) AS query_plan_hash,\n        MAX(qs.sql_handle) AS sql_handle,\n        MAX(qs.plan_handle) AS plan_handle,\n        MAX(qs.total_clr_time) AS total_clr_time,\n        MAX(qs.plan_generation_num) AS plan_generation_num,\n        MAX(qs.delta_worker_time::double precision / NULLIF(qs.sample_interval_seconds, 0) / 1000.0) AS worker_time_per_second,\n        bool_or(qs.query_plan_xml IS NOT NULL OR qs.query_plan_digest IS NOT NULL) AS has_query_plan\n    FROM collect.v_query_stats AS qs\n    WHERE qs.server_id IN (${server:csv})\n      AND $__timeFilter(qs.collection_time)\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR qs.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n    GROUP BY qs.server_id, qs.database_name, qs.query_hash\n    HAVING SUM(qs.delta_execution_count) > 0 OR SUM(qs.delta_elapsed_time) > 0\n    ORDER BY SUM(qs.delta_elapsed_time) DESC\n    LIMIT ${topn} + 5\n),\nmodule AS (\n    SELECT server_id, sql_handle, object_name, schema_name, database_name\n    FROM (\n        SELECT\n            server_id, sql_handle, object_name, schema_name, database_name,\n            ROW_NUMBER() OVER (PARTITION BY server_id, sql_handle ORDER BY collection_time DESC) AS rn\n        FROM collect.procedure_stats\n        WHERE server_id IN (${server:csv})\n          AND sql_handle IS NOT NULL AND sql_handle <> ''\n    ) AS ranked_modules\n    WHERE rn = 1\n)\nSELECT\n    srv.name AS \"Server\",\n    r.database_name AS \"Database\",\n    COALESCE(m.database_name || '.' || m.schema_name || '.' || m.object_name, 'ad hoc') AS \"Module\",\n    r.last_execution_time AS \"Last Execution\",\n    r.creation_time AS \"Creation Time\",\n    r.total_executions AS \"Executions\",\n    r.total_cpu_us / 1000.0 AS \"Total CPU (ms)\",\n    (r.total_cpu_us / 1000.0) / NULLIF(r.total_executions, 0) AS \"Avg CPU (ms)\",\n    r.worker_time_per_second AS \"Peak CPU (ms/s)\",\n    r.plan_generation_num AS \"Plan Gen\",\n    r.total_clr_time / 1000.0 AS \"Total CLR (ms)\",\n    r.total_elapsed_us / 1000.0 AS \"Total Duration (ms)\",\n    (r.total_elapsed_us / 1000.0) / NULLIF(r.total_executions, 0) AS \"Avg Duration (ms)\",\n    r.total_reads AS \"Total Reads\",\n    r.total_reads::double precision / NULLIF(r.total_executions, 0) AS \"Avg Reads\",\n    r.total_writes AS \"Total Writes\",\n    r.total_physical_reads AS \"Physical Reads\",\n    r.total_rows AS \"Total Rows\",\n    r.total_spills AS \"Total Spills\",\n    r.min_worker_time / 1000.0 AS \"Min CPU (ms)\",\n    r.max_worker_time / 1000.0 AS \"Max CPU (ms)\",\n    r.min_elapsed_time / 1000.0 AS \"Min Duration (ms)\",\n    r.max_elapsed_time / 1000.0 AS \"Max Duration (ms)\",\n    r.min_physical_reads AS \"Min Phys Reads\",\n    r.max_physical_reads AS \"Max Phys Reads\",\n    r.min_rows AS \"Min Rows\",\n    r.max_rows AS \"Max Rows\",\n    r.min_grant_kb AS \"Min Grant (KB)\",\n    r.max_grant_kb AS \"Max Grant (KB)\",\n    r.min_used_grant_kb AS \"Min Used Grant (KB)\",\n    r.max_used_grant_kb AS \"Max Used Grant (KB)\",\n    r.min_ideal_grant_kb AS \"Min Ideal Grant (KB)\",\n    r.max_ideal_grant_kb AS \"Max Ideal Grant (KB)\",\n    r.min_spills AS \"Min Spills\",\n    r.max_spills AS \"Max Spills\",\n    r.min_dop AS \"Min DOP\",\n    r.max_dop AS \"Max DOP\",\n    r.min_reserved_threads AS \"Min Reserved Threads\",\n    r.max_reserved_threads AS \"Max Reserved Threads\",\n    r.min_used_threads AS \"Min Used Threads\",\n    r.max_used_threads AS \"Max Used Threads\",\n    r.query_hash AS \"Query Hash\",\n    r.query_plan_hash AS \"Plan Hash\",\n    r.sql_handle AS \"SQL Handle\",\n    r.plan_handle AS \"Plan Handle\",\n    r.has_query_plan AS \"Has Query Plan\",\n    t.query_text AS \"Query Text\"\nFROM ranked AS r\nJOIN config.config_monitored_servers AS srv ON srv.server_id = r.server_id\nLEFT JOIN LATERAL (\n    SELECT query_text\n    FROM collect.v_query_stats\n    WHERE server_id = r.server_id\n      AND query_hash = r.query_hash\n      AND database_name = r.database_name\n      AND query_text IS NOT NULL\n    ORDER BY collection_time DESC\n    LIMIT 1\n) AS t ON TRUE\nLEFT JOIN module AS m ON m.server_id = r.server_id AND m.sql_handle = r.sql_handle\nWHERE t.query_text IS NULL OR t.query_text NOT LIKE 'WAITFOR%'\nORDER BY r.total_elapsed_us DESC\nLIMIT ${topn}\n"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "Comparison vs baseline ($comparison_baseline)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 53
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "NEW": {
+                        "color": "blue",
+                        "index": 0
+                      },
+                      "GONE": {
+                        "color": "orange",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH \n_window AS (\n    SELECT\n        $__timeFrom()::timestamp AS cur_start,\n        $__timeTo()::timestamp AS cur_end,\n        $__timeFrom()::timestamp - (CASE ${comparison_baseline:sqlstring}\n            WHEN 'Last Week' THEN INTERVAL '7 days' ELSE INTERVAL '1 day' END) AS base_start,\n        $__timeTo()::timestamp - (CASE ${comparison_baseline:sqlstring}\n            WHEN 'Last Week' THEN INTERVAL '7 days' ELSE INTERVAL '1 day' END) AS base_end\n)\n,\ntop_current AS (\n    SELECT server_id, query_hash, database_name\n    FROM collect.v_query_stats, _window\n    WHERE server_id IN (${server:csv})\n      AND collection_time >= _window.cur_start AND collection_time <= _window.cur_end\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n      AND delta_execution_count > 0\n    GROUP BY server_id, query_hash, database_name\n    ORDER BY SUM(delta_execution_count) DESC\n    LIMIT 100\n),\ntop_baseline AS (\n    SELECT server_id, query_hash, database_name\n    FROM collect.v_query_stats, _window\n    WHERE server_id IN (${server:csv})\n      AND collection_time >= _window.base_start AND collection_time <= _window.base_end\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n      AND delta_execution_count > 0\n    GROUP BY server_id, query_hash, database_name\n    ORDER BY SUM(delta_execution_count) DESC\n    LIMIT 100\n),\ntop_hashes AS (\n    SELECT DISTINCT server_id, query_hash, database_name\n    FROM (SELECT * FROM top_current UNION ALL SELECT * FROM top_baseline) AS combined\n),\ncurrent_period AS (\n    SELECT th.server_id, th.database_name, th.query_hash,\n        SUM(qs.delta_execution_count) AS exec_count,\n        SUM(qs.delta_elapsed_time)::double precision / NULLIF(SUM(qs.delta_execution_count), 0) / 1000.0 AS avg_duration_ms,\n        SUM(qs.delta_worker_time)::double precision / NULLIF(SUM(qs.delta_execution_count), 0) / 1000.0 AS avg_cpu_ms,\n        SUM(qs.delta_physical_reads)::double precision / NULLIF(SUM(qs.delta_execution_count), 0) AS avg_reads,\n        MAX(qs.query_text) AS query_text\n    FROM top_hashes th\n    JOIN collect.v_query_stats qs\n      ON qs.query_hash IS NOT DISTINCT FROM th.query_hash\n     AND qs.database_name IS NOT DISTINCT FROM th.database_name\n     AND qs.server_id = th.server_id\n    CROSS JOIN _window\n    WHERE qs.collection_time >= _window.cur_start AND qs.collection_time <= _window.cur_end\n      AND qs.delta_execution_count > 0\n    GROUP BY th.server_id, th.database_name, th.query_hash\n),\nbaseline_period AS (\n    SELECT th.server_id, th.database_name, th.query_hash,\n        SUM(qs.delta_execution_count) AS exec_count,\n        SUM(qs.delta_elapsed_time)::double precision / NULLIF(SUM(qs.delta_execution_count), 0) / 1000.0 AS avg_duration_ms,\n        SUM(qs.delta_worker_time)::double precision / NULLIF(SUM(qs.delta_execution_count), 0) / 1000.0 AS avg_cpu_ms,\n        SUM(qs.delta_physical_reads)::double precision / NULLIF(SUM(qs.delta_execution_count), 0) AS avg_reads,\n        MAX(qs.query_text) AS query_text\n    FROM top_hashes th\n    JOIN collect.v_query_stats qs\n      ON qs.query_hash IS NOT DISTINCT FROM th.query_hash\n     AND qs.database_name IS NOT DISTINCT FROM th.database_name\n     AND qs.server_id = th.server_id\n    CROSS JOIN _window\n    WHERE qs.collection_time >= _window.base_start AND qs.collection_time <= _window.base_end\n      AND qs.delta_execution_count > 0\n    GROUP BY th.server_id, th.database_name, th.query_hash\n)\nSELECT\n    srv.name AS \"Server\",\n    COALESCE(c.database_name, b.database_name) AS \"Database\",\n    CASE WHEN c.query_hash IS NULL THEN 'GONE' WHEN b.query_hash IS NULL THEN 'NEW' ELSE '' END AS \"Status\",\n    COALESCE(c.query_hash, b.query_hash) AS \"Query Hash\",\n    c.exec_count AS \"Executions\",\n    b.exec_count AS \"Base Executions\",\n    (c.exec_count - b.exec_count) * 100.0 / NULLIF(b.exec_count, 0) AS \"Executions Delta %\",\n    c.avg_duration_ms AS \"Avg Duration (ms)\",\n    b.avg_duration_ms AS \"Base Avg Duration (ms)\",\n    (c.avg_duration_ms - b.avg_duration_ms) * 100.0 / NULLIF(b.avg_duration_ms, 0) AS \"Duration Delta %\",\n    c.avg_cpu_ms AS \"Avg CPU (ms)\",\n    b.avg_cpu_ms AS \"Base Avg CPU (ms)\",\n    (c.avg_cpu_ms - b.avg_cpu_ms) * 100.0 / NULLIF(b.avg_cpu_ms, 0) AS \"CPU Delta %\",\n    c.avg_reads AS \"Avg Reads\",\n    b.avg_reads AS \"Base Avg Reads\",\n    COALESCE(c.query_text, b.query_text) AS \"Query Text\"\nFROM current_period c\nFULL OUTER JOIN baseline_period b\n  ON COALESCE(c.server_id, -1) = COALESCE(b.server_id, -1)\n AND COALESCE(c.database_name, '') = COALESCE(b.database_name, '')\n AND COALESCE(c.query_hash, '') = COALESCE(b.query_hash, '')\nJOIN config.config_monitored_servers AS srv ON srv.server_id = COALESCE(c.server_id, b.server_id)\nORDER BY \"Duration Delta %\" DESC NULLS LAST\n"
+        }
+      ],
+      "description": "Top 100 (by executions) queries in the current window unioned with the top 100 in the baseline window, full-outer-joined so NEW/GONE queries surface."
+    },
+    {
+      "id": 14,
+      "type": "row",
+      "title": "Top Procedures by Duration",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 63
+      },
+      "panels": []
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Total CPU trend (hourly, fixed metric)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 64
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT * FROM (\nSELECT\n    date_trunc('hour', b.bucket) AS time,\n    srv.name AS metric,\n    SUM(b.worker_time_sum) / 1000.0 AS value\nFROM collect.procedure_stats_daily AS b\nJOIN config.config_monitored_servers AS srv ON srv.server_id = b.server_id\nWHERE $__timeFilter(b.bucket)\n  AND b.server_id IN (${server:csv})\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR b.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nGROUP BY date_trunc('hour', b.bucket), srv.name\n) AS daily_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.procedure_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.procedure_stats) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.procedure_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.procedure_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.procedure_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.procedure_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.procedure_stats) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.procedure_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.procedure_stats) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'daily'\nUNION ALL\nSELECT * FROM (\nSELECT\n    date_trunc('hour', b.bucket) AS time,\n    srv.name AS metric,\n    SUM(b.worker_time_sum) / 1000.0 AS value\nFROM collect.procedure_stats_hourly AS b\nJOIN config.config_monitored_servers AS srv ON srv.server_id = b.server_id\nWHERE $__timeFilter(b.bucket)\n  AND b.server_id IN (${server:csv})\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR b.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nGROUP BY date_trunc('hour', b.bucket), srv.name\n) AS hourly_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.procedure_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.procedure_stats) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.procedure_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.procedure_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.procedure_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.procedure_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.procedure_stats) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.procedure_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.procedure_stats) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'hourly'\nUNION ALL\nSELECT * FROM (\nSELECT\n    date_trunc('hour', t.collection_time) AS time,\n    srv.name AS metric,\n    SUM(t.delta_worker_time) / 1000.0 AS value\nFROM collect.procedure_stats AS t\nJOIN config.config_monitored_servers AS srv ON srv.server_id = t.server_id\nWHERE $__timeFilter(t.collection_time)\n  AND t.server_id IN (${server:csv})\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR t.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nGROUP BY date_trunc('hour', t.collection_time), srv.name\n) AS raw_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.procedure_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.procedure_stats) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.procedure_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.procedure_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.procedure_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.procedure_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.procedure_stats) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.procedure_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.procedure_stats) < COALESCE((SELECT min(bucket) FROM collect.procedure_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'raw'\nORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "table",
+      "title": "Top procedures by duration",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 70
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Total Duration (ms)",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    srv.name AS \"Server\",\n    ps.database_name AS \"Database\",\n    ps.schema_name AS \"Schema\",\n    ps.object_name AS \"Procedure\",\n    ps.object_type AS \"Type\",\n    MAX(ps.cached_time) AS \"Cached Time\",\n    MAX(ps.last_execution_time) AS \"Last Execution\",\n    SUM(ps.delta_execution_count)::bigint AS \"Executions\",\n    SUM(ps.delta_worker_time)::bigint / 1000.0 AS \"Total CPU (ms)\",\n    (SUM(ps.delta_worker_time)::double precision / 1000.0) / NULLIF(SUM(ps.delta_execution_count), 0) AS \"Avg CPU (ms)\",\n    SUM(ps.delta_elapsed_time)::bigint / 1000.0 AS \"Total Duration (ms)\",\n    (SUM(ps.delta_elapsed_time)::double precision / 1000.0) / NULLIF(SUM(ps.delta_execution_count), 0) AS \"Avg Duration (ms)\",\n    SUM(ps.delta_logical_reads)::bigint AS \"Total Reads\",\n    SUM(ps.delta_logical_reads)::double precision / NULLIF(SUM(ps.delta_execution_count), 0) AS \"Avg Reads\",\n    SUM(ps.delta_logical_writes)::bigint AS \"Total Writes\",\n    SUM(ps.delta_physical_reads)::bigint AS \"Physical Reads\",\n    SUM(ps.delta_spills)::bigint AS \"Total Spills\",\n    SUM(ps.delta_spills)::double precision / NULLIF(SUM(ps.delta_execution_count), 0) AS \"Avg Spills\",\n    MIN(ps.min_worker_time) / 1000.0 AS \"Min CPU (ms)\",\n    MAX(ps.max_worker_time) / 1000.0 AS \"Max CPU (ms)\",\n    MIN(ps.min_elapsed_time) / 1000.0 AS \"Min Duration (ms)\",\n    MAX(ps.max_elapsed_time) / 1000.0 AS \"Max Duration (ms)\",\n    MIN(ps.min_logical_reads) AS \"Min Reads\",\n    MAX(ps.max_logical_reads) AS \"Max Reads\",\n    MIN(ps.min_physical_reads) AS \"Min Phys Reads\",\n    MAX(ps.max_physical_reads) AS \"Max Phys Reads\",\n    MIN(ps.min_logical_writes) AS \"Min Writes\",\n    MAX(ps.max_logical_writes) AS \"Max Writes\",\n    MIN(ps.min_spills) AS \"Min Spills\",\n    MAX(ps.max_spills) AS \"Max Spills\",\n    MAX(ps.sql_handle) AS \"SQL Handle\",\n    MAX(ps.plan_handle) AS \"Plan Handle\",\n    bool_or(ps.query_plan_xml IS NOT NULL OR ps.query_plan_digest IS NOT NULL) AS \"Has Query Plan\"\nFROM collect.procedure_stats AS ps\nJOIN config.config_monitored_servers AS srv ON srv.server_id = ps.server_id\nWHERE ps.server_id IN (${server:csv})\n  AND $__timeFilter(ps.collection_time)\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR ps.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nGROUP BY srv.name, ps.database_name, ps.schema_name, ps.object_name, ps.object_type\nHAVING SUM(ps.delta_execution_count) > 0 OR SUM(ps.delta_elapsed_time) > 0\nORDER BY SUM(ps.delta_elapsed_time) DESC\nLIMIT ${topn}\n"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "table",
+      "title": "Comparison vs baseline ($comparison_baseline)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 84
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "NEW": {
+                        "color": "blue",
+                        "index": 0
+                      },
+                      "GONE": {
+                        "color": "orange",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH \n_window AS (\n    SELECT\n        $__timeFrom()::timestamp AS cur_start,\n        $__timeTo()::timestamp AS cur_end,\n        $__timeFrom()::timestamp - (CASE ${comparison_baseline:sqlstring}\n            WHEN 'Last Week' THEN INTERVAL '7 days' ELSE INTERVAL '1 day' END) AS base_start,\n        $__timeTo()::timestamp - (CASE ${comparison_baseline:sqlstring}\n            WHEN 'Last Week' THEN INTERVAL '7 days' ELSE INTERVAL '1 day' END) AS base_end\n)\n,\ntop_current AS (\n    SELECT server_id, database_name, schema_name, object_name\n    FROM collect.procedure_stats, _window\n    WHERE server_id IN (${server:csv})\n      AND collection_time >= _window.cur_start AND collection_time <= _window.cur_end\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n      AND delta_execution_count > 0\n    GROUP BY server_id, database_name, schema_name, object_name\n    ORDER BY SUM(delta_execution_count) DESC\n    LIMIT 100\n),\ntop_baseline AS (\n    SELECT server_id, database_name, schema_name, object_name\n    FROM collect.procedure_stats, _window\n    WHERE server_id IN (${server:csv})\n      AND collection_time >= _window.base_start AND collection_time <= _window.base_end\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n      AND delta_execution_count > 0\n    GROUP BY server_id, database_name, schema_name, object_name\n    ORDER BY SUM(delta_execution_count) DESC\n    LIMIT 100\n),\ntop_procs AS (\n    SELECT DISTINCT server_id, database_name, schema_name, object_name\n    FROM (SELECT * FROM top_current UNION ALL SELECT * FROM top_baseline) AS combined\n),\ncurrent_period AS (\n    SELECT tp.server_id, tp.database_name, tp.schema_name, tp.object_name,\n        SUM(ps.delta_execution_count) AS exec_count,\n        SUM(ps.delta_elapsed_time)::double precision / NULLIF(SUM(ps.delta_execution_count), 0) / 1000.0 AS avg_duration_ms,\n        SUM(ps.delta_worker_time)::double precision / NULLIF(SUM(ps.delta_execution_count), 0) / 1000.0 AS avg_cpu_ms,\n        SUM(ps.delta_physical_reads)::double precision / NULLIF(SUM(ps.delta_execution_count), 0) AS avg_reads\n    FROM top_procs tp\n    JOIN collect.procedure_stats ps\n      ON ps.database_name IS NOT DISTINCT FROM tp.database_name\n     AND ps.schema_name IS NOT DISTINCT FROM tp.schema_name\n     AND ps.object_name IS NOT DISTINCT FROM tp.object_name\n     AND ps.server_id = tp.server_id\n    CROSS JOIN _window\n    WHERE ps.collection_time >= _window.cur_start AND ps.collection_time <= _window.cur_end\n      AND ps.delta_execution_count > 0\n    GROUP BY tp.server_id, tp.database_name, tp.schema_name, tp.object_name\n),\nbaseline_period AS (\n    SELECT tp.server_id, tp.database_name, tp.schema_name, tp.object_name,\n        SUM(ps.delta_execution_count) AS exec_count,\n        SUM(ps.delta_elapsed_time)::double precision / NULLIF(SUM(ps.delta_execution_count), 0) / 1000.0 AS avg_duration_ms,\n        SUM(ps.delta_worker_time)::double precision / NULLIF(SUM(ps.delta_execution_count), 0) / 1000.0 AS avg_cpu_ms,\n        SUM(ps.delta_physical_reads)::double precision / NULLIF(SUM(ps.delta_execution_count), 0) AS avg_reads\n    FROM top_procs tp\n    JOIN collect.procedure_stats ps\n      ON ps.database_name IS NOT DISTINCT FROM tp.database_name\n     AND ps.schema_name IS NOT DISTINCT FROM tp.schema_name\n     AND ps.object_name IS NOT DISTINCT FROM tp.object_name\n     AND ps.server_id = tp.server_id\n    CROSS JOIN _window\n    WHERE ps.collection_time >= _window.base_start AND ps.collection_time <= _window.base_end\n      AND ps.delta_execution_count > 0\n    GROUP BY tp.server_id, tp.database_name, tp.schema_name, tp.object_name\n)\nSELECT\n    srv.name AS \"Server\",\n    COALESCE(c.database_name, b.database_name) AS \"Database\",\n    CASE WHEN c.object_name IS NULL THEN 'GONE' WHEN b.object_name IS NULL THEN 'NEW' ELSE '' END AS \"Status\",\n    COALESCE(c.schema_name, b.schema_name) || '.' || COALESCE(c.object_name, b.object_name) AS \"Procedure\",\n    c.exec_count AS \"Executions\",\n    b.exec_count AS \"Base Executions\",\n    (c.exec_count - b.exec_count) * 100.0 / NULLIF(b.exec_count, 0) AS \"Executions Delta %\",\n    c.avg_duration_ms AS \"Avg Duration (ms)\",\n    b.avg_duration_ms AS \"Base Avg Duration (ms)\",\n    (c.avg_duration_ms - b.avg_duration_ms) * 100.0 / NULLIF(b.avg_duration_ms, 0) AS \"Duration Delta %\",\n    c.avg_cpu_ms AS \"Avg CPU (ms)\",\n    b.avg_cpu_ms AS \"Base Avg CPU (ms)\",\n    (c.avg_cpu_ms - b.avg_cpu_ms) * 100.0 / NULLIF(b.avg_cpu_ms, 0) AS \"CPU Delta %\",\n    c.avg_reads AS \"Avg Reads\",\n    b.avg_reads AS \"Base Avg Reads\"\nFROM current_period c\nFULL OUTER JOIN baseline_period b\n  ON COALESCE(c.server_id, -1) = COALESCE(b.server_id, -1)\n AND COALESCE(c.database_name, '') = COALESCE(b.database_name, '')\n AND COALESCE(c.schema_name, '') = COALESCE(b.schema_name, '')\n AND COALESCE(c.object_name, '') = COALESCE(b.object_name, '')\nJOIN config.config_monitored_servers AS srv ON srv.server_id = COALESCE(c.server_id, b.server_id)\nORDER BY \"Duration Delta %\" DESC NULLS LAST\n"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "row",
+      "title": "Query Store by Duration",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 94
+      },
+      "panels": []
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "Total CPU trend (hourly, fixed metric)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 95
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT * FROM (\nSELECT\n    date_trunc('hour', b.bucket) AS time,\n    srv.name AS metric,\n    SUM(b.cpu_us_weighted_sum) / 1000.0 AS value\nFROM collect.query_store_stats_daily AS b\nJOIN config.config_monitored_servers AS srv ON srv.server_id = b.server_id\nWHERE $__timeFilter(b.bucket)\n  AND b.server_id IN (${server:csv})\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR b.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nGROUP BY date_trunc('hour', b.bucket), srv.name\n) AS daily_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_store_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_store_stats) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_store_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_store_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_store_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_store_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_store_stats) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_store_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_store_stats) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'daily'\nUNION ALL\nSELECT * FROM (\nSELECT\n    date_trunc('hour', b.bucket) AS time,\n    srv.name AS metric,\n    SUM(b.cpu_us_weighted_sum) / 1000.0 AS value\nFROM collect.query_store_stats_hourly AS b\nJOIN config.config_monitored_servers AS srv ON srv.server_id = b.server_id\nWHERE $__timeFilter(b.bucket)\n  AND b.server_id IN (${server:csv})\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR b.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nGROUP BY date_trunc('hour', b.bucket), srv.name\n) AS hourly_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_store_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_store_stats) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_store_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_store_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_store_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_store_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_store_stats) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_store_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_store_stats) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'hourly'\nUNION ALL\nSELECT * FROM (\nSELECT\n    date_trunc('hour', t.collection_time) AS time,\n    srv.name AS metric,\n    SUM(t.execution_count * t.avg_cpu_time_us::double precision) / 1000.0 AS value\nFROM collect.v_query_store_stats AS t\nJOIN config.config_monitored_servers AS srv ON srv.server_id = t.server_id\nWHERE $__timeFilter(t.collection_time)\n  AND t.server_id IN (${server:csv})\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR t.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nGROUP BY date_trunc('hour', t.collection_time), srv.name\n) AS raw_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_store_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_store_stats) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_store_stats_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_store_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_store_stats_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_store_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_store_stats) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_store_stats_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_store_stats) < COALESCE((SELECT min(bucket) FROM collect.query_store_stats_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'raw'\nORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "table",
+      "title": "Top queries by duration (Query Store)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 16,
+        "w": 24,
+        "x": 0,
+        "y": 101
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Forced"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "true": {
+                        "color": "blue",
+                        "index": 0
+                      },
+                      "false": {
+                        "color": "text",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Total Duration (ms)",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH ranked AS (\n    SELECT\n        qsd.server_id,\n        qsd.database_name,\n        qsd.query_id,\n        qsd.plan_id,\n        qsd.query_hash,\n        qsd.replica_role,\n        MAX(qsd.module_name) AS module_name,\n        SUM(qsd.execution_count)::bigint AS total_executions,\n        AVG(qsd.avg_duration_us::double precision) / 1000.0 AS avg_duration_ms,\n        AVG(qsd.avg_cpu_time_us::double precision) / 1000.0 AS avg_cpu_time_ms,\n        AVG(qsd.avg_logical_io_reads::double precision) AS avg_logical_reads,\n        AVG(qsd.avg_logical_io_writes::double precision) AS avg_logical_writes,\n        AVG(qsd.avg_physical_io_reads::double precision) AS avg_physical_reads,\n        AVG(qsd.avg_rowcount::double precision) AS avg_rowcount,\n        MIN(qsd.min_dop) AS min_dop,\n        MAX(qsd.max_dop) AS max_dop,\n        MAX(qsd.last_execution_time) AS last_execution_time,\n        MAX(qsd.query_plan_hash) AS query_plan_hash,\n        bool_or(qsd.is_forced_plan) AS is_forced_plan,\n        MAX(qsd.plan_forcing_type) AS plan_forcing_type,\n        MAX(qsd.execution_type_desc) AS execution_type_desc,\n        MIN(qsd.first_execution_time) AS first_execution_time,\n        AVG(qsd.avg_clr_time_us::double precision) / 1000.0 AS avg_clr_time_ms,\n        AVG(qsd.avg_tempdb_space_used::double precision) AS avg_tempdb_space_used,\n        AVG(qsd.avg_log_bytes_used::double precision) AS avg_log_bytes_used,\n        MAX(qsd.plan_type) AS plan_type,\n        SUM(qsd.force_failure_count)::bigint AS force_failure_count,\n        MAX(qsd.last_force_failure_reason) AS last_force_failure_reason,\n        MAX(qsd.compatibility_level) AS compatibility_level,\n        MIN(qsd.min_duration_us::double precision) / 1000.0 AS min_duration_ms,\n        MAX(qsd.max_duration_us::double precision) / 1000.0 AS max_duration_ms,\n        MIN(qsd.min_cpu_time_us::double precision) / 1000.0 AS min_cpu_time_ms,\n        MAX(qsd.max_cpu_time_us::double precision) / 1000.0 AS max_cpu_time_ms,\n        MIN(qsd.min_logical_io_reads::double precision) AS min_logical_reads,\n        MAX(qsd.max_logical_io_reads::double precision) AS max_logical_reads,\n        MIN(qsd.min_logical_io_writes::double precision) AS min_logical_writes,\n        MAX(qsd.max_logical_io_writes::double precision) AS max_logical_writes,\n        MIN(qsd.min_physical_io_reads::double precision) AS min_physical_reads,\n        MAX(qsd.max_physical_io_reads::double precision) AS max_physical_reads,\n        MIN(qsd.min_clr_time_us::double precision) / 1000.0 AS min_clr_time_ms,\n        MAX(qsd.max_clr_time_us::double precision) / 1000.0 AS max_clr_time_ms,\n        MIN(qsd.min_rowcount::double precision) AS min_rowcount,\n        MAX(qsd.max_rowcount::double precision) AS max_rowcount,\n        MIN(qsd.min_log_bytes_used::double precision) AS min_log_bytes_used,\n        MAX(qsd.max_log_bytes_used::double precision) AS max_log_bytes_used,\n        MIN(qsd.min_tempdb_space_used::double precision) AS min_tempdb_space_used,\n        MAX(qsd.max_tempdb_space_used::double precision) AS max_tempdb_space_used,\n        AVG(qsd.avg_query_max_used_memory::double precision) * 8.0 / 1024.0 AS avg_memory_mb,\n        MIN(qsd.min_query_max_used_memory::double precision) * 8.0 / 1024.0 AS min_memory_mb,\n        MAX(qsd.max_query_max_used_memory::double precision) * 8.0 / 1024.0 AS max_memory_mb,\n        AVG(qsd.avg_num_physical_io_reads::double precision) AS avg_num_physical_io_reads,\n        MIN(qsd.min_num_physical_io_reads::double precision) AS min_num_physical_io_reads,\n        MAX(qsd.max_num_physical_io_reads::double precision) AS max_num_physical_io_reads\n    FROM collect.v_query_store_stats AS qsd\n    WHERE qsd.server_id IN (${server:csv})\n      AND $__timeFilter(qsd.collection_time)\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR qsd.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n    GROUP BY qsd.server_id, qsd.database_name, qsd.query_id, qsd.plan_id, qsd.query_hash, qsd.replica_role\n    ORDER BY SUM(qsd.execution_count) * AVG(qsd.avg_duration_us::double precision) DESC\n    LIMIT ${topn} + 5\n)\nSELECT\n    srv.name AS \"Server\",\n    r.database_name AS \"Database\",\n    r.query_id AS \"Query ID\",\n    r.plan_id AS \"Plan ID\",\n    r.replica_role AS \"Replica\",\n    r.module_name AS \"Module\",\n    r.first_execution_time AS \"First Execution\",\n    r.last_execution_time AS \"Last Execution\",\n    r.total_executions AS \"Executions\",\n    r.total_executions * r.avg_duration_ms AS \"Total Duration (ms)\",\n    r.avg_duration_ms AS \"Avg Duration (ms)\",\n    r.min_duration_ms AS \"Min Duration (ms)\",\n    r.max_duration_ms AS \"Max Duration (ms)\",\n    r.total_executions * r.avg_cpu_time_ms AS \"Total CPU (ms)\",\n    r.avg_cpu_time_ms AS \"Avg CPU (ms)\",\n    r.min_cpu_time_ms AS \"Min CPU (ms)\",\n    r.max_cpu_time_ms AS \"Max CPU (ms)\",\n    r.avg_logical_reads AS \"Avg Reads\",\n    r.min_logical_reads AS \"Min Reads\",\n    r.max_logical_reads AS \"Max Reads\",\n    r.avg_logical_writes AS \"Avg Writes\",\n    r.min_logical_writes AS \"Min Writes\",\n    r.max_logical_writes AS \"Max Writes\",\n    r.avg_physical_reads AS \"Avg Phys Reads\",\n    r.min_physical_reads AS \"Min Phys Reads\",\n    r.max_physical_reads AS \"Max Phys Reads\",\n    r.avg_rowcount AS \"Avg Rows\",\n    r.min_rowcount AS \"Min Rows\",\n    r.max_rowcount AS \"Max Rows\",\n    r.min_dop AS \"Min DOP\",\n    r.max_dop AS \"Max DOP\",\n    r.avg_memory_mb AS \"Avg Mem (MB)\",\n    r.min_memory_mb AS \"Min Mem (MB)\",\n    r.max_memory_mb AS \"Max Mem (MB)\",\n    r.avg_clr_time_ms AS \"Avg CLR (ms)\",\n    r.min_clr_time_ms AS \"Min CLR (ms)\",\n    r.max_clr_time_ms AS \"Max CLR (ms)\",\n    r.avg_num_physical_io_reads AS \"Avg Phys IO Reads\",\n    r.min_num_physical_io_reads AS \"Min Phys IO Reads\",\n    r.max_num_physical_io_reads AS \"Max Phys IO Reads\",\n    r.avg_tempdb_space_used AS \"Avg tempdb Pages\",\n    r.min_tempdb_space_used AS \"Min tempdb Pages\",\n    r.max_tempdb_space_used AS \"Max tempdb Pages\",\n    r.avg_log_bytes_used AS \"Avg Log Bytes\",\n    r.min_log_bytes_used AS \"Min Log Bytes\",\n    r.max_log_bytes_used AS \"Max Log Bytes\",\n    r.is_forced_plan AS \"Forced\",\n    r.plan_forcing_type AS \"Force Type\",\n    r.execution_type_desc AS \"Exec Type\",\n    r.plan_type AS \"Plan Type\",\n    r.force_failure_count AS \"Force Failures\",\n    r.last_force_failure_reason AS \"Force Failure Reason\",\n    r.compatibility_level AS \"Compat\",\n    r.query_hash AS \"Query Hash\",\n    r.query_plan_hash AS \"Plan Hash\",\n    t.query_text AS \"Query Text\"\nFROM ranked AS r\nJOIN config.config_monitored_servers AS srv ON srv.server_id = r.server_id\nLEFT JOIN LATERAL (\n    SELECT query_text\n    FROM collect.v_query_store_stats\n    WHERE server_id = r.server_id\n      AND query_id = r.query_id\n      AND database_name = r.database_name\n      AND query_text IS NOT NULL\n    ORDER BY collection_time DESC\n    LIMIT 1\n) AS t ON TRUE\nWHERE t.query_text IS NULL OR t.query_text NOT LIKE 'WAITFOR%'\nORDER BY r.total_executions * r.avg_duration_ms DESC\nLIMIT ${topn}\n"
+        }
+      ],
+      "description": "replica_role is a GROUP BY key, not aggregated away, so a shared AG Query Store shows one row per replica role instead of blending primary and secondary workload."
+    },
+    {
+      "id": 21,
+      "type": "table",
+      "title": "Comparison vs baseline ($comparison_baseline)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 117
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "NEW": {
+                        "color": "blue",
+                        "index": 0
+                      },
+                      "GONE": {
+                        "color": "orange",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH \n_window AS (\n    SELECT\n        $__timeFrom()::timestamp AS cur_start,\n        $__timeTo()::timestamp AS cur_end,\n        $__timeFrom()::timestamp - (CASE ${comparison_baseline:sqlstring}\n            WHEN 'Last Week' THEN INTERVAL '7 days' ELSE INTERVAL '1 day' END) AS base_start,\n        $__timeTo()::timestamp - (CASE ${comparison_baseline:sqlstring}\n            WHEN 'Last Week' THEN INTERVAL '7 days' ELSE INTERVAL '1 day' END) AS base_end\n)\n,\ntop_current AS (\n    SELECT server_id, database_name, query_hash\n    FROM collect.v_query_store_stats, _window\n    WHERE server_id IN (${server:csv})\n      AND collection_time >= _window.cur_start AND collection_time <= _window.cur_end\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n      AND execution_count > 0\n    GROUP BY server_id, database_name, query_hash\n    ORDER BY SUM(execution_count) DESC\n    LIMIT 100\n),\ntop_baseline AS (\n    SELECT server_id, database_name, query_hash\n    FROM collect.v_query_store_stats, _window\n    WHERE server_id IN (${server:csv})\n      AND collection_time >= _window.base_start AND collection_time <= _window.base_end\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n      AND execution_count > 0\n    GROUP BY server_id, database_name, query_hash\n    ORDER BY SUM(execution_count) DESC\n    LIMIT 100\n),\ntop_hashes AS (\n    SELECT DISTINCT server_id, database_name, query_hash\n    FROM (SELECT * FROM top_current UNION ALL SELECT * FROM top_baseline) AS combined\n),\ncurrent_period AS (\n    SELECT th.server_id, th.database_name, th.query_hash,\n        SUM(qs.execution_count) AS exec_count,\n        SUM(qs.execution_count * qs.avg_duration_us::double precision) / NULLIF(SUM(qs.execution_count), 0) / 1000.0 AS avg_duration_ms,\n        SUM(qs.execution_count * qs.avg_cpu_time_us::double precision) / NULLIF(SUM(qs.execution_count), 0) / 1000.0 AS avg_cpu_ms,\n        SUM(qs.execution_count * qs.avg_logical_io_reads::double precision) / NULLIF(SUM(qs.execution_count), 0) AS avg_reads,\n        MAX(qs.query_text) AS query_text\n    FROM top_hashes th\n    JOIN collect.v_query_store_stats qs\n      ON qs.query_hash IS NOT DISTINCT FROM th.query_hash\n     AND qs.database_name IS NOT DISTINCT FROM th.database_name\n     AND qs.server_id = th.server_id\n    CROSS JOIN _window\n    WHERE qs.collection_time >= _window.cur_start AND qs.collection_time <= _window.cur_end\n      AND qs.execution_count > 0\n    GROUP BY th.server_id, th.database_name, th.query_hash\n),\nbaseline_period AS (\n    SELECT th.server_id, th.database_name, th.query_hash,\n        SUM(qs.execution_count) AS exec_count,\n        SUM(qs.execution_count * qs.avg_duration_us::double precision) / NULLIF(SUM(qs.execution_count), 0) / 1000.0 AS avg_duration_ms,\n        SUM(qs.execution_count * qs.avg_cpu_time_us::double precision) / NULLIF(SUM(qs.execution_count), 0) / 1000.0 AS avg_cpu_ms,\n        SUM(qs.execution_count * qs.avg_logical_io_reads::double precision) / NULLIF(SUM(qs.execution_count), 0) AS avg_reads,\n        MAX(qs.query_text) AS query_text\n    FROM top_hashes th\n    JOIN collect.v_query_store_stats qs\n      ON qs.query_hash IS NOT DISTINCT FROM th.query_hash\n     AND qs.database_name IS NOT DISTINCT FROM th.database_name\n     AND qs.server_id = th.server_id\n    CROSS JOIN _window\n    WHERE qs.collection_time >= _window.base_start AND qs.collection_time <= _window.base_end\n      AND qs.execution_count > 0\n    GROUP BY th.server_id, th.database_name, th.query_hash\n)\nSELECT\n    srv.name AS \"Server\",\n    COALESCE(c.database_name, b.database_name) AS \"Database\",\n    CASE WHEN c.query_hash IS NULL THEN 'GONE' WHEN b.query_hash IS NULL THEN 'NEW' ELSE '' END AS \"Status\",\n    COALESCE(c.query_hash, b.query_hash) AS \"Query Hash\",\n    c.exec_count AS \"Executions\",\n    b.exec_count AS \"Base Executions\",\n    (c.exec_count - b.exec_count) * 100.0 / NULLIF(b.exec_count, 0) AS \"Executions Delta %\",\n    c.avg_duration_ms AS \"Avg Duration (ms)\",\n    b.avg_duration_ms AS \"Base Avg Duration (ms)\",\n    (c.avg_duration_ms - b.avg_duration_ms) * 100.0 / NULLIF(b.avg_duration_ms, 0) AS \"Duration Delta %\",\n    c.avg_cpu_ms AS \"Avg CPU (ms)\",\n    b.avg_cpu_ms AS \"Base Avg CPU (ms)\",\n    (c.avg_cpu_ms - b.avg_cpu_ms) * 100.0 / NULLIF(b.avg_cpu_ms, 0) AS \"CPU Delta %\",\n    c.avg_reads AS \"Avg Reads\",\n    b.avg_reads AS \"Base Avg Reads\",\n    COALESCE(c.query_text, b.query_text) AS \"Query Text\"\nFROM current_period c\nFULL OUTER JOIN baseline_period b\n  ON COALESCE(c.server_id, -1) = COALESCE(b.server_id, -1)\n AND COALESCE(c.database_name, '') = COALESCE(b.database_name, '')\n AND COALESCE(c.query_hash, '') = COALESCE(b.query_hash, '')\nJOIN config.config_monitored_servers AS srv ON srv.server_id = COALESCE(c.server_id, b.server_id)\nORDER BY \"Duration Delta %\" DESC NULLS LAST\n"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "row",
+      "title": "Query Store Regressions",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 127
+      },
+      "panels": []
+    },
+    {
+      "id": 23,
+      "type": "table",
+      "title": "Query Store regressions (recent vs unbounded baseline)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 128
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Severity"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "CRITICAL": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "HIGH": {
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "MEDIUM": {
+                        "color": "yellow",
+                        "index": 2
+                      },
+                      "LOW": {
+                        "color": "green",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Duration Regression %",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH baseline_performance AS (\n    SELECT\n        server_id, database_name, query_id,\n        AVG(avg_duration_us::double precision) / 1000.0 AS avg_duration_ms,\n        AVG(avg_cpu_time_us::double precision) / 1000.0 AS avg_cpu_time_ms,\n        AVG(avg_logical_io_reads::double precision) AS avg_logical_io_reads,\n        SUM(execution_count)::bigint AS exec_count,\n        COUNT(DISTINCT plan_id)::int AS plan_count\n    FROM collect.v_query_store_stats\n    WHERE server_id IN (${server:csv})\n      AND collection_time < $__timeFrom()\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n    GROUP BY server_id, database_name, query_id\n),\nrecent_performance AS (\n    SELECT\n        server_id, database_name, query_id,\n        MAX(query_text) AS query_text_sample,\n        AVG(avg_duration_us::double precision) / 1000.0 AS avg_duration_ms,\n        AVG(avg_cpu_time_us::double precision) / 1000.0 AS avg_cpu_time_ms,\n        AVG(avg_logical_io_reads::double precision) AS avg_logical_io_reads,\n        SUM(execution_count)::bigint AS exec_count,\n        COUNT(DISTINCT plan_id)::int AS plan_count,\n        MAX(last_execution_time) AS last_execution_time\n    FROM collect.v_query_store_stats\n    WHERE server_id IN (${server:csv})\n      AND $__timeFilter(collection_time)\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n    GROUP BY server_id, database_name, query_id\n)\nSELECT\n    srv.name AS \"Server\",\n    r.database_name AS \"Database\",\n    r.query_id AS \"Query ID\",\n    b.avg_duration_ms AS \"Baseline Duration (ms)\",\n    r.avg_duration_ms AS \"Recent Duration (ms)\",\n    (r.avg_duration_ms - b.avg_duration_ms) * 100.0 / NULLIF(b.avg_duration_ms, 0) AS \"Duration Regression %\",\n    b.avg_cpu_time_ms AS \"Baseline CPU (ms)\",\n    r.avg_cpu_time_ms AS \"Recent CPU (ms)\",\n    (r.avg_cpu_time_ms - b.avg_cpu_time_ms) * 100.0 / NULLIF(b.avg_cpu_time_ms, 0) AS \"CPU Regression %\",\n    b.avg_logical_io_reads AS \"Baseline Reads\",\n    r.avg_logical_io_reads AS \"Recent Reads\",\n    (r.avg_logical_io_reads - b.avg_logical_io_reads) * 100.0 / NULLIF(b.avg_logical_io_reads, 0) AS \"IO Regression %\",\n    (r.avg_duration_ms - b.avg_duration_ms) * r.exec_count AS \"Total Impact (ms)\",\n    b.exec_count AS \"Base Execs\",\n    r.exec_count AS \"Recent Execs\",\n    b.plan_count AS \"Base Plans\",\n    r.plan_count AS \"Recent Plans\",\n    CASE\n        WHEN (r.avg_duration_ms - b.avg_duration_ms) * 100.0 / NULLIF(b.avg_duration_ms, 0) > 100 THEN 'CRITICAL'\n        WHEN (r.avg_duration_ms - b.avg_duration_ms) * 100.0 / NULLIF(b.avg_duration_ms, 0) > 50 THEN 'HIGH'\n        WHEN (r.avg_duration_ms - b.avg_duration_ms) * 100.0 / NULLIF(b.avg_duration_ms, 0) > 25 THEN 'MEDIUM'\n        ELSE 'LOW'\n    END AS \"Severity\",\n    r.query_text_sample AS \"Query Text\",\n    r.last_execution_time AS \"Last Execution\"\nFROM recent_performance AS r\nJOIN baseline_performance AS b\n  ON b.server_id = r.server_id AND b.database_name = r.database_name AND b.query_id = r.query_id\nJOIN config.config_monitored_servers AS srv ON srv.server_id = r.server_id\nWHERE (r.avg_cpu_time_ms - b.avg_cpu_time_ms) * 100.0 / NULLIF(b.avg_cpu_time_ms, 0) > 25\nORDER BY \"Total Impact (ms)\" DESC\nLIMIT 50\n"
+        }
+      ],
+      "description": "Baseline is every Query Store capture before the dashboard's window start (unbounded lookback, bounded in practice by raw retention); recent is the window itself. Only queries with >25% CPU regression are included (the upstream TVF's actual gate, not its doc comment's claim)."
+    },
+    {
+      "id": 24,
+      "type": "row",
+      "title": "Query Heatmap",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 140
+      },
+      "panels": []
+    },
+    {
+      "id": 25,
+      "type": "heatmap",
+      "title": "Query heatmap (${heatmap_metric} distribution over time)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 16,
+        "x": 0,
+        "y": 141
+      },
+      "options": {
+        "calculate": false,
+        "calculation": {},
+        "cellGap": 2,
+        "cellRadius": 0,
+        "color": {
+          "mode": "scheme",
+          "scheme": "Viridis",
+          "steps": 64,
+          "reverse": false,
+          "exponent": 0.5,
+          "scale": "exponential"
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+          "le": 1e-09
+        },
+        "legend": {
+          "show": true
+        },
+        "rowsFrame": {
+          "layout": "auto",
+          "value": ""
+        },
+        "tooltip": {
+          "maxHeight": 600,
+          "mode": "single",
+          "yHistogram": false,
+          "showColorScale": true
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "decimals": 0,
+          "labelRotation": -90,
+          "reverse": false,
+          "unit": "short"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH base AS (\n    SELECT\n        date_bin(INTERVAL '5 minutes', collection_time, TIMESTAMP '1970-01-01 00:00:00') AS time_bin,\n        CASE ${heatmap_metric:sqlstring}\n        WHEN 'Duration' THEN (delta_elapsed_time / 1000.0) / NULLIF(delta_execution_count, 0)\n        WHEN 'CPU' THEN (delta_worker_time / 1000.0) / NULLIF(delta_execution_count, 0)\n        WHEN 'Logical Reads' THEN delta_logical_reads::double precision / NULLIF(delta_execution_count, 0)\n        WHEN 'Logical Writes' THEN delta_logical_writes::double precision / NULLIF(delta_execution_count, 0)\n        WHEN 'Execution Count' THEN delta_execution_count::double precision\n        ELSE (delta_elapsed_time / 1000.0) / NULLIF(delta_execution_count, 0)\n    END AS metric_value,\n        delta_execution_count\n    FROM collect.v_query_stats\n    WHERE server_id IN (${server:csv})\n      AND $__timeFilter(collection_time)\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n      AND delta_execution_count > 0\n),\nbinned AS (\n    SELECT\n        time_bin,\n        CASE\n            WHEN metric_value < 1 THEN 0\n            WHEN metric_value < 10 THEN 1\n            WHEN metric_value < 100 THEN 2\n            WHEN metric_value < 1000 THEN 3\n            WHEN metric_value < 10000 THEN 4\n            WHEN metric_value < 100000 THEN 5\n            ELSE 6\n        END AS bucket_index\n    FROM base\n    WHERE metric_value IS NOT NULL\n)\nSELECT\n    time_bin AS time,\n    CASE bucket_index\n        WHEN 0 THEN CASE WHEN ${heatmap_metric:sqlstring} IN ('Duration', 'CPU') THEN '0: 0-1ms' ELSE '0: 0-1' END\n        WHEN 1 THEN CASE WHEN ${heatmap_metric:sqlstring} IN ('Duration', 'CPU') THEN '1: 1-10ms' ELSE '1: 1-10' END\n        WHEN 2 THEN CASE WHEN ${heatmap_metric:sqlstring} IN ('Duration', 'CPU') THEN '2: 10-100ms' ELSE '2: 10-100' END\n        WHEN 3 THEN CASE WHEN ${heatmap_metric:sqlstring} IN ('Duration', 'CPU') THEN '3: 100ms-1s' ELSE '3: 100-1K' END\n        WHEN 4 THEN CASE WHEN ${heatmap_metric:sqlstring} IN ('Duration', 'CPU') THEN '4: 1-10s' ELSE '4: 1K-10K' END\n        WHEN 5 THEN CASE WHEN ${heatmap_metric:sqlstring} IN ('Duration', 'CPU') THEN '5: 10-100s' ELSE '5: 10K-100K' END\n        ELSE CASE WHEN ${heatmap_metric:sqlstring} IN ('Duration', 'CPU') THEN '6: >100s' ELSE '6: >100K' END\n    END AS metric,\n    COUNT(*)::float AS value\nFROM binned\nGROUP BY time_bin, bucket_index\nORDER BY 1, 2\n"
+        }
+      ],
+      "description": "Each cell = number of query executions in that metric bucket for the 5-minute window. Duration/CPU buckets are in ms; Reads/Writes in pages. Y-axis runs 0 (fastest/smallest) to 6 (slowest/largest). Raw-only - see the module docstring."
+    },
+    {
+      "id": 26,
+      "type": "table",
+      "title": "Top query per bucket (${heatmap_metric}, by impact)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 8,
+        "x": 16,
+        "y": 141
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH base AS (\n    SELECT\n        CASE ${heatmap_metric:sqlstring}\n        WHEN 'Duration' THEN (delta_elapsed_time / 1000.0) / NULLIF(delta_execution_count, 0)\n        WHEN 'CPU' THEN (delta_worker_time / 1000.0) / NULLIF(delta_execution_count, 0)\n        WHEN 'Logical Reads' THEN delta_logical_reads::double precision / NULLIF(delta_execution_count, 0)\n        WHEN 'Logical Writes' THEN delta_logical_writes::double precision / NULLIF(delta_execution_count, 0)\n        WHEN 'Execution Count' THEN delta_execution_count::double precision\n        ELSE (delta_elapsed_time / 1000.0) / NULLIF(delta_execution_count, 0)\n    END AS metric_value,\n        query_hash,\n        delta_execution_count AS exec_count\n    FROM collect.v_query_stats\n    WHERE server_id IN (${server:csv})\n      AND $__timeFilter(collection_time)\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n      AND delta_execution_count > 0\n),\nbucketed AS (\n    SELECT\n        CASE\n            WHEN metric_value < 1 THEN 0\n            WHEN metric_value < 10 THEN 1\n            WHEN metric_value < 100 THEN 2\n            WHEN metric_value < 1000 THEN 3\n            WHEN metric_value < 10000 THEN 4\n            WHEN metric_value < 100000 THEN 5\n            ELSE 6\n        END AS bucket_index,\n        query_hash, metric_value, exec_count\n    FROM base\n    WHERE metric_value IS NOT NULL\n),\nper_query AS (\n    SELECT bucket_index, query_hash,\n        SUM(metric_value * exec_count) AS total_impact,\n        COUNT(*) AS query_count\n    FROM bucketed\n    GROUP BY bucket_index, query_hash\n),\nranked AS (\n    SELECT bucket_index, query_hash,\n        ROW_NUMBER() OVER (PARTITION BY bucket_index ORDER BY total_impact DESC, query_hash) AS rn\n    FROM per_query\n),\nbucket_total AS (\n    SELECT bucket_index, SUM(query_count) AS total_queries\n    FROM per_query\n    GROUP BY bucket_index\n)\nSELECT\n    CASE bt.bucket_index\n        WHEN 0 THEN CASE WHEN ${heatmap_metric:sqlstring} IN ('Duration', 'CPU') THEN '0: 0-1ms' ELSE '0: 0-1' END\n        WHEN 1 THEN CASE WHEN ${heatmap_metric:sqlstring} IN ('Duration', 'CPU') THEN '1: 1-10ms' ELSE '1: 1-10' END\n        WHEN 2 THEN CASE WHEN ${heatmap_metric:sqlstring} IN ('Duration', 'CPU') THEN '2: 10-100ms' ELSE '2: 10-100' END\n        WHEN 3 THEN CASE WHEN ${heatmap_metric:sqlstring} IN ('Duration', 'CPU') THEN '3: 100ms-1s' ELSE '3: 100-1K' END\n        WHEN 4 THEN CASE WHEN ${heatmap_metric:sqlstring} IN ('Duration', 'CPU') THEN '4: 1-10s' ELSE '4: 1K-10K' END\n        WHEN 5 THEN CASE WHEN ${heatmap_metric:sqlstring} IN ('Duration', 'CPU') THEN '5: 10-100s' ELSE '5: 10K-100K' END\n        ELSE CASE WHEN ${heatmap_metric:sqlstring} IN ('Duration', 'CPU') THEN '6: >100s' ELSE '6: >100K' END\n    END AS \"Bucket\",\n    bt.total_queries AS \"Count\",\n    qt.query_preview AS \"Top Query\"\nFROM bucket_total bt\nJOIN ranked r ON r.bucket_index = bt.bucket_index AND r.rn = 1\nLEFT JOIN LATERAL (\n    SELECT LEFT(query_text, 300) AS query_preview\n    FROM collect.v_query_stats\n    WHERE server_id IN (${server:csv})\n      AND query_hash = r.query_hash\n      AND $__timeFilter(collection_time)\n      AND delta_execution_count > 0\n    ORDER BY collection_time DESC\n    LIMIT 1\n) qt ON TRUE\nORDER BY bt.bucket_index DESC\n"
+        }
+      ],
+      "description": "Top query (by total_impact = metric_value * exec_count) in each bucket across the selected time range. Ordered highest bucket first to align with the heatmap Y-axis."
     }
   ]
 }
