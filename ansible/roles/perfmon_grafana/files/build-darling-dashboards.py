@@ -30,9 +30,11 @@ from darling_defs.daily_summary import daily_summary  # noqa: E402
 from darling_defs.file_io import file_io  # noqa: E402
 from darling_defs.fleet import fleet  # noqa: E402
 from darling_defs.latch_spinlock import latch_spinlock  # noqa: E402
+from darling_defs.long_queries import long_queries  # noqa: E402
 from darling_defs.memory import memory  # noqa: E402
 from darling_defs.perfmon import perfmon  # noqa: E402
 from darling_defs.queries import queries  # noqa: E402
+from darling_defs.running_jobs import running_jobs  # noqa: E402
 from darling_defs.session_stats import session_stats  # noqa: E402
 from darling_defs.system_events import system_events  # noqa: E402
 from darling_defs.tempdb import tempdb  # noqa: E402
@@ -66,9 +68,11 @@ DASHBOARDS = [
     file_io,
     fleet,
     latch_spinlock,
+    long_queries,
     memory,
     perfmon,
     queries,
+    running_jobs,
     session_stats,
     system_events,
     tempdb,
