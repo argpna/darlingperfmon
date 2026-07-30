@@ -302,9 +302,9 @@ def server_join(col: str, alias: str = "srv") -> str:
 
 
 def multi_filter(col: str, var: str) -> str:
-    """Filter a text column by a multi-select variable whose "All" expands to '*'."""
-    values = f"ARRAY[${{{var}:sqlstring}}]"
-    return f"({values} @> ARRAY['*'] OR {col} = ANY({values}))"
+    """Filter a text column by a multi-select variable."""
+    arr = f"ARRAY[${{{var}:sqlstring}}]::text[]"
+    return f"(cardinality({arr}) = 0 OR {col} = ANY({arr}))"
 
 
 def n0(expr: str) -> str:
@@ -394,13 +394,8 @@ def query_var(
     query: str,
     description: str,
     multi: bool = True,
-    all_value: str = "*",
 ):
-    """Build a query-backed template variable, defaulting to All.
-
-    all_value pairs with multi_filter(): one token stands in for the whole list, so a
-    dashboard's default load does not interpolate every value into every panel.
-    """
+    """Build a query-backed template variable, defaulting to All."""
     return {
         "name": name,
         "label": label,
@@ -414,7 +409,6 @@ def query_var(
         "hide": 0,
         "multi": multi,
         "includeAll": True,
-        "allValue": all_value,
         "sort": 0,
         "description": description,
     }
@@ -443,9 +437,9 @@ _DASHBOARDS_DROPDOWN = {
     "icon": "external link",
     "includeVars": True,
     "keepTime": True,
-    "tags": ["perfmon"],
+    "tags": ["perfmon-darling"],
     "targetBlank": False,
-    "title": "All PerfMon Dashboards",
+    "title": "All PerfMon (Darling) Dashboards",
     "type": "dashboards",
     "url": "",
 }
@@ -455,9 +449,9 @@ _FINOPS_DROPDOWN = {
     "icon": "external link",
     "includeVars": True,
     "keepTime": True,
-    "tags": ["finops"],
+    "tags": ["finops-darling"],
     "targetBlank": False,
-    "title": "All FinOps Dashboards",
+    "title": "All FinOps (Darling) Dashboards",
     "type": "dashboards",
     "url": "",
 }
@@ -508,10 +502,10 @@ def dashboard(
     """Build a Darling dashboard envelope."""
     is_fleet = dash_uid == UID_PREFIX + "-fleet"
     links = [] if is_fleet else [_FLEET_LINK, _DASHBOARDS_DROPDOWN, _FINOPS_DROPDOWN]
-    tags = ["perfmon", "begin-here"] if is_fleet else ["perfmon"]
+    tags = ["perfmon-darling", "begin-here"] if is_fleet else ["perfmon-darling"]
     return _dashboard_base(
         dash_uid,
-        title,
+        f"Perfmon (Darling) - {title}",
         panels,
         variables,
         tags,
@@ -528,10 +522,10 @@ def finops_dashboard(
     """Build a FinOps dashboard, one per upstream FinOps sub-tab."""
     return _dashboard_base(
         dash_uid,
-        title,
+        f"FinOps (Darling) - {title}",
         panels,
         variables,
-        ["finops"],
+        ["finops-darling"],
         [_FLEET_LINK, _FINOPS_DROPDOWN, _DASHBOARDS_DROPDOWN],
         time_from,
         refresh,
@@ -539,17 +533,16 @@ def finops_dashboard(
     )
 
 
-def detail_dashboard(dash_uid, title, panels, variables, time_from="now-24h"):
-    """Build a drill-down dashboard reached from a data link.
-
-    Tagged out of the nav dropdowns: it only makes sense with the variables the link passes.
-    """
+def detail_dashboard(
+    dash_uid, title, panels, variables, time_from="now-24h", prefix="Perfmon"
+):
+    """Build a drill-down dashboard reached from a data link."""
     return _dashboard_base(
         dash_uid,
-        title,
+        f"{prefix} (Darling) - {title}",
         panels,
         variables,
-        ["perfmon-detail", "nav-only"],
+        ["perfmon-darling-detail", "nav-only"],
         [_FLEET_LINK, _DASHBOARDS_DROPDOWN],
         time_from,
         "",

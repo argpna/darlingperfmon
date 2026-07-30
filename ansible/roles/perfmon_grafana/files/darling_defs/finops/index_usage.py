@@ -106,7 +106,7 @@ def index_usage():
 
     return detail_dashboard(
         uid("finops-index-usage"),
-        "FinOps - Index Detail",
+        "Index Detail",
         panels,
         [
             server_var(multi=False),
@@ -114,4 +114,5 @@ def index_usage():
             text_var("schema", "Schema", "*"),
             text_var("table", "Table", "*"),
         ],
+        prefix="FinOps",
     )

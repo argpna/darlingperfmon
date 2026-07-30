@@ -126,7 +126,7 @@ def storage_growth():
 
     return finops_dashboard(
         uid("finops-storage-growth"),
-        "FinOps - Storage Growth",
+        "Storage Growth",
         panels,
         [server_var()],
         time_from="now-30d",

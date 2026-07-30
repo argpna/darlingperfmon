@@ -461,7 +461,7 @@ def utilization():
 
     return finops_dashboard(
         uid("finops-utilization"),
-        "FinOps - Utilization",
+        "Utilization",
         panels,
         [server_var()],
     )

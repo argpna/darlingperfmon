@@ -600,7 +600,7 @@ def recommendations():
 
     return finops_dashboard(
         uid("finops-recommendations"),
-        "FinOps - Recommendations",
+        "Recommendations",
         panels,
         [server_var()],
         refresh="15m",

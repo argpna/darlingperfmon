@@ -393,7 +393,7 @@ def optimization():
 
     return finops_dashboard(
         uid("finops-optimization"),
-        "FinOps - Optimization",
+        "Optimization",
         panels,
         [server_var()],
     )

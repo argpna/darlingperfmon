@@ -188,7 +188,7 @@ def object_sizes():
 
     return detail_dashboard(
         uid("finops-object-sizes"),
-        "FinOps - Object Sizes & Growth",
+        "Object Sizes & Growth",
         panels,
         [
             server_var(multi=False),
@@ -201,4 +201,5 @@ def object_sizes():
             ),
         ],
         time_from="now-30d",
+        prefix="FinOps",
     )

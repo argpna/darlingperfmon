@@ -1,8 +1,8 @@
 {
   "uid": "darling-finops-utilization",
-  "title": "FinOps - Utilization",
+  "title": "FinOps (Darling) - Utilization",
   "tags": [
-    "finops"
+    "finops-darling"
   ],
   "timezone": "",
   "schemaVersion": 39,
@@ -34,10 +34,10 @@
       "includeVars": true,
       "keepTime": true,
       "tags": [
-        "finops"
+        "finops-darling"
       ],
       "targetBlank": false,
-      "title": "All FinOps Dashboards",
+      "title": "All FinOps (Darling) Dashboards",
       "type": "dashboards",
       "url": ""
     },
@@ -47,10 +47,10 @@
       "includeVars": true,
       "keepTime": true,
       "tags": [
-        "perfmon"
+        "perfmon-darling"
       ],
       "targetBlank": false,
-      "title": "All PerfMon Dashboards",
+      "title": "All PerfMon (Darling) Dashboards",
       "type": "dashboards",
       "url": ""
     }

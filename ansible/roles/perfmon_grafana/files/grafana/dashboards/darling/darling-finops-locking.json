@@ -1,8 +1,8 @@
 {
   "uid": "darling-finops-locking",
-  "title": "FinOps - Locking & Contention",
+  "title": "FinOps (Darling) - Locking & Contention",
   "tags": [
-    "finops"
+    "finops-darling"
   ],
   "timezone": "",
   "schemaVersion": 39,
@@ -34,10 +34,10 @@
       "includeVars": true,
       "keepTime": true,
       "tags": [
-        "finops"
+        "finops-darling"
       ],
       "targetBlank": false,
-      "title": "All FinOps Dashboards",
+      "title": "All FinOps (Darling) Dashboards",
       "type": "dashboards",
       "url": ""
     },
@@ -47,10 +47,10 @@
       "includeVars": true,
       "keepTime": true,
       "tags": [
-        "perfmon"
+        "perfmon-darling"
       ],
       "targetBlank": false,
-      "title": "All PerfMon Dashboards",
+      "title": "All PerfMon (Darling) Dashboards",
       "type": "dashboards",
       "url": ""
     }
@@ -98,7 +98,6 @@
         "hide": 0,
         "multi": true,
         "includeAll": true,
-        "allValue": "*",
         "sort": 0,
         "description": "Databases with recorded lock or latch contention."
       }
@@ -300,7 +299,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "\nWITH latest AS (\n    SELECT server_id, database_name, MAX(collection_time) AS latest_time\n    FROM collect.v_index_object_stats\n    WHERE server_id IN (${server:csv})\n    GROUP BY server_id, database_name\n),\ncontended AS (\n    SELECT ios.*,\n           COALESCE(ios.row_lock_wait_in_ms, 0)\n    + COALESCE(ios.page_lock_wait_in_ms, 0)\n    + COALESCE(ios.page_latch_wait_in_ms, 0)\n    + COALESCE(ios.page_io_latch_wait_in_ms, 0) AS total_wait_ms,\n           ROW_NUMBER() OVER (\n               PARTITION BY ios.server_id ORDER BY COALESCE(ios.row_lock_wait_in_ms, 0)\n    + COALESCE(ios.page_lock_wait_in_ms, 0)\n    + COALESCE(ios.page_latch_wait_in_ms, 0)\n    + COALESCE(ios.page_io_latch_wait_in_ms, 0) DESC) AS rn\n    FROM collect.v_index_object_stats AS ios\n    JOIN latest l ON l.server_id = ios.server_id\n                 AND l.database_name = ios.database_name\n                 AND l.latest_time = ios.collection_time\n    WHERE ios.server_id IN (${server:csv})\n      AND (\n    COALESCE(ios.row_lock_wait_in_ms, 0) > 0\n    OR COALESCE(ios.page_lock_wait_in_ms, 0) > 0\n    OR COALESCE(ios.page_latch_wait_in_ms, 0) > 0\n    OR COALESCE(ios.page_io_latch_wait_in_ms, 0) > 0\n    OR COALESCE(ios.index_lock_promotion_count, 0) > 0\n)\n      AND (ARRAY[${database:sqlstring}] @> ARRAY['*'] OR ios.database_name = ANY(ARRAY[${database:sqlstring}]))\n)\nSELECT\n    srv.name AS \"Server\",\n    c.database_name AS \"Database\",\n    c.schema_name AS \"Schema\",\n    c.table_name AS \"Table\",\n    COALESCE(c.index_name, '(heap)') AS \"Index\",\n    c.index_type_desc AS \"Type\",\n    COALESCE(c.row_lock_count, 0) AS \"Row Locks\",\n    COALESCE(c.row_lock_wait_count, 0) AS \"Row Lock Waits\",\n    COALESCE(c.row_lock_wait_in_ms, 0) AS \"Row Lock Wait ms\",\n    COALESCE(c.page_lock_count, 0) AS \"Page Locks\",\n    COALESCE(c.page_lock_wait_count, 0) AS \"Page Lock Waits\",\n    COALESCE(c.page_lock_wait_in_ms, 0) AS \"Page Lock Wait ms\",\n    COALESCE(c.index_lock_promotion_count, 0) AS \"Lock Escalations\",\n    COALESCE(c.page_latch_wait_count, 0) AS \"Page Latch Waits\",\n    COALESCE(c.page_latch_wait_in_ms, 0) AS \"Page Latch Wait ms\",\n    COALESCE(c.page_io_latch_wait_count, 0) AS \"Page IO Latch Waits\",\n    COALESCE(c.page_io_latch_wait_in_ms, 0) AS \"Page IO Latch Wait ms\",\n    round(c.reserved_mb, 1) AS \"Reserved MB\",\n    c.total_rows AS \"Rows\"\nFROM contended c\nJOIN config.config_monitored_servers AS srv ON srv.server_id = c.server_id\nWHERE c.rn <= 200\nORDER BY c.total_wait_ms DESC\n"
+          "rawSql": "\nWITH latest AS (\n    SELECT server_id, database_name, MAX(collection_time) AS latest_time\n    FROM collect.v_index_object_stats\n    WHERE server_id IN (${server:csv})\n    GROUP BY server_id, database_name\n),\ncontended AS (\n    SELECT ios.*,\n           COALESCE(ios.row_lock_wait_in_ms, 0)\n    + COALESCE(ios.page_lock_wait_in_ms, 0)\n    + COALESCE(ios.page_latch_wait_in_ms, 0)\n    + COALESCE(ios.page_io_latch_wait_in_ms, 0) AS total_wait_ms,\n           ROW_NUMBER() OVER (\n               PARTITION BY ios.server_id ORDER BY COALESCE(ios.row_lock_wait_in_ms, 0)\n    + COALESCE(ios.page_lock_wait_in_ms, 0)\n    + COALESCE(ios.page_latch_wait_in_ms, 0)\n    + COALESCE(ios.page_io_latch_wait_in_ms, 0) DESC) AS rn\n    FROM collect.v_index_object_stats AS ios\n    JOIN latest l ON l.server_id = ios.server_id\n                 AND l.database_name = ios.database_name\n                 AND l.latest_time = ios.collection_time\n    WHERE ios.server_id IN (${server:csv})\n      AND (\n    COALESCE(ios.row_lock_wait_in_ms, 0) > 0\n    OR COALESCE(ios.page_lock_wait_in_ms, 0) > 0\n    OR COALESCE(ios.page_latch_wait_in_ms, 0) > 0\n    OR COALESCE(ios.page_io_latch_wait_in_ms, 0) > 0\n    OR COALESCE(ios.index_lock_promotion_count, 0) > 0\n)\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR ios.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n)\nSELECT\n    srv.name AS \"Server\",\n    c.database_name AS \"Database\",\n    c.schema_name AS \"Schema\",\n    c.table_name AS \"Table\",\n    COALESCE(c.index_name, '(heap)') AS \"Index\",\n    c.index_type_desc AS \"Type\",\n    COALESCE(c.row_lock_count, 0) AS \"Row Locks\",\n    COALESCE(c.row_lock_wait_count, 0) AS \"Row Lock Waits\",\n    COALESCE(c.row_lock_wait_in_ms, 0) AS \"Row Lock Wait ms\",\n    COALESCE(c.page_lock_count, 0) AS \"Page Locks\",\n    COALESCE(c.page_lock_wait_count, 0) AS \"Page Lock Waits\",\n    COALESCE(c.page_lock_wait_in_ms, 0) AS \"Page Lock Wait ms\",\n    COALESCE(c.index_lock_promotion_count, 0) AS \"Lock Escalations\",\n    COALESCE(c.page_latch_wait_count, 0) AS \"Page Latch Waits\",\n    COALESCE(c.page_latch_wait_in_ms, 0) AS \"Page Latch Wait ms\",\n    COALESCE(c.page_io_latch_wait_count, 0) AS \"Page IO Latch Waits\",\n    COALESCE(c.page_io_latch_wait_in_ms, 0) AS \"Page IO Latch Wait ms\",\n    round(c.reserved_mb, 1) AS \"Reserved MB\",\n    c.total_rows AS \"Rows\"\nFROM contended c\nJOIN config.config_monitored_servers AS srv ON srv.server_id = c.server_id\nWHERE c.rn <= 200\nORDER BY c.total_wait_ms DESC\n"
         }
       ],
       "description": "Top 200 indexes per server by total lock + latch wait, at each database's latest snapshot. Lifetime totals, not rates."

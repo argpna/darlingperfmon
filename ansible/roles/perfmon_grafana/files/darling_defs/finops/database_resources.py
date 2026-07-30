@@ -187,7 +187,7 @@ def database_resources():
 
     return finops_dashboard(
         uid("finops-database-resources"),
-        "FinOps - Database Resources",
+        "Database Resources",
         panels,
         [server_var()],
     )

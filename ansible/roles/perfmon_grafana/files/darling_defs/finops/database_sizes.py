@@ -119,7 +119,7 @@ def database_sizes():
 
     return finops_dashboard(
         uid("finops-database-sizes"),
-        "FinOps - Database Sizes",
+        "Database Sizes",
         panels,
         [server_var()],
     )

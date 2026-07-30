@@ -1,8 +1,8 @@
 {
   "uid": "darling-memory",
-  "title": "Memory",
+  "title": "Perfmon (Darling) - Memory",
   "tags": [
-    "perfmon"
+    "perfmon-darling"
   ],
   "timezone": "",
   "schemaVersion": 39,
@@ -34,10 +34,10 @@
       "includeVars": true,
       "keepTime": true,
       "tags": [
-        "perfmon"
+        "perfmon-darling"
       ],
       "targetBlank": false,
-      "title": "All PerfMon Dashboards",
+      "title": "All PerfMon (Darling) Dashboards",
       "type": "dashboards",
       "url": ""
     },
@@ -47,10 +47,10 @@
       "includeVars": true,
       "keepTime": true,
       "tags": [
-        "finops"
+        "finops-darling"
       ],
       "targetBlank": false,
-      "title": "All FinOps Dashboards",
+      "title": "All FinOps (Darling) Dashboards",
       "type": "dashboards",
       "url": ""
     }
@@ -98,7 +98,6 @@
         "hide": 0,
         "multi": true,
         "includeAll": true,
-        "allValue": "*",
         "sort": 0,
         "description": "Memory clerks collected over the window, heaviest first. All plots the top 5."
       }
@@ -410,7 +409,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nWITH ranked AS (\n\n    SELECT\n        mc.server_id,\n        srv.name AS server_label,\n        mc.clerk_type\n    FROM collect.v_memory_clerks AS mc\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = mc.server_id\n    WHERE $__timeFilter(mc.collection_time)\n      AND mc.server_id IN (${server:csv})\n      AND (ARRAY[${clerk_type:sqlstring}] @> ARRAY['*'] OR mc.clerk_type = ANY(ARRAY[${clerk_type:sqlstring}]))\n    GROUP BY mc.server_id, srv.name, mc.clerk_type\n    ORDER BY SUM(mc.memory_mb) DESC\n    LIMIT 5\n\n)\nSELECT\n    mc.collection_time AS time,\n    r.server_label || ' - ' || mc.clerk_type AS metric,\n    mc.memory_mb AS value\nFROM collect.v_memory_clerks AS mc\nJOIN ranked AS r\n  ON r.server_id = mc.server_id\n AND r.clerk_type = mc.clerk_type\nWHERE $__timeFilter(mc.collection_time)\n  AND mc.server_id IN (${server:csv})\nORDER BY 1\n"
+          "rawSql": "\nWITH ranked AS (\n\n    SELECT\n        mc.server_id,\n        srv.name AS server_label,\n        mc.clerk_type\n    FROM collect.v_memory_clerks AS mc\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = mc.server_id\n    WHERE $__timeFilter(mc.collection_time)\n      AND mc.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${clerk_type:sqlstring}]::text[]) = 0 OR mc.clerk_type = ANY(ARRAY[${clerk_type:sqlstring}]::text[]))\n    GROUP BY mc.server_id, srv.name, mc.clerk_type\n    ORDER BY SUM(mc.memory_mb) DESC\n    LIMIT 5\n\n)\nSELECT\n    mc.collection_time AS time,\n    r.server_label || ' - ' || mc.clerk_type AS metric,\n    mc.memory_mb AS value\nFROM collect.v_memory_clerks AS mc\nJOIN ranked AS r\n  ON r.server_id = mc.server_id\n AND r.clerk_type = mc.clerk_type\nWHERE $__timeFilter(mc.collection_time)\n  AND mc.server_id IN (${server:csv})\nORDER BY 1\n"
         }
       ]
     },
@@ -496,7 +495,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "\nWITH ranked AS (\n\n    SELECT\n        mc.server_id,\n        srv.name AS server_label,\n        mc.clerk_type\n    FROM collect.v_memory_clerks AS mc\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = mc.server_id\n    WHERE $__timeFilter(mc.collection_time)\n      AND mc.server_id IN (${server:csv})\n      AND (ARRAY[${clerk_type:sqlstring}] @> ARRAY['*'] OR mc.clerk_type = ANY(ARRAY[${clerk_type:sqlstring}]))\n    GROUP BY mc.server_id, srv.name, mc.clerk_type\n    ORDER BY SUM(mc.memory_mb) DESC\n    LIMIT 5\n\n),\nlatest AS (\n    SELECT DISTINCT ON (mc.server_id, mc.clerk_type)\n        r.server_label,\n        mc.clerk_type,\n        mc.memory_mb\n    FROM collect.v_memory_clerks AS mc\n    JOIN ranked AS r\n      ON r.server_id = mc.server_id\n     AND r.clerk_type = mc.clerk_type\n    WHERE $__timeFilter(mc.collection_time)\n      AND mc.server_id IN (${server:csv})\n    ORDER BY mc.server_id, mc.clerk_type, mc.collection_time DESC\n),\nnon_bp AS (\n    SELECT *\n    FROM latest\n    WHERE clerk_type NOT ILIKE '%BUFFERPOOL%'\n)\nSELECT DISTINCT ON (n.server_label)\n    n.server_label AS \"Server\",\n    SUM(n.memory_mb) OVER (PARTITION BY n.server_label) AS \"Non-BP Total (MB)\",\n    regexp_replace(n.clerk_type, '^MEMORYCLERK_', '') AS \"Top Non-BP Clerk\",\n    n.memory_mb AS \"Top Non-BP Clerk (MB)\"\nFROM non_bp AS n\nORDER BY n.server_label, n.memory_mb DESC\n"
+          "rawSql": "\nWITH ranked AS (\n\n    SELECT\n        mc.server_id,\n        srv.name AS server_label,\n        mc.clerk_type\n    FROM collect.v_memory_clerks AS mc\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = mc.server_id\n    WHERE $__timeFilter(mc.collection_time)\n      AND mc.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${clerk_type:sqlstring}]::text[]) = 0 OR mc.clerk_type = ANY(ARRAY[${clerk_type:sqlstring}]::text[]))\n    GROUP BY mc.server_id, srv.name, mc.clerk_type\n    ORDER BY SUM(mc.memory_mb) DESC\n    LIMIT 5\n\n),\nlatest AS (\n    SELECT DISTINCT ON (mc.server_id, mc.clerk_type)\n        r.server_label,\n        mc.clerk_type,\n        mc.memory_mb\n    FROM collect.v_memory_clerks AS mc\n    JOIN ranked AS r\n      ON r.server_id = mc.server_id\n     AND r.clerk_type = mc.clerk_type\n    WHERE $__timeFilter(mc.collection_time)\n      AND mc.server_id IN (${server:csv})\n    ORDER BY mc.server_id, mc.clerk_type, mc.collection_time DESC\n),\nnon_bp AS (\n    SELECT *\n    FROM latest\n    WHERE clerk_type NOT ILIKE '%BUFFERPOOL%'\n)\nSELECT DISTINCT ON (n.server_label)\n    n.server_label AS \"Server\",\n    SUM(n.memory_mb) OVER (PARTITION BY n.server_label) AS \"Non-BP Total (MB)\",\n    regexp_replace(n.clerk_type, '^MEMORYCLERK_', '') AS \"Top Non-BP Clerk\",\n    n.memory_mb AS \"Top Non-BP Clerk (MB)\"\nFROM non_bp AS n\nORDER BY n.server_label, n.memory_mb DESC\n"
         }
       ]
     },

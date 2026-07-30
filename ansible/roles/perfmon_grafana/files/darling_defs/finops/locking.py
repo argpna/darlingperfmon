@@ -147,7 +147,7 @@ def locking():
 
     return finops_dashboard(
         uid("finops-locking"),
-        "FinOps - Locking & Contention",
+        "Locking & Contention",
         panels,
         [
             server_var(),

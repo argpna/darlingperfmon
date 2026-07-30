@@ -1,8 +1,8 @@
 {
   "uid": "darling-configuration",
-  "title": "Configuration",
+  "title": "Perfmon (Darling) - Configuration",
   "tags": [
-    "perfmon"
+    "perfmon-darling"
   ],
   "timezone": "",
   "schemaVersion": 39,
@@ -34,10 +34,10 @@
       "includeVars": true,
       "keepTime": true,
       "tags": [
-        "perfmon"
+        "perfmon-darling"
       ],
       "targetBlank": false,
-      "title": "All PerfMon Dashboards",
+      "title": "All PerfMon (Darling) Dashboards",
       "type": "dashboards",
       "url": ""
     },
@@ -47,10 +47,10 @@
       "includeVars": true,
       "keepTime": true,
       "tags": [
-        "finops"
+        "finops-darling"
       ],
       "targetBlank": false,
-      "title": "All FinOps Dashboards",
+      "title": "All FinOps (Darling) Dashboards",
       "type": "dashboards",
       "url": ""
     }
@@ -98,7 +98,6 @@
         "hide": 0,
         "multi": true,
         "includeAll": true,
-        "allValue": "*",
         "sort": 0,
         "description": "Scopes the database and scoped-configuration grids."
       }
@@ -416,7 +415,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "\nSELECT\n    srv.name AS \"Server\",\n    dc.database_name AS \"Database\",\n    dc.state_desc AS \"State\",\n    dc.compatibility_level AS \"Compat Level\",\n    dc.collation_name AS \"Collation\",\n    dc.recovery_model AS \"Recovery Model\",\n    CASE WHEN dc.is_read_only THEN 'Yes' ELSE 'No' END AS \"Read Only\",\n    CASE WHEN dc.is_auto_close_on THEN 'Yes' ELSE 'No' END AS \"Auto Close\",\n    CASE WHEN dc.is_auto_shrink_on THEN 'Yes' ELSE 'No' END AS \"Auto Shrink\",\n    CASE WHEN dc.is_auto_create_stats_on THEN 'Yes' ELSE 'No' END AS \"Auto Create Stats\",\n    CASE WHEN dc.is_auto_update_stats_on THEN 'Yes' ELSE 'No' END AS \"Auto Update Stats\",\n    CASE WHEN dc.is_auto_update_stats_async_on THEN 'Yes' ELSE 'No' END AS \"Auto Update Stats Async\",\n    CASE WHEN dc.is_read_committed_snapshot_on THEN 'Yes' ELSE 'No' END AS \"RCSI\",\n    dc.snapshot_isolation_state AS \"Snapshot Isolation\",\n    CASE WHEN dc.is_parameterization_forced THEN 'Yes' ELSE 'No' END AS \"Forced Parameterization\",\n    CASE WHEN dc.is_query_store_on THEN 'Yes' ELSE 'No' END AS \"Query Store\",\n    CASE WHEN dc.is_encrypted THEN 'Yes' ELSE 'No' END AS \"Encrypted\",\n    CASE WHEN dc.is_trustworthy_on THEN 'Yes' ELSE 'No' END AS \"Trustworthy\",\n    CASE WHEN dc.is_db_chaining_on THEN 'Yes' ELSE 'No' END AS \"DB Chaining\",\n    CASE WHEN dc.is_broker_enabled THEN 'Yes' ELSE 'No' END AS \"Broker\",\n    CASE WHEN dc.is_cdc_enabled THEN 'Yes' ELSE 'No' END AS \"CDC\",\n    CASE WHEN dc.is_mixed_page_allocation_on THEN 'Yes' ELSE 'No' END AS \"Mixed Page Allocation\",\n    dc.log_reuse_wait_desc AS \"Log Reuse Wait\",\n    dc.page_verify_option AS \"Page Verify\",\n    dc.target_recovery_time_seconds AS \"Target Recovery (s)\",\n    dc.delayed_durability AS \"Delayed Durability\",\n    CASE WHEN dc.is_accelerated_database_recovery_on THEN 'Yes' ELSE 'No' END AS \"ADR\",\n    CASE WHEN dc.is_memory_optimized_enabled THEN 'Yes' ELSE 'No' END AS \"Memory Optimized\",\n    CASE WHEN dc.is_optimized_locking_on THEN 'Yes' ELSE 'No' END AS \"Optimized Locking\"\nFROM collect.v_database_config AS dc\nJOIN config.config_monitored_servers AS srv ON srv.server_id = dc.server_id\nWHERE dc.server_id IN (${server:csv})\n  AND dc.capture_time = (\n        SELECT MAX(inner_cap.capture_time) FROM collect.v_database_config AS inner_cap\n        WHERE inner_cap.server_id = dc.server_id\n    )\n  AND (ARRAY[${database:sqlstring}] @> ARRAY['*'] OR dc.database_name = ANY(ARRAY[${database:sqlstring}]))\nORDER BY srv.name, dc.database_name\n"
+          "rawSql": "\nSELECT\n    srv.name AS \"Server\",\n    dc.database_name AS \"Database\",\n    dc.state_desc AS \"State\",\n    dc.compatibility_level AS \"Compat Level\",\n    dc.collation_name AS \"Collation\",\n    dc.recovery_model AS \"Recovery Model\",\n    CASE WHEN dc.is_read_only THEN 'Yes' ELSE 'No' END AS \"Read Only\",\n    CASE WHEN dc.is_auto_close_on THEN 'Yes' ELSE 'No' END AS \"Auto Close\",\n    CASE WHEN dc.is_auto_shrink_on THEN 'Yes' ELSE 'No' END AS \"Auto Shrink\",\n    CASE WHEN dc.is_auto_create_stats_on THEN 'Yes' ELSE 'No' END AS \"Auto Create Stats\",\n    CASE WHEN dc.is_auto_update_stats_on THEN 'Yes' ELSE 'No' END AS \"Auto Update Stats\",\n    CASE WHEN dc.is_auto_update_stats_async_on THEN 'Yes' ELSE 'No' END AS \"Auto Update Stats Async\",\n    CASE WHEN dc.is_read_committed_snapshot_on THEN 'Yes' ELSE 'No' END AS \"RCSI\",\n    dc.snapshot_isolation_state AS \"Snapshot Isolation\",\n    CASE WHEN dc.is_parameterization_forced THEN 'Yes' ELSE 'No' END AS \"Forced Parameterization\",\n    CASE WHEN dc.is_query_store_on THEN 'Yes' ELSE 'No' END AS \"Query Store\",\n    CASE WHEN dc.is_encrypted THEN 'Yes' ELSE 'No' END AS \"Encrypted\",\n    CASE WHEN dc.is_trustworthy_on THEN 'Yes' ELSE 'No' END AS \"Trustworthy\",\n    CASE WHEN dc.is_db_chaining_on THEN 'Yes' ELSE 'No' END AS \"DB Chaining\",\n    CASE WHEN dc.is_broker_enabled THEN 'Yes' ELSE 'No' END AS \"Broker\",\n    CASE WHEN dc.is_cdc_enabled THEN 'Yes' ELSE 'No' END AS \"CDC\",\n    CASE WHEN dc.is_mixed_page_allocation_on THEN 'Yes' ELSE 'No' END AS \"Mixed Page Allocation\",\n    dc.log_reuse_wait_desc AS \"Log Reuse Wait\",\n    dc.page_verify_option AS \"Page Verify\",\n    dc.target_recovery_time_seconds AS \"Target Recovery (s)\",\n    dc.delayed_durability AS \"Delayed Durability\",\n    CASE WHEN dc.is_accelerated_database_recovery_on THEN 'Yes' ELSE 'No' END AS \"ADR\",\n    CASE WHEN dc.is_memory_optimized_enabled THEN 'Yes' ELSE 'No' END AS \"Memory Optimized\",\n    CASE WHEN dc.is_optimized_locking_on THEN 'Yes' ELSE 'No' END AS \"Optimized Locking\"\nFROM collect.v_database_config AS dc\nJOIN config.config_monitored_servers AS srv ON srv.server_id = dc.server_id\nWHERE dc.server_id IN (${server:csv})\n  AND dc.capture_time = (\n        SELECT MAX(inner_cap.capture_time) FROM collect.v_database_config AS inner_cap\n        WHERE inner_cap.server_id = dc.server_id\n    )\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR dc.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nORDER BY srv.name, dc.database_name\n"
         }
       ]
     },
@@ -490,7 +489,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "\nSELECT\n    srv.name AS \"Server\",\n    dsc.database_name AS \"Database\",\n    dsc.configuration_name AS \"Setting\",\n    dsc.value AS \"Value\",\n    dsc.value_for_secondary AS \"Value For Secondary\"\nFROM collect.v_database_scoped_config AS dsc\nJOIN config.config_monitored_servers AS srv ON srv.server_id = dsc.server_id\nWHERE dsc.server_id IN (${server:csv})\n  AND dsc.capture_time = (\n        SELECT MAX(inner_cap.capture_time) FROM collect.v_database_scoped_config AS inner_cap\n        WHERE inner_cap.server_id = dsc.server_id\n    )\n  AND (ARRAY[${database:sqlstring}] @> ARRAY['*'] OR dsc.database_name = ANY(ARRAY[${database:sqlstring}]))\nORDER BY srv.name, dsc.database_name, dsc.configuration_name\n"
+          "rawSql": "\nSELECT\n    srv.name AS \"Server\",\n    dsc.database_name AS \"Database\",\n    dsc.configuration_name AS \"Setting\",\n    dsc.value AS \"Value\",\n    dsc.value_for_secondary AS \"Value For Secondary\"\nFROM collect.v_database_scoped_config AS dsc\nJOIN config.config_monitored_servers AS srv ON srv.server_id = dsc.server_id\nWHERE dsc.server_id IN (${server:csv})\n  AND dsc.capture_time = (\n        SELECT MAX(inner_cap.capture_time) FROM collect.v_database_scoped_config AS inner_cap\n        WHERE inner_cap.server_id = dsc.server_id\n    )\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR dsc.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nORDER BY srv.name, dsc.database_name, dsc.configuration_name\n"
         }
       ]
     },

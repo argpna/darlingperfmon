@@ -176,7 +176,7 @@ def high_impact():
 
     return finops_dashboard(
         uid("finops-high-impact"),
-        "FinOps - High Impact",
+        "High Impact",
         panels,
         [server_var()],
     )

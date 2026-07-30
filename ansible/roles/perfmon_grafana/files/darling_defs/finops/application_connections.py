@@ -88,7 +88,7 @@ def application_connections():
 
     return finops_dashboard(
         uid("finops-application-connections"),
-        "FinOps - Application Connections",
+        "Application Connections",
         panels,
         [server_var()],
     )

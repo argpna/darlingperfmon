@@ -202,5 +202,8 @@ def perfmon():
     )
 
     return dashboard(
-        uid("perfmon"), "Perfmon", panels, [server_var(), pack_var, counter_var]
+        uid("perfmon"),
+        "Perfmon Counters",
+        panels,
+        [server_var(), pack_var, counter_var],
     )

@@ -1,8 +1,8 @@
 {
   "uid": "darling-availability-group-detail",
-  "title": "Availability Group Detail",
+  "title": "Perfmon (Darling) - Availability Group Detail",
   "tags": [
-    "perfmon-detail",
+    "perfmon-darling-detail",
     "nav-only"
   ],
   "timezone": "",
@@ -35,10 +35,10 @@
       "includeVars": true,
       "keepTime": true,
       "tags": [
-        "perfmon"
+        "perfmon-darling"
       ],
       "targetBlank": false,
-      "title": "All PerfMon Dashboards",
+      "title": "All PerfMon (Darling) Dashboards",
       "type": "dashboards",
       "url": ""
     }

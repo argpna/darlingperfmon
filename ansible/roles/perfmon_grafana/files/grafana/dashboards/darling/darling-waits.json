@@ -1,8 +1,8 @@
 {
   "uid": "darling-waits",
-  "title": "Wait Stats",
+  "title": "Perfmon (Darling) - Wait Stats",
   "tags": [
-    "perfmon"
+    "perfmon-darling"
   ],
   "timezone": "",
   "schemaVersion": 39,
@@ -34,10 +34,10 @@
       "includeVars": true,
       "keepTime": true,
       "tags": [
-        "perfmon"
+        "perfmon-darling"
       ],
       "targetBlank": false,
-      "title": "All PerfMon Dashboards",
+      "title": "All PerfMon (Darling) Dashboards",
       "type": "dashboards",
       "url": ""
     },
@@ -47,10 +47,10 @@
       "includeVars": true,
       "keepTime": true,
       "tags": [
-        "finops"
+        "finops-darling"
       ],
       "targetBlank": false,
-      "title": "All FinOps Dashboards",
+      "title": "All FinOps (Darling) Dashboards",
       "type": "dashboards",
       "url": ""
     }
@@ -98,7 +98,6 @@
         "hide": 0,
         "multi": true,
         "includeAll": true,
-        "allValue": "*",
         "sort": 0,
         "description": "Wait types collected over the window, heaviest first. All plots the top 20."
       }
@@ -163,7 +162,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nWITH ranked AS (\n    SELECT\n        ws.server_id,\n        srv.name AS server_label,\n        ws.wait_type\n    FROM collect.v_wait_stats AS ws\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = ws.server_id\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n      AND (ARRAY[${wait_type:sqlstring}] @> ARRAY['*'] OR ws.wait_type = ANY(ARRAY[${wait_type:sqlstring}]))\n    GROUP BY ws.server_id, srv.name, ws.wait_type\n    ORDER BY SUM(ws.delta_wait_time_ms) DESC\n    LIMIT 20\n),\nwindowed AS (\n    SELECT\n        r.server_label,\n        ws.wait_type,\n        ws.collection_time,\n        ws.delta_wait_time_ms,\n        ws.delta_signal_wait_time_ms,\n        ws.delta_waiting_tasks,\n        EXTRACT(EPOCH FROM (date_trunc('second', ws.collection_time)\n            - date_trunc('second', LAG(ws.collection_time) OVER (\n                PARTITION BY ws.server_id, ws.wait_type\n                ORDER BY ws.collection_time)))) AS interval_seconds\n    FROM collect.v_wait_stats AS ws\n    JOIN ranked AS r\n      ON r.server_id = ws.server_id\n     AND r.wait_type = ws.wait_type\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n)\nSELECT\n    collection_time AS time,\n    server_label || ' - ' || wait_type AS metric,\n    CASE\n        WHEN interval_seconds > 0\n        THEN delta_wait_time_ms::double precision / interval_seconds\n        ELSE 0\n    END AS value\nFROM windowed\nORDER BY 1\n"
+          "rawSql": "\nWITH ranked AS (\n    SELECT\n        ws.server_id,\n        srv.name AS server_label,\n        ws.wait_type\n    FROM collect.v_wait_stats AS ws\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = ws.server_id\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${wait_type:sqlstring}]::text[]) = 0 OR ws.wait_type = ANY(ARRAY[${wait_type:sqlstring}]::text[]))\n    GROUP BY ws.server_id, srv.name, ws.wait_type\n    ORDER BY SUM(ws.delta_wait_time_ms) DESC\n    LIMIT 20\n),\nwindowed AS (\n    SELECT\n        r.server_label,\n        ws.wait_type,\n        ws.collection_time,\n        ws.delta_wait_time_ms,\n        ws.delta_signal_wait_time_ms,\n        ws.delta_waiting_tasks,\n        EXTRACT(EPOCH FROM (date_trunc('second', ws.collection_time)\n            - date_trunc('second', LAG(ws.collection_time) OVER (\n                PARTITION BY ws.server_id, ws.wait_type\n                ORDER BY ws.collection_time)))) AS interval_seconds\n    FROM collect.v_wait_stats AS ws\n    JOIN ranked AS r\n      ON r.server_id = ws.server_id\n     AND r.wait_type = ws.wait_type\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n)\nSELECT\n    collection_time AS time,\n    server_label || ' - ' || wait_type AS metric,\n    CASE\n        WHEN interval_seconds > 0\n        THEN delta_wait_time_ms::double precision / interval_seconds\n        ELSE 0\n    END AS value\nFROM windowed\nORDER BY 1\n"
         }
       ]
     },
@@ -225,7 +224,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nWITH ranked AS (\n    SELECT\n        ws.server_id,\n        srv.name AS server_label,\n        ws.wait_type\n    FROM collect.v_wait_stats AS ws\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = ws.server_id\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n      AND (ARRAY[${wait_type:sqlstring}] @> ARRAY['*'] OR ws.wait_type = ANY(ARRAY[${wait_type:sqlstring}]))\n    GROUP BY ws.server_id, srv.name, ws.wait_type\n    ORDER BY SUM(ws.delta_wait_time_ms) DESC\n    LIMIT 20\n),\nwindowed AS (\n    SELECT\n        r.server_label,\n        ws.wait_type,\n        ws.collection_time,\n        ws.delta_wait_time_ms,\n        ws.delta_signal_wait_time_ms,\n        ws.delta_waiting_tasks,\n        EXTRACT(EPOCH FROM (date_trunc('second', ws.collection_time)\n            - date_trunc('second', LAG(ws.collection_time) OVER (\n                PARTITION BY ws.server_id, ws.wait_type\n                ORDER BY ws.collection_time)))) AS interval_seconds\n    FROM collect.v_wait_stats AS ws\n    JOIN ranked AS r\n      ON r.server_id = ws.server_id\n     AND r.wait_type = ws.wait_type\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n)\nSELECT\n    collection_time AS time,\n    server_label || ' - ' || wait_type AS metric,\n    CASE\n        WHEN delta_waiting_tasks > 0\n        THEN delta_wait_time_ms::double precision / delta_waiting_tasks\n        ELSE 0\n    END AS value\nFROM windowed\nORDER BY 1\n"
+          "rawSql": "\nWITH ranked AS (\n    SELECT\n        ws.server_id,\n        srv.name AS server_label,\n        ws.wait_type\n    FROM collect.v_wait_stats AS ws\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = ws.server_id\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${wait_type:sqlstring}]::text[]) = 0 OR ws.wait_type = ANY(ARRAY[${wait_type:sqlstring}]::text[]))\n    GROUP BY ws.server_id, srv.name, ws.wait_type\n    ORDER BY SUM(ws.delta_wait_time_ms) DESC\n    LIMIT 20\n),\nwindowed AS (\n    SELECT\n        r.server_label,\n        ws.wait_type,\n        ws.collection_time,\n        ws.delta_wait_time_ms,\n        ws.delta_signal_wait_time_ms,\n        ws.delta_waiting_tasks,\n        EXTRACT(EPOCH FROM (date_trunc('second', ws.collection_time)\n            - date_trunc('second', LAG(ws.collection_time) OVER (\n                PARTITION BY ws.server_id, ws.wait_type\n                ORDER BY ws.collection_time)))) AS interval_seconds\n    FROM collect.v_wait_stats AS ws\n    JOIN ranked AS r\n      ON r.server_id = ws.server_id\n     AND r.wait_type = ws.wait_type\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n)\nSELECT\n    collection_time AS time,\n    server_label || ' - ' || wait_type AS metric,\n    CASE\n        WHEN delta_waiting_tasks > 0\n        THEN delta_wait_time_ms::double precision / delta_waiting_tasks\n        ELSE 0\n    END AS value\nFROM windowed\nORDER BY 1\n"
         }
       ]
     },
@@ -287,7 +286,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nWITH ranked AS (\n    SELECT\n        ws.server_id,\n        srv.name AS server_label,\n        ws.wait_type\n    FROM collect.v_wait_stats AS ws\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = ws.server_id\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n      AND (ARRAY[${wait_type:sqlstring}] @> ARRAY['*'] OR ws.wait_type = ANY(ARRAY[${wait_type:sqlstring}]))\n    GROUP BY ws.server_id, srv.name, ws.wait_type\n    ORDER BY SUM(ws.delta_wait_time_ms) DESC\n    LIMIT 20\n),\nwindowed AS (\n    SELECT\n        r.server_label,\n        ws.wait_type,\n        ws.collection_time,\n        ws.delta_wait_time_ms,\n        ws.delta_signal_wait_time_ms,\n        ws.delta_waiting_tasks,\n        EXTRACT(EPOCH FROM (date_trunc('second', ws.collection_time)\n            - date_trunc('second', LAG(ws.collection_time) OVER (\n                PARTITION BY ws.server_id, ws.wait_type\n                ORDER BY ws.collection_time)))) AS interval_seconds\n    FROM collect.v_wait_stats AS ws\n    JOIN ranked AS r\n      ON r.server_id = ws.server_id\n     AND r.wait_type = ws.wait_type\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n)\nSELECT\n    collection_time AS time,\n    server_label || ' - ' || wait_type AS metric,\n    CASE\n        WHEN interval_seconds > 0\n        THEN delta_signal_wait_time_ms::double precision / interval_seconds\n        ELSE 0\n    END AS value\nFROM windowed\nORDER BY 1\n"
+          "rawSql": "\nWITH ranked AS (\n    SELECT\n        ws.server_id,\n        srv.name AS server_label,\n        ws.wait_type\n    FROM collect.v_wait_stats AS ws\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = ws.server_id\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${wait_type:sqlstring}]::text[]) = 0 OR ws.wait_type = ANY(ARRAY[${wait_type:sqlstring}]::text[]))\n    GROUP BY ws.server_id, srv.name, ws.wait_type\n    ORDER BY SUM(ws.delta_wait_time_ms) DESC\n    LIMIT 20\n),\nwindowed AS (\n    SELECT\n        r.server_label,\n        ws.wait_type,\n        ws.collection_time,\n        ws.delta_wait_time_ms,\n        ws.delta_signal_wait_time_ms,\n        ws.delta_waiting_tasks,\n        EXTRACT(EPOCH FROM (date_trunc('second', ws.collection_time)\n            - date_trunc('second', LAG(ws.collection_time) OVER (\n                PARTITION BY ws.server_id, ws.wait_type\n                ORDER BY ws.collection_time)))) AS interval_seconds\n    FROM collect.v_wait_stats AS ws\n    JOIN ranked AS r\n      ON r.server_id = ws.server_id\n     AND r.wait_type = ws.wait_type\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n)\nSELECT\n    collection_time AS time,\n    server_label || ' - ' || wait_type AS metric,\n    CASE\n        WHEN interval_seconds > 0\n        THEN delta_signal_wait_time_ms::double precision / interval_seconds\n        ELSE 0\n    END AS value\nFROM windowed\nORDER BY 1\n"
         }
       ]
     }

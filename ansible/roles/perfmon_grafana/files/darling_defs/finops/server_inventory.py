@@ -221,7 +221,7 @@ def server_inventory():
 
     return finops_dashboard(
         uid("finops-server-inventory"),
-        "FinOps - Server Inventory",
+        "Server Inventory",
         panels,
         [],
     )

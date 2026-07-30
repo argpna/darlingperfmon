@@ -1,8 +1,8 @@
 {
   "uid": "darling-fleet",
-  "title": "Fleet Overview",
+  "title": "Perfmon (Darling) - Fleet Overview",
   "tags": [
-    "perfmon",
+    "perfmon-darling",
     "begin-here"
   ],
   "timezone": "",

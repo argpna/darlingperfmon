@@ -324,7 +324,7 @@ def index_analysis():
 
     return finops_dashboard(
         uid("finops-index-analysis"),
-        "FinOps - Index Analysis",
+        "Index Analysis",
         panels,
         [server_var()],
         refresh="15m",
