@@ -1,0 +1,2952 @@
+{
+  "uid": "darling-system-events",
+  "title": "Perfmon (Darling) - System Events",
+  "tags": [
+    "perfmon-darling"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon-darling"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon (Darling) Dashboards",
+      "type": "dashboards",
+      "url": ""
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "finops-darling"
+      ],
+      "targetBlank": false,
+      "title": "All FinOps (Darling) Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      },
+      {
+        "name": "database",
+        "label": "Database",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "\nSELECT database_name FROM (\n    SELECT DISTINCT d.database_name\n    FROM collect.v_database_size_stats AS d\n    WHERE d.server_id IN (${server:csv})\n    UNION\n    SELECT DISTINCT dte.database_name\n    FROM collect.default_trace_events AS dte\n    WHERE dte.server_id IN (${server:csv})\n) AS dbs\nWHERE database_name IS NOT NULL\nORDER BY 1\n",
+        "definition": "\nSELECT database_name FROM (\n    SELECT DISTINCT d.database_name\n    FROM collect.v_database_size_stats AS d\n    WHERE d.server_id IN (${server:csv})\n    UNION\n    SELECT DISTINCT dte.database_name\n    FROM collect.default_trace_events AS dte\n    WHERE dte.server_id IN (${server:csv})\n) AS dbs\nWHERE database_name IS NOT NULL\nORDER BY 1\n",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "refresh": 2,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 0,
+        "description": "Scopes Severe Errors and Default Trace to a database."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Corruption Events",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Bad Pages & Dump Requests",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//system', ev.xml)) AS node\n)\nSELECT\n    n.event_time AS time,\n    srv.name || ' - ' || s.label AS metric,\n    s.value::double precision AS value\nFROM nodes n\nJOIN config.config_monitored_servers AS srv ON srv.server_id = n.server_id\nCROSS JOIN LATERAL (VALUES\n    ('Bad Pages Detected', (xpath('/*/@BadPagesDetected', node))[1]::text),\n        ('Bad Pages Fixed', (xpath('/*/@BadPagesFixed', node))[1]::text),\n        ('Interval Dump Requests', (xpath('/*/@intervalDumpRequests', node))[1]::text)\n) AS s(label, value)\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Access Violations",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//system', ev.xml)) AS node\n)\nSELECT\n    n.event_time AS time,\n    srv.name || ' - ' || s.label AS metric,\n    s.value::double precision AS value\nFROM nodes n\nJOIN config.config_monitored_servers AS srv ON srv.server_id = n.server_id\nCROSS JOIN LATERAL (VALUES\n    ('Access Violation Occurred', (xpath('/*/@isAccessViolationOccurred', node))[1]::text),\n        ('Write Access Violations', (xpath('/*/@writeAccessViolationCount', node))[1]::text)\n) AS s(label, value)\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "row",
+      "title": "Contention Events",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "panels": []
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Non-Yielding Tasks & Latch Warnings",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//system', ev.xml)) AS node\n)\nSELECT\n    n.event_time AS time,\n    srv.name || ' - ' || s.label AS metric,\n    s.value::double precision AS value\nFROM nodes n\nJOIN config.config_monitored_servers AS srv ON srv.server_id = n.server_id\nCROSS JOIN LATERAL (VALUES\n    ('Non-Yielding Tasks', (xpath('/*/@nonYieldingTasksReported', node))[1]::text),\n        ('Latch Warnings', (xpath('/*/@latchWarnings', node))[1]::text),\n        ('Spinlock Backoffs', (xpath('/*/@spinlockBackoffs', node))[1]::text)\n) AS s(label, value)\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "SQL CPU vs System CPU",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "percent",
+          "max": 100,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//system', ev.xml)) AS node\n)\nSELECT\n    n.event_time AS time,\n    srv.name || ' - ' || s.label AS metric,\n    s.value::double precision AS value\nFROM nodes n\nJOIN config.config_monitored_servers AS srv ON srv.server_id = n.server_id\nCROSS JOIN LATERAL (VALUES\n    ('SQL CPU %', (xpath('/*/@sqlCpuUtilization', node))[1]::text),\n        ('System CPU %', (xpath('/*/@systemCpuUtilization', node))[1]::text)\n) AS s(label, value)\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Sick Spinlocks by Type (top 5)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT\n        ev.server_id,\n        ev.event_time,\n        (xpath('/*/@sickSpinlockType', node))[1]::text AS sick_type,\n        COALESCE((xpath('/*/@spinlockBackoffs', node))[1]::text::bigint, 1) AS backoffs\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//system', ev.xml)) AS node\n),\n/* Postgres always carries the literal \"none\" rather than a null attribute when no sick\n   spinlock was recorded - excluded here so the top 5 ranks real occurrences, matching the\n   T-SQL precedent's IS NOT NULL intent. */\ncandidates AS (\n    SELECT sick_type FROM nodes\n    WHERE sick_type IS NOT NULL AND sick_type <> 'none'\n    GROUP BY sick_type\n    ORDER BY COUNT(*) DESC\n    LIMIT 5\n)\nSELECT\n    n.event_time AS time,\n    srv.name || ' - ' || n.sick_type AS metric,\n    n.backoffs::double precision AS value\nFROM nodes n\nJOIN config.config_monitored_servers AS srv ON srv.server_id = n.server_id\nWHERE n.sick_type IN (SELECT sick_type FROM candidates)\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "row",
+      "title": "Scheduler Issues",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 26
+      },
+      "panels": []
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "Total Issues (range)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 4,
+        "x": 0,
+        "y": 27
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'scheduler_monitor_system_health_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"scheduler_id\"]/value/text()', ev.xml))[1]::text::int AS scheduler_id,\n    (xpath('/*/data[@name=\"cpu_id\"]/value/text()', ev.xml))[1]::text::int AS cpu_id,\n    (xpath('/*/data[@name=\"status\"]/text/text()', ev.xml))[1]::text AS status,\n    CASE WHEN (xpath('/*/data[@name=\"is_online\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_online\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_online,\n    CASE WHEN (xpath('/*/data[@name=\"is_runnable\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_runnable\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_runnable,\n    CASE WHEN (xpath('/*/data[@name=\"is_running\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_running\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_running,\n    (xpath('/*/data[@name=\"non_yielding_time\"]/value/text()', ev.xml))[1]::text::bigint AS non_yielding_time_ms,\n    (xpath('/*/data[@name=\"thread_quantum\"]/value/text()', ev.xml))[1]::text::bigint AS thread_quantum_ms\nFROM events ev\n)\n            SELECT COUNT(*) AS v FROM sig WHERE status = 'WARNING'"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Total Non-Yield Time (range)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 4,
+        "x": 4,
+        "y": 27
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'scheduler_monitor_system_health_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"scheduler_id\"]/value/text()', ev.xml))[1]::text::int AS scheduler_id,\n    (xpath('/*/data[@name=\"cpu_id\"]/value/text()', ev.xml))[1]::text::int AS cpu_id,\n    (xpath('/*/data[@name=\"status\"]/text/text()', ev.xml))[1]::text AS status,\n    CASE WHEN (xpath('/*/data[@name=\"is_online\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_online\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_online,\n    CASE WHEN (xpath('/*/data[@name=\"is_runnable\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_runnable\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_runnable,\n    CASE WHEN (xpath('/*/data[@name=\"is_running\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_running\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_running,\n    (xpath('/*/data[@name=\"non_yielding_time\"]/value/text()', ev.xml))[1]::text::bigint AS non_yielding_time_ms,\n    (xpath('/*/data[@name=\"thread_quantum\"]/value/text()', ev.xml))[1]::text::bigint AS thread_quantum_ms\nFROM events ev\n)\n            SELECT COALESCE(SUM(non_yielding_time_ms), 0) AS v FROM sig WHERE status = 'WARNING'"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Max Non-Yield Time (range)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 4,
+        "x": 8,
+        "y": 27
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'scheduler_monitor_system_health_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"scheduler_id\"]/value/text()', ev.xml))[1]::text::int AS scheduler_id,\n    (xpath('/*/data[@name=\"cpu_id\"]/value/text()', ev.xml))[1]::text::int AS cpu_id,\n    (xpath('/*/data[@name=\"status\"]/text/text()', ev.xml))[1]::text AS status,\n    CASE WHEN (xpath('/*/data[@name=\"is_online\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_online\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_online,\n    CASE WHEN (xpath('/*/data[@name=\"is_runnable\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_runnable\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_runnable,\n    CASE WHEN (xpath('/*/data[@name=\"is_running\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_running\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_running,\n    (xpath('/*/data[@name=\"non_yielding_time\"]/value/text()', ev.xml))[1]::text::bigint AS non_yielding_time_ms,\n    (xpath('/*/data[@name=\"thread_quantum\"]/value/text()', ev.xml))[1]::text::bigint AS thread_quantum_ms\nFROM events ev\n)\n            SELECT COALESCE(MAX(non_yielding_time_ms), 0) AS v FROM sig WHERE status = 'WARNING'"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "Distinct Schedulers Affected",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 4,
+        "x": 12,
+        "y": 27
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'scheduler_monitor_system_health_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"scheduler_id\"]/value/text()', ev.xml))[1]::text::int AS scheduler_id,\n    (xpath('/*/data[@name=\"cpu_id\"]/value/text()', ev.xml))[1]::text::int AS cpu_id,\n    (xpath('/*/data[@name=\"status\"]/text/text()', ev.xml))[1]::text AS status,\n    CASE WHEN (xpath('/*/data[@name=\"is_online\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_online\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_online,\n    CASE WHEN (xpath('/*/data[@name=\"is_runnable\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_runnable\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_runnable,\n    CASE WHEN (xpath('/*/data[@name=\"is_running\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_running\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_running,\n    (xpath('/*/data[@name=\"non_yielding_time\"]/value/text()', ev.xml))[1]::text::bigint AS non_yielding_time_ms,\n    (xpath('/*/data[@name=\"thread_quantum\"]/value/text()', ev.xml))[1]::text::bigint AS thread_quantum_ms\nFROM events ev\n)\n            SELECT COUNT(DISTINCT scheduler_id) AS v FROM sig WHERE status = 'WARNING'"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "Offline Scheduler Events",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 4,
+        "x": 16,
+        "y": 27
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'scheduler_monitor_system_health_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"scheduler_id\"]/value/text()', ev.xml))[1]::text::int AS scheduler_id,\n    (xpath('/*/data[@name=\"cpu_id\"]/value/text()', ev.xml))[1]::text::int AS cpu_id,\n    (xpath('/*/data[@name=\"status\"]/text/text()', ev.xml))[1]::text AS status,\n    CASE WHEN (xpath('/*/data[@name=\"is_online\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_online\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_online,\n    CASE WHEN (xpath('/*/data[@name=\"is_runnable\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_runnable\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_runnable,\n    CASE WHEN (xpath('/*/data[@name=\"is_running\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_running\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_running,\n    (xpath('/*/data[@name=\"non_yielding_time\"]/value/text()', ev.xml))[1]::text::bigint AS non_yielding_time_ms,\n    (xpath('/*/data[@name=\"thread_quantum\"]/value/text()', ev.xml))[1]::text::bigint AS thread_quantum_ms\nFROM events ev\n)\n            SELECT COUNT(*) AS v FROM sig WHERE status = 'WARNING' AND is_online = false"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Non-Yielding Scheduler Time",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 33
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'scheduler_monitor_system_health_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"scheduler_id\"]/value/text()', ev.xml))[1]::text::int AS scheduler_id,\n    (xpath('/*/data[@name=\"cpu_id\"]/value/text()', ev.xml))[1]::text::int AS cpu_id,\n    (xpath('/*/data[@name=\"status\"]/text/text()', ev.xml))[1]::text AS status,\n    CASE WHEN (xpath('/*/data[@name=\"is_online\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_online\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_online,\n    CASE WHEN (xpath('/*/data[@name=\"is_runnable\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_runnable\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_runnable,\n    CASE WHEN (xpath('/*/data[@name=\"is_running\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_running\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_running,\n    (xpath('/*/data[@name=\"non_yielding_time\"]/value/text()', ev.xml))[1]::text::bigint AS non_yielding_time_ms,\n    (xpath('/*/data[@name=\"thread_quantum\"]/value/text()', ev.xml))[1]::text::bigint AS thread_quantum_ms\nFROM events ev\n)\nSELECT\n    sig.event_time AS time,\n    srv.name || ' - Scheduler ' || sig.scheduler_id AS metric,\n    sig.non_yielding_time_ms::double precision AS value\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nWHERE sig.status = 'WARNING'\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "table",
+      "title": "Scheduler Issue Events",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 41
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Event Time",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'scheduler_monitor_system_health_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"scheduler_id\"]/value/text()', ev.xml))[1]::text::int AS scheduler_id,\n    (xpath('/*/data[@name=\"cpu_id\"]/value/text()', ev.xml))[1]::text::int AS cpu_id,\n    (xpath('/*/data[@name=\"status\"]/text/text()', ev.xml))[1]::text AS status,\n    CASE WHEN (xpath('/*/data[@name=\"is_online\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_online\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_online,\n    CASE WHEN (xpath('/*/data[@name=\"is_runnable\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_runnable\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_runnable,\n    CASE WHEN (xpath('/*/data[@name=\"is_running\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_running\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_running,\n    (xpath('/*/data[@name=\"non_yielding_time\"]/value/text()', ev.xml))[1]::text::bigint AS non_yielding_time_ms,\n    (xpath('/*/data[@name=\"thread_quantum\"]/value/text()', ev.xml))[1]::text::bigint AS thread_quantum_ms\nFROM events ev\n)\nSELECT\n    sig.event_time AS \"Event Time\",\n    srv.name AS \"Server\",\n    sig.scheduler_id AS \"Scheduler\",\n    sig.cpu_id AS \"CPU\",\n    sig.status AS \"Status\",\n    sig.is_online AS \"Online\",\n    sig.is_runnable AS \"Runnable\",\n    sig.is_running AS \"Running\",\n    sig.non_yielding_time_ms AS \"Non-Yield (ms)\",\n    sig.thread_quantum_ms AS \"Thread Quantum (ms)\"\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nWHERE sig.status = 'WARNING'\nORDER BY sig.event_time DESC\nLIMIT 200\n"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "row",
+      "title": "Severe Errors",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 51
+      },
+      "panels": []
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Severe Errors per Hour",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 52
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'error_reported'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nparsed AS (\n    SELECT\n        ev.server_id,\n        ev.event_time,\n        (xpath('/*/data[@name=\"error_number\"]/value/text()', ev.xml))[1]::text::int AS error_number,\n        (xpath('/*/data[@name=\"severity\"]/value/text()', ev.xml))[1]::text::int AS severity,\n        (xpath('/*/data[@name=\"state\"]/value/text()', ev.xml))[1]::text::int AS state,\n        (xpath('/*/data[@name=\"database_id\"]/value/text()', ev.xml))[1]::text::int AS database_id,\n        (xpath('/*/data[@name=\"message\"]/value/text()', ev.xml))[1]::text AS message\n    FROM events ev\n),\n/* database_size_stats carries both database_id and database_name for every online\n   database - the same mapping source ResolveDatabaseName uses. */\ndbmap AS (\n    SELECT DISTINCT ON (d.server_id, d.database_id)\n        d.server_id, d.database_id, d.database_name\n    FROM collect.v_database_size_stats AS d\n    ORDER BY d.server_id, d.database_id, d.collection_time DESC\n)\nSELECT\n    p.server_id,\n    p.event_time,\n    p.error_number,\n    p.severity,\n    p.state,\n    p.message,\n    COALESCE(\n        m.database_name,\n        CASE WHEN p.database_id IS NULL OR p.database_id = 0\n            THEN '' ELSE 'database_id ' || p.database_id END\n    ) AS resolved_database_name\nFROM parsed p\nLEFT JOIN dbmap m ON m.server_id = p.server_id AND m.database_id = p.database_id\n)\nSELECT\n    date_trunc('hour', sig.event_time) AS time,\n    srv.name AS metric,\n    COUNT(*)::double precision AS value\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nWHERE sig.severity >= 19\n  AND (sig.error_number IS NULL OR sig.error_number NOT IN (17830, 18056))\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR sig.resolved_database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nGROUP BY 1, 2\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "table",
+      "title": "Severe Error Log",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 52
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Event Time",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'error_reported'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nparsed AS (\n    SELECT\n        ev.server_id,\n        ev.event_time,\n        (xpath('/*/data[@name=\"error_number\"]/value/text()', ev.xml))[1]::text::int AS error_number,\n        (xpath('/*/data[@name=\"severity\"]/value/text()', ev.xml))[1]::text::int AS severity,\n        (xpath('/*/data[@name=\"state\"]/value/text()', ev.xml))[1]::text::int AS state,\n        (xpath('/*/data[@name=\"database_id\"]/value/text()', ev.xml))[1]::text::int AS database_id,\n        (xpath('/*/data[@name=\"message\"]/value/text()', ev.xml))[1]::text AS message\n    FROM events ev\n),\n/* database_size_stats carries both database_id and database_name for every online\n   database - the same mapping source ResolveDatabaseName uses. */\ndbmap AS (\n    SELECT DISTINCT ON (d.server_id, d.database_id)\n        d.server_id, d.database_id, d.database_name\n    FROM collect.v_database_size_stats AS d\n    ORDER BY d.server_id, d.database_id, d.collection_time DESC\n)\nSELECT\n    p.server_id,\n    p.event_time,\n    p.error_number,\n    p.severity,\n    p.state,\n    p.message,\n    COALESCE(\n        m.database_name,\n        CASE WHEN p.database_id IS NULL OR p.database_id = 0\n            THEN '' ELSE 'database_id ' || p.database_id END\n    ) AS resolved_database_name\nFROM parsed p\nLEFT JOIN dbmap m ON m.server_id = p.server_id AND m.database_id = p.database_id\n)\nSELECT\n    sig.event_time AS \"Event Time\",\n    srv.name AS \"Server\",\n    sig.error_number AS \"Error #\",\n    sig.severity AS \"Severity\",\n    sig.state AS \"State\",\n    sig.resolved_database_name AS \"Database\",\n    sig.message AS \"Message\"\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nWHERE sig.severity >= 19\n  AND (sig.error_number IS NULL OR sig.error_number NOT IN (17830, 18056))\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR sig.resolved_database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nORDER BY sig.event_time DESC\nLIMIT 200\n"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "type": "row",
+      "title": "Memory Conditions",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 60
+      },
+      "panels": []
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "OOM Exceptions (hourly)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 61
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nresources AS (\n    SELECT ev.server_id, ev.event_time, ev.xml,\n        (xpath('/*/@lastNotification', node))[1]::text AS last_notification,\n        (xpath('/*/@outOfMemoryExceptions', node))[1]::text::bigint AS out_of_memory_exceptions,\n        CASE WHEN (xpath('/*/@isAnyPoolOutOfMemory', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@isAnyPoolOutOfMemory', node))[1]::text IN ('0', 'false') THEN false END AS is_any_pool_out_of_memory,\n        (xpath('/*/@processOutOfMemoryPeriod', node))[1]::text::bigint AS process_out_of_memory_period\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//resource', ev.xml)) AS node\n)\nSELECT\n    r.server_id,\n    r.event_time,\n    (xpath('//memoryReport/@name', r.xml))[1]::text AS name,\n    r.last_notification,\n    r.out_of_memory_exceptions,\n    r.is_any_pool_out_of_memory,\n    r.process_out_of_memory_period,\n    (xpath('//entry[@description=\"Available Physical Memory\"]/@value', r.xml))[1]::text::bigint / 1073741824 AS available_physical_memory_gb,\n    (xpath('//entry[@description=\"Available Virtual Memory\"]/@value', r.xml))[1]::text::bigint / 1073741824 AS available_virtual_memory_gb,\n    (xpath('//entry[@description=\"Available Paging File\"]/@value', r.xml))[1]::text::bigint / 1073741824 AS available_paging_file_gb,\n    (xpath('//entry[@description=\"Working Set\"]/@value', r.xml))[1]::text::bigint / 1073741824 AS working_set_gb,\n    (xpath('//entry[@description=\"Percent of Committed Memory in WS\"]/@value', r.xml))[1]::text::bigint AS percent_of_committed_memory_in_ws,\n    (xpath('//entry[@description=\"Page Faults\"]/@value', r.xml))[1]::text::bigint AS page_faults,\n    (xpath('//entry[@description=\"System physical memory high\"]/@value', r.xml))[1]::text::bigint AS system_physical_memory_high,\n    (xpath('//entry[@description=\"System physical memory low\"]/@value', r.xml))[1]::text::bigint AS system_physical_memory_low,\n    (xpath('//entry[@description=\"Process physical memory low\"]/@value', r.xml))[1]::text::bigint AS process_physical_memory_low,\n    (xpath('//entry[@description=\"Process virtual memory low\"]/@value', r.xml))[1]::text::bigint AS process_virtual_memory_low,\n    (xpath('//entry[@description=\"VM Reserved\"]/@value', r.xml))[1]::text::bigint / 1048576 AS vm_reserved_gb,\n    (xpath('//entry[@description=\"VM Committed\"]/@value', r.xml))[1]::text::bigint / 1048576 AS vm_committed_gb,\n    (xpath('//entry[@description=\"Target Committed\"]/@value', r.xml))[1]::text::bigint / 1048576 AS target_committed_gb,\n    (xpath('//entry[@description=\"Current Committed\"]/@value', r.xml))[1]::text::bigint / 1048576 AS current_committed_gb\nFROM resources r\n)\nSELECT\n    date_trunc('hour', sig.event_time) AS time,\n    srv.name AS metric,\n    SUM(sig.out_of_memory_exceptions)::double precision AS value\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nWHERE sig.last_notification = 'RESOURCE_MEMPHYSICAL_LOW'\nGROUP BY 1, 2\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "table",
+      "title": "Memory Condition Snapshots",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 69
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Event Time",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nresources AS (\n    SELECT ev.server_id, ev.event_time, ev.xml,\n        (xpath('/*/@lastNotification', node))[1]::text AS last_notification,\n        (xpath('/*/@outOfMemoryExceptions', node))[1]::text::bigint AS out_of_memory_exceptions,\n        CASE WHEN (xpath('/*/@isAnyPoolOutOfMemory', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@isAnyPoolOutOfMemory', node))[1]::text IN ('0', 'false') THEN false END AS is_any_pool_out_of_memory,\n        (xpath('/*/@processOutOfMemoryPeriod', node))[1]::text::bigint AS process_out_of_memory_period\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//resource', ev.xml)) AS node\n)\nSELECT\n    r.server_id,\n    r.event_time,\n    (xpath('//memoryReport/@name', r.xml))[1]::text AS name,\n    r.last_notification,\n    r.out_of_memory_exceptions,\n    r.is_any_pool_out_of_memory,\n    r.process_out_of_memory_period,\n    (xpath('//entry[@description=\"Available Physical Memory\"]/@value', r.xml))[1]::text::bigint / 1073741824 AS available_physical_memory_gb,\n    (xpath('//entry[@description=\"Available Virtual Memory\"]/@value', r.xml))[1]::text::bigint / 1073741824 AS available_virtual_memory_gb,\n    (xpath('//entry[@description=\"Available Paging File\"]/@value', r.xml))[1]::text::bigint / 1073741824 AS available_paging_file_gb,\n    (xpath('//entry[@description=\"Working Set\"]/@value', r.xml))[1]::text::bigint / 1073741824 AS working_set_gb,\n    (xpath('//entry[@description=\"Percent of Committed Memory in WS\"]/@value', r.xml))[1]::text::bigint AS percent_of_committed_memory_in_ws,\n    (xpath('//entry[@description=\"Page Faults\"]/@value', r.xml))[1]::text::bigint AS page_faults,\n    (xpath('//entry[@description=\"System physical memory high\"]/@value', r.xml))[1]::text::bigint AS system_physical_memory_high,\n    (xpath('//entry[@description=\"System physical memory low\"]/@value', r.xml))[1]::text::bigint AS system_physical_memory_low,\n    (xpath('//entry[@description=\"Process physical memory low\"]/@value', r.xml))[1]::text::bigint AS process_physical_memory_low,\n    (xpath('//entry[@description=\"Process virtual memory low\"]/@value', r.xml))[1]::text::bigint AS process_virtual_memory_low,\n    (xpath('//entry[@description=\"VM Reserved\"]/@value', r.xml))[1]::text::bigint / 1048576 AS vm_reserved_gb,\n    (xpath('//entry[@description=\"VM Committed\"]/@value', r.xml))[1]::text::bigint / 1048576 AS vm_committed_gb,\n    (xpath('//entry[@description=\"Target Committed\"]/@value', r.xml))[1]::text::bigint / 1048576 AS target_committed_gb,\n    (xpath('//entry[@description=\"Current Committed\"]/@value', r.xml))[1]::text::bigint / 1048576 AS current_committed_gb\nFROM resources r\n)\nSELECT\n    sig.event_time AS \"Event Time\",\n    srv.name AS \"Server\",\n    sig.name AS \"Name\",\n    sig.last_notification AS \"Last Notification\",\n    sig.out_of_memory_exceptions AS \"OOM Exceptions\",\n    sig.is_any_pool_out_of_memory AS \"Any Pool OOM\",\n    sig.process_out_of_memory_period AS \"Process OOM Period\",\n    sig.available_physical_memory_gb AS \"Avail Physical (GB)\",\n    sig.available_virtual_memory_gb AS \"Avail Virtual (GB)\",\n    sig.available_paging_file_gb AS \"Avail Paging File (GB)\",\n    sig.working_set_gb AS \"Working Set (GB)\",\n    sig.percent_of_committed_memory_in_ws AS \"% Committed in WS\",\n    sig.page_faults AS \"Page Faults\",\n    sig.system_physical_memory_high AS \"Sys Physical Mem High\",\n    sig.system_physical_memory_low AS \"Sys Physical Mem Low\",\n    sig.process_physical_memory_low AS \"Process Physical Mem Low\",\n    sig.process_virtual_memory_low AS \"Process Virtual Mem Low\",\n    sig.vm_reserved_gb AS \"VM Reserved (GB)\",\n    sig.vm_committed_gb AS \"VM Committed (GB)\",\n    sig.target_committed_gb AS \"Target Committed (GB)\",\n    sig.current_committed_gb AS \"Current Committed (GB)\"\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nWHERE sig.last_notification = 'RESOURCE_MEMPHYSICAL_LOW'\nORDER BY sig.event_time DESC\nLIMIT 100\n"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "row",
+      "title": "Memory Broker",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 78
+      },
+      "panels": []
+    },
+    {
+      "id": 23,
+      "type": "timeseries",
+      "title": "Memory Broker - Currently Allocated",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 79
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'memory_broker_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"id\"]/value/text()', ev.xml))[1]::text::bigint AS broker_id,\n    (xpath('/*/data[@name=\"pool_metadata_id\"]/value/text()', ev.xml))[1]::text::bigint AS pool_metadata_id,\n    (xpath('/*/data[@name=\"delta_time\"]/value/text()', ev.xml))[1]::text::bigint AS delta_time,\n    (xpath('/*/data[@name=\"memory_ratio\"]/value/text()', ev.xml))[1]::text::bigint AS memory_ratio,\n    (xpath('/*/data[@name=\"new_target\"]/value/text()', ev.xml))[1]::text::bigint AS new_target,\n    (xpath('/*/data[@name=\"overall\"]/value/text()', ev.xml))[1]::text::bigint AS overall,\n    (xpath('/*/data[@name=\"rate\"]/value/text()', ev.xml))[1]::text::bigint AS rate,\n    (xpath('/*/data[@name=\"currently_predicated\"]/value/text()', ev.xml))[1]::text::bigint AS currently_predicated,\n    (xpath('/*/data[@name=\"currently_allocated\"]/value/text()', ev.xml))[1]::text::bigint AS currently_allocated,\n    (xpath('/*/data[@name=\"previously_allocated\"]/value/text()', ev.xml))[1]::text::bigint AS previously_allocated,\n    (xpath('/*/data[@name=\"broker\"]/value/text()', ev.xml))[1]::text AS broker,\n    (xpath('/*/data[@name=\"notification\"]/value/text()', ev.xml))[1]::text AS notification\nFROM events ev\n)\nSELECT\n    sig.event_time AS time,\n    srv.name || ' - ' || sig.broker AS metric,\n    sig.currently_allocated::double precision AS value\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nWHERE sig.notification = 'RESOURCE_MEMPHYSICAL_LOW'\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "type": "table",
+      "title": "Memory Broker Events",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 87
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Event Time",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'memory_broker_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"id\"]/value/text()', ev.xml))[1]::text::bigint AS broker_id,\n    (xpath('/*/data[@name=\"pool_metadata_id\"]/value/text()', ev.xml))[1]::text::bigint AS pool_metadata_id,\n    (xpath('/*/data[@name=\"delta_time\"]/value/text()', ev.xml))[1]::text::bigint AS delta_time,\n    (xpath('/*/data[@name=\"memory_ratio\"]/value/text()', ev.xml))[1]::text::bigint AS memory_ratio,\n    (xpath('/*/data[@name=\"new_target\"]/value/text()', ev.xml))[1]::text::bigint AS new_target,\n    (xpath('/*/data[@name=\"overall\"]/value/text()', ev.xml))[1]::text::bigint AS overall,\n    (xpath('/*/data[@name=\"rate\"]/value/text()', ev.xml))[1]::text::bigint AS rate,\n    (xpath('/*/data[@name=\"currently_predicated\"]/value/text()', ev.xml))[1]::text::bigint AS currently_predicated,\n    (xpath('/*/data[@name=\"currently_allocated\"]/value/text()', ev.xml))[1]::text::bigint AS currently_allocated,\n    (xpath('/*/data[@name=\"previously_allocated\"]/value/text()', ev.xml))[1]::text::bigint AS previously_allocated,\n    (xpath('/*/data[@name=\"broker\"]/value/text()', ev.xml))[1]::text AS broker,\n    (xpath('/*/data[@name=\"notification\"]/value/text()', ev.xml))[1]::text AS notification\nFROM events ev\n)\nSELECT\n    sig.event_time AS \"Event Time\",\n    srv.name AS \"Server\",\n    sig.broker_id AS \"Broker ID\",\n    sig.pool_metadata_id AS \"Pool Metadata ID\",\n    sig.delta_time AS \"Delta Time\",\n    sig.broker AS \"Broker\",\n    sig.notification AS \"Notification\",\n    sig.memory_ratio AS \"Memory Ratio\",\n    sig.new_target AS \"New Target\",\n    sig.overall AS \"Overall\",\n    sig.rate AS \"Rate\",\n    sig.currently_predicated AS \"Currently Predicated\",\n    sig.currently_allocated AS \"Currently Allocated\",\n    sig.previously_allocated AS \"Previously Allocated\"\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nWHERE sig.notification = 'RESOURCE_MEMPHYSICAL_LOW'\nORDER BY sig.event_time DESC\nLIMIT 200\n"
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "type": "row",
+      "title": "Memory Node OOM",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 95
+      },
+      "panels": []
+    },
+    {
+      "id": 26,
+      "type": "timeseries",
+      "title": "Memory Node Utilization %",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 96
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "percent",
+          "max": 100,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'memory_node_oom_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"id\"]/value/text()', ev.xml))[1]::text::bigint AS node_id,\n    (xpath('/*/data[@name=\"memory_node_id\"]/value/text()', ev.xml))[1]::text::bigint AS memory_node_id,\n    (xpath('/*/data[@name=\"memory_utilization_pct\"]/value/text()', ev.xml))[1]::text::bigint AS memory_utilization_pct,\n    (xpath('/*/data[@name=\"total_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_physical_memory_kb,\n    (xpath('/*/data[@name=\"available_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_physical_memory_kb,\n    (xpath('/*/data[@name=\"total_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_page_file_kb,\n    (xpath('/*/data[@name=\"available_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_page_file_kb,\n    (xpath('/*/data[@name=\"total_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"available_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"target_kb\"]/value/text()', ev.xml))[1]::text::bigint AS target_kb,\n    (xpath('/*/data[@name=\"reserved_kb\"]/value/text()', ev.xml))[1]::text::bigint AS reserved_kb,\n    (xpath('/*/data[@name=\"committed_kb\"]/value/text()', ev.xml))[1]::text::bigint AS committed_kb,\n    (xpath('/*/data[@name=\"awe_kb\"]/value/text()', ev.xml))[1]::text::bigint AS awe_kb,\n    (xpath('/*/data[@name=\"pages_kb\"]/value/text()', ev.xml))[1]::text::bigint AS pages_kb,\n    (xpath('/*/data[@name=\"failure\"]/text/text()', ev.xml))[1]::text AS failure_type,\n    (xpath('/*/data[@name=\"failure\"]/value/text()', ev.xml))[1]::text::bigint AS failure_value,\n    (xpath('/*/data[@name=\"resources\"]/value/text()', ev.xml))[1]::text::bigint AS resources,\n    (xpath('/*/data[@name=\"factor\"]/text/text()', ev.xml))[1]::text AS factor_text,\n    (xpath('/*/data[@name=\"factor\"]/value/text()', ev.xml))[1]::text::bigint AS factor_value,\n    (xpath('/*/data[@name=\"last_error\"]/value/text()', ev.xml))[1]::text::bigint AS last_error,\n    (xpath('/*/data[@name=\"pool_metadata_id\"]/value/text()', ev.xml))[1]::text::bigint AS pool_metadata_id,\n    (xpath('/*/data[@name=\"is_process_in_job\"]/value/text()', ev.xml))[1]::text AS is_process_in_job,\n    (xpath('/*/data[@name=\"is_system_physical_memory_high\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_high,\n    (xpath('/*/data[@name=\"is_system_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_virtual_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_virtual_memory_low\nFROM events ev\n)\nSELECT\n    sig.event_time AS time,\n    srv.name || ' - Node ' || sig.memory_node_id AS metric,\n    sig.memory_utilization_pct::double precision AS value\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "type": "timeseries",
+      "title": "Memory Node Breakdown",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 96
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "decgbytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'memory_node_oom_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"id\"]/value/text()', ev.xml))[1]::text::bigint AS node_id,\n    (xpath('/*/data[@name=\"memory_node_id\"]/value/text()', ev.xml))[1]::text::bigint AS memory_node_id,\n    (xpath('/*/data[@name=\"memory_utilization_pct\"]/value/text()', ev.xml))[1]::text::bigint AS memory_utilization_pct,\n    (xpath('/*/data[@name=\"total_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_physical_memory_kb,\n    (xpath('/*/data[@name=\"available_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_physical_memory_kb,\n    (xpath('/*/data[@name=\"total_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_page_file_kb,\n    (xpath('/*/data[@name=\"available_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_page_file_kb,\n    (xpath('/*/data[@name=\"total_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"available_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"target_kb\"]/value/text()', ev.xml))[1]::text::bigint AS target_kb,\n    (xpath('/*/data[@name=\"reserved_kb\"]/value/text()', ev.xml))[1]::text::bigint AS reserved_kb,\n    (xpath('/*/data[@name=\"committed_kb\"]/value/text()', ev.xml))[1]::text::bigint AS committed_kb,\n    (xpath('/*/data[@name=\"awe_kb\"]/value/text()', ev.xml))[1]::text::bigint AS awe_kb,\n    (xpath('/*/data[@name=\"pages_kb\"]/value/text()', ev.xml))[1]::text::bigint AS pages_kb,\n    (xpath('/*/data[@name=\"failure\"]/text/text()', ev.xml))[1]::text AS failure_type,\n    (xpath('/*/data[@name=\"failure\"]/value/text()', ev.xml))[1]::text::bigint AS failure_value,\n    (xpath('/*/data[@name=\"resources\"]/value/text()', ev.xml))[1]::text::bigint AS resources,\n    (xpath('/*/data[@name=\"factor\"]/text/text()', ev.xml))[1]::text AS factor_text,\n    (xpath('/*/data[@name=\"factor\"]/value/text()', ev.xml))[1]::text::bigint AS factor_value,\n    (xpath('/*/data[@name=\"last_error\"]/value/text()', ev.xml))[1]::text::bigint AS last_error,\n    (xpath('/*/data[@name=\"pool_metadata_id\"]/value/text()', ev.xml))[1]::text::bigint AS pool_metadata_id,\n    (xpath('/*/data[@name=\"is_process_in_job\"]/value/text()', ev.xml))[1]::text AS is_process_in_job,\n    (xpath('/*/data[@name=\"is_system_physical_memory_high\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_high,\n    (xpath('/*/data[@name=\"is_system_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_virtual_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_virtual_memory_low\nFROM events ev\n)\nSELECT\n    sig.event_time AS time,\n    srv.name || ' - ' || s.label AS metric,\n    s.value / 1048576.0 AS value\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nCROSS JOIN LATERAL (VALUES\n    ('Target', sig.target_kb),\n    ('Committed', sig.committed_kb),\n    ('Total Page File', sig.total_page_file_kb),\n    ('Avail Page File', sig.available_page_file_kb)\n) AS s(label, value)\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "type": "timeseries",
+      "title": "OOM Events (hourly)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 104
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'memory_node_oom_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"id\"]/value/text()', ev.xml))[1]::text::bigint AS node_id,\n    (xpath('/*/data[@name=\"memory_node_id\"]/value/text()', ev.xml))[1]::text::bigint AS memory_node_id,\n    (xpath('/*/data[@name=\"memory_utilization_pct\"]/value/text()', ev.xml))[1]::text::bigint AS memory_utilization_pct,\n    (xpath('/*/data[@name=\"total_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_physical_memory_kb,\n    (xpath('/*/data[@name=\"available_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_physical_memory_kb,\n    (xpath('/*/data[@name=\"total_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_page_file_kb,\n    (xpath('/*/data[@name=\"available_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_page_file_kb,\n    (xpath('/*/data[@name=\"total_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"available_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"target_kb\"]/value/text()', ev.xml))[1]::text::bigint AS target_kb,\n    (xpath('/*/data[@name=\"reserved_kb\"]/value/text()', ev.xml))[1]::text::bigint AS reserved_kb,\n    (xpath('/*/data[@name=\"committed_kb\"]/value/text()', ev.xml))[1]::text::bigint AS committed_kb,\n    (xpath('/*/data[@name=\"awe_kb\"]/value/text()', ev.xml))[1]::text::bigint AS awe_kb,\n    (xpath('/*/data[@name=\"pages_kb\"]/value/text()', ev.xml))[1]::text::bigint AS pages_kb,\n    (xpath('/*/data[@name=\"failure\"]/text/text()', ev.xml))[1]::text AS failure_type,\n    (xpath('/*/data[@name=\"failure\"]/value/text()', ev.xml))[1]::text::bigint AS failure_value,\n    (xpath('/*/data[@name=\"resources\"]/value/text()', ev.xml))[1]::text::bigint AS resources,\n    (xpath('/*/data[@name=\"factor\"]/text/text()', ev.xml))[1]::text AS factor_text,\n    (xpath('/*/data[@name=\"factor\"]/value/text()', ev.xml))[1]::text::bigint AS factor_value,\n    (xpath('/*/data[@name=\"last_error\"]/value/text()', ev.xml))[1]::text::bigint AS last_error,\n    (xpath('/*/data[@name=\"pool_metadata_id\"]/value/text()', ev.xml))[1]::text::bigint AS pool_metadata_id,\n    (xpath('/*/data[@name=\"is_process_in_job\"]/value/text()', ev.xml))[1]::text AS is_process_in_job,\n    (xpath('/*/data[@name=\"is_system_physical_memory_high\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_high,\n    (xpath('/*/data[@name=\"is_system_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_virtual_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_virtual_memory_low\nFROM events ev\n)\nSELECT\n    date_trunc('hour', sig.event_time) AS time,\n    srv.name AS metric,\n    COUNT(*)::double precision AS value\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nGROUP BY 1, 2\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 29,
+      "type": "stat",
+      "title": "Sys Memory High (range)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 104
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'memory_node_oom_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"id\"]/value/text()', ev.xml))[1]::text::bigint AS node_id,\n    (xpath('/*/data[@name=\"memory_node_id\"]/value/text()', ev.xml))[1]::text::bigint AS memory_node_id,\n    (xpath('/*/data[@name=\"memory_utilization_pct\"]/value/text()', ev.xml))[1]::text::bigint AS memory_utilization_pct,\n    (xpath('/*/data[@name=\"total_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_physical_memory_kb,\n    (xpath('/*/data[@name=\"available_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_physical_memory_kb,\n    (xpath('/*/data[@name=\"total_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_page_file_kb,\n    (xpath('/*/data[@name=\"available_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_page_file_kb,\n    (xpath('/*/data[@name=\"total_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"available_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"target_kb\"]/value/text()', ev.xml))[1]::text::bigint AS target_kb,\n    (xpath('/*/data[@name=\"reserved_kb\"]/value/text()', ev.xml))[1]::text::bigint AS reserved_kb,\n    (xpath('/*/data[@name=\"committed_kb\"]/value/text()', ev.xml))[1]::text::bigint AS committed_kb,\n    (xpath('/*/data[@name=\"awe_kb\"]/value/text()', ev.xml))[1]::text::bigint AS awe_kb,\n    (xpath('/*/data[@name=\"pages_kb\"]/value/text()', ev.xml))[1]::text::bigint AS pages_kb,\n    (xpath('/*/data[@name=\"failure\"]/text/text()', ev.xml))[1]::text AS failure_type,\n    (xpath('/*/data[@name=\"failure\"]/value/text()', ev.xml))[1]::text::bigint AS failure_value,\n    (xpath('/*/data[@name=\"resources\"]/value/text()', ev.xml))[1]::text::bigint AS resources,\n    (xpath('/*/data[@name=\"factor\"]/text/text()', ev.xml))[1]::text AS factor_text,\n    (xpath('/*/data[@name=\"factor\"]/value/text()', ev.xml))[1]::text::bigint AS factor_value,\n    (xpath('/*/data[@name=\"last_error\"]/value/text()', ev.xml))[1]::text::bigint AS last_error,\n    (xpath('/*/data[@name=\"pool_metadata_id\"]/value/text()', ev.xml))[1]::text::bigint AS pool_metadata_id,\n    (xpath('/*/data[@name=\"is_process_in_job\"]/value/text()', ev.xml))[1]::text AS is_process_in_job,\n    (xpath('/*/data[@name=\"is_system_physical_memory_high\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_high,\n    (xpath('/*/data[@name=\"is_system_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_virtual_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_virtual_memory_low\nFROM events ev\n)\n            SELECT COUNT(*) AS v FROM sig WHERE LOWER(is_system_physical_memory_high) = 'true'"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "type": "stat",
+      "title": "Sys Memory Low (range)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 104
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'memory_node_oom_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"id\"]/value/text()', ev.xml))[1]::text::bigint AS node_id,\n    (xpath('/*/data[@name=\"memory_node_id\"]/value/text()', ev.xml))[1]::text::bigint AS memory_node_id,\n    (xpath('/*/data[@name=\"memory_utilization_pct\"]/value/text()', ev.xml))[1]::text::bigint AS memory_utilization_pct,\n    (xpath('/*/data[@name=\"total_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_physical_memory_kb,\n    (xpath('/*/data[@name=\"available_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_physical_memory_kb,\n    (xpath('/*/data[@name=\"total_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_page_file_kb,\n    (xpath('/*/data[@name=\"available_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_page_file_kb,\n    (xpath('/*/data[@name=\"total_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"available_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"target_kb\"]/value/text()', ev.xml))[1]::text::bigint AS target_kb,\n    (xpath('/*/data[@name=\"reserved_kb\"]/value/text()', ev.xml))[1]::text::bigint AS reserved_kb,\n    (xpath('/*/data[@name=\"committed_kb\"]/value/text()', ev.xml))[1]::text::bigint AS committed_kb,\n    (xpath('/*/data[@name=\"awe_kb\"]/value/text()', ev.xml))[1]::text::bigint AS awe_kb,\n    (xpath('/*/data[@name=\"pages_kb\"]/value/text()', ev.xml))[1]::text::bigint AS pages_kb,\n    (xpath('/*/data[@name=\"failure\"]/text/text()', ev.xml))[1]::text AS failure_type,\n    (xpath('/*/data[@name=\"failure\"]/value/text()', ev.xml))[1]::text::bigint AS failure_value,\n    (xpath('/*/data[@name=\"resources\"]/value/text()', ev.xml))[1]::text::bigint AS resources,\n    (xpath('/*/data[@name=\"factor\"]/text/text()', ev.xml))[1]::text AS factor_text,\n    (xpath('/*/data[@name=\"factor\"]/value/text()', ev.xml))[1]::text::bigint AS factor_value,\n    (xpath('/*/data[@name=\"last_error\"]/value/text()', ev.xml))[1]::text::bigint AS last_error,\n    (xpath('/*/data[@name=\"pool_metadata_id\"]/value/text()', ev.xml))[1]::text::bigint AS pool_metadata_id,\n    (xpath('/*/data[@name=\"is_process_in_job\"]/value/text()', ev.xml))[1]::text AS is_process_in_job,\n    (xpath('/*/data[@name=\"is_system_physical_memory_high\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_high,\n    (xpath('/*/data[@name=\"is_system_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_virtual_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_virtual_memory_low\nFROM events ev\n)\n            SELECT COUNT(*) AS v FROM sig WHERE LOWER(is_system_physical_memory_low) = 'true'"
+        }
+      ]
+    },
+    {
+      "id": 31,
+      "type": "stat",
+      "title": "Process Memory Low (range)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 108
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'memory_node_oom_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"id\"]/value/text()', ev.xml))[1]::text::bigint AS node_id,\n    (xpath('/*/data[@name=\"memory_node_id\"]/value/text()', ev.xml))[1]::text::bigint AS memory_node_id,\n    (xpath('/*/data[@name=\"memory_utilization_pct\"]/value/text()', ev.xml))[1]::text::bigint AS memory_utilization_pct,\n    (xpath('/*/data[@name=\"total_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_physical_memory_kb,\n    (xpath('/*/data[@name=\"available_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_physical_memory_kb,\n    (xpath('/*/data[@name=\"total_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_page_file_kb,\n    (xpath('/*/data[@name=\"available_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_page_file_kb,\n    (xpath('/*/data[@name=\"total_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"available_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"target_kb\"]/value/text()', ev.xml))[1]::text::bigint AS target_kb,\n    (xpath('/*/data[@name=\"reserved_kb\"]/value/text()', ev.xml))[1]::text::bigint AS reserved_kb,\n    (xpath('/*/data[@name=\"committed_kb\"]/value/text()', ev.xml))[1]::text::bigint AS committed_kb,\n    (xpath('/*/data[@name=\"awe_kb\"]/value/text()', ev.xml))[1]::text::bigint AS awe_kb,\n    (xpath('/*/data[@name=\"pages_kb\"]/value/text()', ev.xml))[1]::text::bigint AS pages_kb,\n    (xpath('/*/data[@name=\"failure\"]/text/text()', ev.xml))[1]::text AS failure_type,\n    (xpath('/*/data[@name=\"failure\"]/value/text()', ev.xml))[1]::text::bigint AS failure_value,\n    (xpath('/*/data[@name=\"resources\"]/value/text()', ev.xml))[1]::text::bigint AS resources,\n    (xpath('/*/data[@name=\"factor\"]/text/text()', ev.xml))[1]::text AS factor_text,\n    (xpath('/*/data[@name=\"factor\"]/value/text()', ev.xml))[1]::text::bigint AS factor_value,\n    (xpath('/*/data[@name=\"last_error\"]/value/text()', ev.xml))[1]::text::bigint AS last_error,\n    (xpath('/*/data[@name=\"pool_metadata_id\"]/value/text()', ev.xml))[1]::text::bigint AS pool_metadata_id,\n    (xpath('/*/data[@name=\"is_process_in_job\"]/value/text()', ev.xml))[1]::text AS is_process_in_job,\n    (xpath('/*/data[@name=\"is_system_physical_memory_high\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_high,\n    (xpath('/*/data[@name=\"is_system_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_virtual_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_virtual_memory_low\nFROM events ev\n)\n            SELECT COUNT(*) AS v FROM sig WHERE LOWER(is_process_physical_memory_low) = 'true'"
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "type": "stat",
+      "title": "Process Virtual Memory Low (range)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 108
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              },
+              {
+                "color": "#EAB839",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'memory_node_oom_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"id\"]/value/text()', ev.xml))[1]::text::bigint AS node_id,\n    (xpath('/*/data[@name=\"memory_node_id\"]/value/text()', ev.xml))[1]::text::bigint AS memory_node_id,\n    (xpath('/*/data[@name=\"memory_utilization_pct\"]/value/text()', ev.xml))[1]::text::bigint AS memory_utilization_pct,\n    (xpath('/*/data[@name=\"total_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_physical_memory_kb,\n    (xpath('/*/data[@name=\"available_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_physical_memory_kb,\n    (xpath('/*/data[@name=\"total_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_page_file_kb,\n    (xpath('/*/data[@name=\"available_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_page_file_kb,\n    (xpath('/*/data[@name=\"total_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"available_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"target_kb\"]/value/text()', ev.xml))[1]::text::bigint AS target_kb,\n    (xpath('/*/data[@name=\"reserved_kb\"]/value/text()', ev.xml))[1]::text::bigint AS reserved_kb,\n    (xpath('/*/data[@name=\"committed_kb\"]/value/text()', ev.xml))[1]::text::bigint AS committed_kb,\n    (xpath('/*/data[@name=\"awe_kb\"]/value/text()', ev.xml))[1]::text::bigint AS awe_kb,\n    (xpath('/*/data[@name=\"pages_kb\"]/value/text()', ev.xml))[1]::text::bigint AS pages_kb,\n    (xpath('/*/data[@name=\"failure\"]/text/text()', ev.xml))[1]::text AS failure_type,\n    (xpath('/*/data[@name=\"failure\"]/value/text()', ev.xml))[1]::text::bigint AS failure_value,\n    (xpath('/*/data[@name=\"resources\"]/value/text()', ev.xml))[1]::text::bigint AS resources,\n    (xpath('/*/data[@name=\"factor\"]/text/text()', ev.xml))[1]::text AS factor_text,\n    (xpath('/*/data[@name=\"factor\"]/value/text()', ev.xml))[1]::text::bigint AS factor_value,\n    (xpath('/*/data[@name=\"last_error\"]/value/text()', ev.xml))[1]::text::bigint AS last_error,\n    (xpath('/*/data[@name=\"pool_metadata_id\"]/value/text()', ev.xml))[1]::text::bigint AS pool_metadata_id,\n    (xpath('/*/data[@name=\"is_process_in_job\"]/value/text()', ev.xml))[1]::text AS is_process_in_job,\n    (xpath('/*/data[@name=\"is_system_physical_memory_high\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_high,\n    (xpath('/*/data[@name=\"is_system_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_virtual_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_virtual_memory_low\nFROM events ev\n)\n            SELECT COUNT(*) AS v FROM sig WHERE LOWER(is_process_virtual_memory_low) = 'true'"
+        }
+      ]
+    },
+    {
+      "id": 33,
+      "type": "table",
+      "title": "Memory Node OOM Events",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 112
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Event Time",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'memory_node_oom_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"id\"]/value/text()', ev.xml))[1]::text::bigint AS node_id,\n    (xpath('/*/data[@name=\"memory_node_id\"]/value/text()', ev.xml))[1]::text::bigint AS memory_node_id,\n    (xpath('/*/data[@name=\"memory_utilization_pct\"]/value/text()', ev.xml))[1]::text::bigint AS memory_utilization_pct,\n    (xpath('/*/data[@name=\"total_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_physical_memory_kb,\n    (xpath('/*/data[@name=\"available_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_physical_memory_kb,\n    (xpath('/*/data[@name=\"total_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_page_file_kb,\n    (xpath('/*/data[@name=\"available_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_page_file_kb,\n    (xpath('/*/data[@name=\"total_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"available_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"target_kb\"]/value/text()', ev.xml))[1]::text::bigint AS target_kb,\n    (xpath('/*/data[@name=\"reserved_kb\"]/value/text()', ev.xml))[1]::text::bigint AS reserved_kb,\n    (xpath('/*/data[@name=\"committed_kb\"]/value/text()', ev.xml))[1]::text::bigint AS committed_kb,\n    (xpath('/*/data[@name=\"awe_kb\"]/value/text()', ev.xml))[1]::text::bigint AS awe_kb,\n    (xpath('/*/data[@name=\"pages_kb\"]/value/text()', ev.xml))[1]::text::bigint AS pages_kb,\n    (xpath('/*/data[@name=\"failure\"]/text/text()', ev.xml))[1]::text AS failure_type,\n    (xpath('/*/data[@name=\"failure\"]/value/text()', ev.xml))[1]::text::bigint AS failure_value,\n    (xpath('/*/data[@name=\"resources\"]/value/text()', ev.xml))[1]::text::bigint AS resources,\n    (xpath('/*/data[@name=\"factor\"]/text/text()', ev.xml))[1]::text AS factor_text,\n    (xpath('/*/data[@name=\"factor\"]/value/text()', ev.xml))[1]::text::bigint AS factor_value,\n    (xpath('/*/data[@name=\"last_error\"]/value/text()', ev.xml))[1]::text::bigint AS last_error,\n    (xpath('/*/data[@name=\"pool_metadata_id\"]/value/text()', ev.xml))[1]::text::bigint AS pool_metadata_id,\n    (xpath('/*/data[@name=\"is_process_in_job\"]/value/text()', ev.xml))[1]::text AS is_process_in_job,\n    (xpath('/*/data[@name=\"is_system_physical_memory_high\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_high,\n    (xpath('/*/data[@name=\"is_system_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_virtual_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_virtual_memory_low\nFROM events ev\n)\nSELECT\n    sig.event_time AS \"Event Time\",\n    srv.name AS \"Server\",\n    sig.node_id AS \"Node ID\",\n    sig.memory_node_id AS \"Memory Node ID\",\n    sig.memory_utilization_pct AS \"Utilization %\",\n    (sig.total_physical_memory_kb / 1048576.0)::numeric(18,2) AS \"Total Physical (GB)\",\n    (sig.available_physical_memory_kb / 1048576.0)::numeric(18,2) AS \"Avail Physical (GB)\",\n    (sig.total_page_file_kb / 1048576.0)::numeric(18,2) AS \"Total Page File (GB)\",\n    (sig.available_page_file_kb / 1048576.0)::numeric(18,2) AS \"Avail Page File (GB)\",\n    (sig.total_virtual_address_space_kb / 1048576.0)::numeric(18,2) AS \"Total VAS (GB)\",\n    (sig.available_virtual_address_space_kb / 1048576.0)::numeric(18,2) AS \"Avail VAS (GB)\",\n    (sig.target_kb / 1048576.0)::numeric(18,2) AS \"Target (GB)\",\n    (sig.reserved_kb / 1048576.0)::numeric(18,2) AS \"Reserved (GB)\",\n    (sig.committed_kb / 1048576.0)::numeric(18,2) AS \"Committed (GB)\",\n    (sig.awe_kb / 1048576.0)::numeric(18,2) AS \"AWE (GB)\",\n    (sig.pages_kb / 1048576.0)::numeric(18,2) AS \"Pages (GB)\",\n    sig.failure_type AS \"Failure Type\",\n    sig.failure_value AS \"Failure Value\",\n    sig.resources AS \"Resources\",\n    sig.factor_text AS \"Factor\",\n    sig.factor_value AS \"Factor Value\",\n    sig.last_error AS \"Last Error\",\n    sig.pool_metadata_id AS \"Pool Metadata ID\",\n    sig.is_process_in_job AS \"Process In Job\",\n    sig.is_system_physical_memory_high AS \"Sys Physical Mem High\",\n    sig.is_system_physical_memory_low AS \"Sys Physical Mem Low\",\n    sig.is_process_physical_memory_low AS \"Process Physical Mem Low\",\n    sig.is_process_virtual_memory_low AS \"Process Virtual Mem Low\"\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nORDER BY sig.event_time DESC\nLIMIT 100\n"
+        }
+      ]
+    },
+    {
+      "id": 34,
+      "type": "row",
+      "title": "Significant Waits",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 121
+      },
+      "panels": []
+    },
+    {
+      "id": 35,
+      "type": "stat",
+      "title": "Significant Waits (range)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 0,
+        "y": 122
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'wait_info'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"wait_type\"]/text/text()', ev.xml))[1]::text AS wait_type,\n    (xpath('/*/data[@name=\"duration\"]/value/text()', ev.xml))[1]::text::bigint AS duration_ms,\n    (xpath('/*/data[@name=\"signal_duration\"]/value/text()', ev.xml))[1]::text::bigint AS signal_duration_ms,\n    (xpath('/*/data[@name=\"wait_resource\"]/value/text()', ev.xml))[1]::text AS wait_resource,\n    (xpath('/*/action[@name=\"session_id\"]/value/text()', ev.xml))[1]::text::int AS session_id,\n    (xpath('/*/action[@name=\"sql_text\"]/value/text()', ev.xml))[1]::text AS query_text\nFROM events ev\n)\n            SELECT COUNT(*) AS v FROM sig WHERE session_id <> 0\n  AND query_text IS NOT NULL AND query_text <> ''\n  AND query_text NOT ILIKE '%BACKUP%'\n  AND duration_ms >= 500\n  AND wait_type NOT IN ('ASYNC_IO_COMPLETION', 'AZURE_IMDS_VERSIONS', 'BROKER_EVENTHANDLER', 'BROKER_RECEIVE_WAITFOR', 'BROKER_TASK_STOP', 'BROKER_TO_FLUSH', 'BROKER_TRANSMITTER', 'CHECKPOINT_QUEUE', 'CHKPT', 'CLR_AUTO_EVENT', 'CLR_MANUAL_EVENT', 'CLR_SEMAPHORE', 'DBMIRROR_DBM_EVENT', 'DBMIRROR_DBM_MUTEX', 'DBMIRROR_EVENTS_QUEUE', 'DBMIRROR_SEND', 'DBMIRROR_WORKER_QUEUE', 'DBMIRRORING_CMD', 'DIRTY_PAGE_POLL', 'DISPATCHER_QUEUE_SEMAPHORE', 'FSAGENT', 'FT_IFTS_SCHEDULER_IDLE_WAIT', 'FT_IFTSHC_MUTEX', 'HADR_CLUSAPI_CALL', 'HADR_FILESTREAM_IOMGR_IOCOMPLETION', 'HADR_LOGCAPTURE_WAIT', 'HADR_NOTIFICATION_DEQUEUE', 'HADR_TIMER_TASK', 'HADR_WORK_QUEUE', 'KSOURCE_WAKEUP', 'LAZYWRITER_SLEEP', 'LOGMGR_QUEUE', 'MEMORY_ALLOCATION_EXT', 'ONDEMAND_TASK_QUEUE', 'PARALLEL_REDO_DRAIN_WORKER', 'PARALLEL_REDO_LOG_CACHE', 'PARALLEL_REDO_TRAN_LIST', 'PARALLEL_REDO_WORKER_SYNC', 'PARALLEL_REDO_WORKER_WAIT_WORK', 'PREEMPTIVE_OS_FLUSHFILEBUFFERS', 'PREEMPTIVE_XE_GETTARGETSTATE', 'PVS_PREALLOCATE', 'PWAIT_ALL_COMPONENTS_INITIALIZED', 'PWAIT_DIRECTLOGCONSUMER_GETNEXT', 'PWAIT_EXTENSIBILITY_CLEANUP_TASK', 'QDS_ASYNC_QUEUE', 'QDS_CLEANUP_STALE_QUERIES_TASK_MAIN_LOOP_SLEEP', 'QDS_PERSIST_TASK_MAIN_LOOP_SLEEP', 'QDS_SHUTDOWN_QUEUE', 'REDO_THREAD_PENDING_WORK', 'REQUEST_FOR_DEADLOCK_SEARCH', 'RESOURCE_QUEUE', 'SERVER_IDLE_CHECK', 'SLEEP_DBSTARTUP', 'SLEEP_DCOMSTARTUP', 'SLEEP_MASTERDBREADY', 'SLEEP_MASTERMDREADY', 'SLEEP_MASTERUPGRADED', 'SLEEP_MSDBSTARTUP', 'SLEEP_SYSTEMTASK', 'SLEEP_TEMPDBSTARTUP', 'SNI_HTTP_ACCEPT', 'SOS_WORK_DISPATCHER', 'SP_SERVER_DIAGNOSTICS_SLEEP', 'SQLTRACE_BUFFER_FLUSH', 'SQLTRACE_INCREMENTAL_FLUSH_SLEEP', 'SQLTRACE_WAIT_ENTRIES', 'UCS_SESSION_REGISTRATION', 'VDI_CLIENT_OTHER', 'WAIT_FOR_RESULTS', 'WAIT_XTP_CKPT_CLOSE', 'WAIT_XTP_HOST_WAIT', 'WAIT_XTP_OFFLINE_CKPT_NEW_LOG', 'WAIT_XTP_RECOVERY', 'WAITFOR', 'WAITFOR_TASKSHUTDOWN', 'XE_DISPATCHER_JOIN', 'XE_DISPATCHER_WAIT', 'XE_FILE_TARGET_TVF', 'XE_LIVE_TARGET_TVF', 'XE_TIMER_EVENT')"
+        }
+      ]
+    },
+    {
+      "id": 36,
+      "type": "stat",
+      "title": "Total Wait Time (range)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 6,
+        "y": 122
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'wait_info'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"wait_type\"]/text/text()', ev.xml))[1]::text AS wait_type,\n    (xpath('/*/data[@name=\"duration\"]/value/text()', ev.xml))[1]::text::bigint AS duration_ms,\n    (xpath('/*/data[@name=\"signal_duration\"]/value/text()', ev.xml))[1]::text::bigint AS signal_duration_ms,\n    (xpath('/*/data[@name=\"wait_resource\"]/value/text()', ev.xml))[1]::text AS wait_resource,\n    (xpath('/*/action[@name=\"session_id\"]/value/text()', ev.xml))[1]::text::int AS session_id,\n    (xpath('/*/action[@name=\"sql_text\"]/value/text()', ev.xml))[1]::text AS query_text\nFROM events ev\n)\n            SELECT COALESCE(SUM(duration_ms), 0) AS v FROM sig WHERE session_id <> 0\n  AND query_text IS NOT NULL AND query_text <> ''\n  AND query_text NOT ILIKE '%BACKUP%'\n  AND duration_ms >= 500\n  AND wait_type NOT IN ('ASYNC_IO_COMPLETION', 'AZURE_IMDS_VERSIONS', 'BROKER_EVENTHANDLER', 'BROKER_RECEIVE_WAITFOR', 'BROKER_TASK_STOP', 'BROKER_TO_FLUSH', 'BROKER_TRANSMITTER', 'CHECKPOINT_QUEUE', 'CHKPT', 'CLR_AUTO_EVENT', 'CLR_MANUAL_EVENT', 'CLR_SEMAPHORE', 'DBMIRROR_DBM_EVENT', 'DBMIRROR_DBM_MUTEX', 'DBMIRROR_EVENTS_QUEUE', 'DBMIRROR_SEND', 'DBMIRROR_WORKER_QUEUE', 'DBMIRRORING_CMD', 'DIRTY_PAGE_POLL', 'DISPATCHER_QUEUE_SEMAPHORE', 'FSAGENT', 'FT_IFTS_SCHEDULER_IDLE_WAIT', 'FT_IFTSHC_MUTEX', 'HADR_CLUSAPI_CALL', 'HADR_FILESTREAM_IOMGR_IOCOMPLETION', 'HADR_LOGCAPTURE_WAIT', 'HADR_NOTIFICATION_DEQUEUE', 'HADR_TIMER_TASK', 'HADR_WORK_QUEUE', 'KSOURCE_WAKEUP', 'LAZYWRITER_SLEEP', 'LOGMGR_QUEUE', 'MEMORY_ALLOCATION_EXT', 'ONDEMAND_TASK_QUEUE', 'PARALLEL_REDO_DRAIN_WORKER', 'PARALLEL_REDO_LOG_CACHE', 'PARALLEL_REDO_TRAN_LIST', 'PARALLEL_REDO_WORKER_SYNC', 'PARALLEL_REDO_WORKER_WAIT_WORK', 'PREEMPTIVE_OS_FLUSHFILEBUFFERS', 'PREEMPTIVE_XE_GETTARGETSTATE', 'PVS_PREALLOCATE', 'PWAIT_ALL_COMPONENTS_INITIALIZED', 'PWAIT_DIRECTLOGCONSUMER_GETNEXT', 'PWAIT_EXTENSIBILITY_CLEANUP_TASK', 'QDS_ASYNC_QUEUE', 'QDS_CLEANUP_STALE_QUERIES_TASK_MAIN_LOOP_SLEEP', 'QDS_PERSIST_TASK_MAIN_LOOP_SLEEP', 'QDS_SHUTDOWN_QUEUE', 'REDO_THREAD_PENDING_WORK', 'REQUEST_FOR_DEADLOCK_SEARCH', 'RESOURCE_QUEUE', 'SERVER_IDLE_CHECK', 'SLEEP_DBSTARTUP', 'SLEEP_DCOMSTARTUP', 'SLEEP_MASTERDBREADY', 'SLEEP_MASTERMDREADY', 'SLEEP_MASTERUPGRADED', 'SLEEP_MSDBSTARTUP', 'SLEEP_SYSTEMTASK', 'SLEEP_TEMPDBSTARTUP', 'SNI_HTTP_ACCEPT', 'SOS_WORK_DISPATCHER', 'SP_SERVER_DIAGNOSTICS_SLEEP', 'SQLTRACE_BUFFER_FLUSH', 'SQLTRACE_INCREMENTAL_FLUSH_SLEEP', 'SQLTRACE_WAIT_ENTRIES', 'UCS_SESSION_REGISTRATION', 'VDI_CLIENT_OTHER', 'WAIT_FOR_RESULTS', 'WAIT_XTP_CKPT_CLOSE', 'WAIT_XTP_HOST_WAIT', 'WAIT_XTP_OFFLINE_CKPT_NEW_LOG', 'WAIT_XTP_RECOVERY', 'WAITFOR', 'WAITFOR_TASKSHUTDOWN', 'XE_DISPATCHER_JOIN', 'XE_DISPATCHER_WAIT', 'XE_FILE_TARGET_TVF', 'XE_LIVE_TARGET_TVF', 'XE_TIMER_EVENT')"
+        }
+      ]
+    },
+    {
+      "id": 37,
+      "type": "stat",
+      "title": "Max Wait (range)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 12,
+        "y": 122
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'wait_info'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"wait_type\"]/text/text()', ev.xml))[1]::text AS wait_type,\n    (xpath('/*/data[@name=\"duration\"]/value/text()', ev.xml))[1]::text::bigint AS duration_ms,\n    (xpath('/*/data[@name=\"signal_duration\"]/value/text()', ev.xml))[1]::text::bigint AS signal_duration_ms,\n    (xpath('/*/data[@name=\"wait_resource\"]/value/text()', ev.xml))[1]::text AS wait_resource,\n    (xpath('/*/action[@name=\"session_id\"]/value/text()', ev.xml))[1]::text::int AS session_id,\n    (xpath('/*/action[@name=\"sql_text\"]/value/text()', ev.xml))[1]::text AS query_text\nFROM events ev\n)\n            SELECT COALESCE(MAX(duration_ms), 0) AS v FROM sig WHERE session_id <> 0\n  AND query_text IS NOT NULL AND query_text <> ''\n  AND query_text NOT ILIKE '%BACKUP%'\n  AND duration_ms >= 500\n  AND wait_type NOT IN ('ASYNC_IO_COMPLETION', 'AZURE_IMDS_VERSIONS', 'BROKER_EVENTHANDLER', 'BROKER_RECEIVE_WAITFOR', 'BROKER_TASK_STOP', 'BROKER_TO_FLUSH', 'BROKER_TRANSMITTER', 'CHECKPOINT_QUEUE', 'CHKPT', 'CLR_AUTO_EVENT', 'CLR_MANUAL_EVENT', 'CLR_SEMAPHORE', 'DBMIRROR_DBM_EVENT', 'DBMIRROR_DBM_MUTEX', 'DBMIRROR_EVENTS_QUEUE', 'DBMIRROR_SEND', 'DBMIRROR_WORKER_QUEUE', 'DBMIRRORING_CMD', 'DIRTY_PAGE_POLL', 'DISPATCHER_QUEUE_SEMAPHORE', 'FSAGENT', 'FT_IFTS_SCHEDULER_IDLE_WAIT', 'FT_IFTSHC_MUTEX', 'HADR_CLUSAPI_CALL', 'HADR_FILESTREAM_IOMGR_IOCOMPLETION', 'HADR_LOGCAPTURE_WAIT', 'HADR_NOTIFICATION_DEQUEUE', 'HADR_TIMER_TASK', 'HADR_WORK_QUEUE', 'KSOURCE_WAKEUP', 'LAZYWRITER_SLEEP', 'LOGMGR_QUEUE', 'MEMORY_ALLOCATION_EXT', 'ONDEMAND_TASK_QUEUE', 'PARALLEL_REDO_DRAIN_WORKER', 'PARALLEL_REDO_LOG_CACHE', 'PARALLEL_REDO_TRAN_LIST', 'PARALLEL_REDO_WORKER_SYNC', 'PARALLEL_REDO_WORKER_WAIT_WORK', 'PREEMPTIVE_OS_FLUSHFILEBUFFERS', 'PREEMPTIVE_XE_GETTARGETSTATE', 'PVS_PREALLOCATE', 'PWAIT_ALL_COMPONENTS_INITIALIZED', 'PWAIT_DIRECTLOGCONSUMER_GETNEXT', 'PWAIT_EXTENSIBILITY_CLEANUP_TASK', 'QDS_ASYNC_QUEUE', 'QDS_CLEANUP_STALE_QUERIES_TASK_MAIN_LOOP_SLEEP', 'QDS_PERSIST_TASK_MAIN_LOOP_SLEEP', 'QDS_SHUTDOWN_QUEUE', 'REDO_THREAD_PENDING_WORK', 'REQUEST_FOR_DEADLOCK_SEARCH', 'RESOURCE_QUEUE', 'SERVER_IDLE_CHECK', 'SLEEP_DBSTARTUP', 'SLEEP_DCOMSTARTUP', 'SLEEP_MASTERDBREADY', 'SLEEP_MASTERMDREADY', 'SLEEP_MASTERUPGRADED', 'SLEEP_MSDBSTARTUP', 'SLEEP_SYSTEMTASK', 'SLEEP_TEMPDBSTARTUP', 'SNI_HTTP_ACCEPT', 'SOS_WORK_DISPATCHER', 'SP_SERVER_DIAGNOSTICS_SLEEP', 'SQLTRACE_BUFFER_FLUSH', 'SQLTRACE_INCREMENTAL_FLUSH_SLEEP', 'SQLTRACE_WAIT_ENTRIES', 'UCS_SESSION_REGISTRATION', 'VDI_CLIENT_OTHER', 'WAIT_FOR_RESULTS', 'WAIT_XTP_CKPT_CLOSE', 'WAIT_XTP_HOST_WAIT', 'WAIT_XTP_OFFLINE_CKPT_NEW_LOG', 'WAIT_XTP_RECOVERY', 'WAITFOR', 'WAITFOR_TASKSHUTDOWN', 'XE_DISPATCHER_JOIN', 'XE_DISPATCHER_WAIT', 'XE_FILE_TARGET_TVF', 'XE_LIVE_TARGET_TVF', 'XE_TIMER_EVENT')"
+        }
+      ]
+    },
+    {
+      "id": 38,
+      "type": "stat",
+      "title": "Distinct Wait Types",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 18,
+        "y": 122
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'wait_info'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"wait_type\"]/text/text()', ev.xml))[1]::text AS wait_type,\n    (xpath('/*/data[@name=\"duration\"]/value/text()', ev.xml))[1]::text::bigint AS duration_ms,\n    (xpath('/*/data[@name=\"signal_duration\"]/value/text()', ev.xml))[1]::text::bigint AS signal_duration_ms,\n    (xpath('/*/data[@name=\"wait_resource\"]/value/text()', ev.xml))[1]::text AS wait_resource,\n    (xpath('/*/action[@name=\"session_id\"]/value/text()', ev.xml))[1]::text::int AS session_id,\n    (xpath('/*/action[@name=\"sql_text\"]/value/text()', ev.xml))[1]::text AS query_text\nFROM events ev\n)\n            SELECT COUNT(DISTINCT wait_type) AS v FROM sig WHERE session_id <> 0\n  AND query_text IS NOT NULL AND query_text <> ''\n  AND query_text NOT ILIKE '%BACKUP%'\n  AND duration_ms >= 500\n  AND wait_type NOT IN ('ASYNC_IO_COMPLETION', 'AZURE_IMDS_VERSIONS', 'BROKER_EVENTHANDLER', 'BROKER_RECEIVE_WAITFOR', 'BROKER_TASK_STOP', 'BROKER_TO_FLUSH', 'BROKER_TRANSMITTER', 'CHECKPOINT_QUEUE', 'CHKPT', 'CLR_AUTO_EVENT', 'CLR_MANUAL_EVENT', 'CLR_SEMAPHORE', 'DBMIRROR_DBM_EVENT', 'DBMIRROR_DBM_MUTEX', 'DBMIRROR_EVENTS_QUEUE', 'DBMIRROR_SEND', 'DBMIRROR_WORKER_QUEUE', 'DBMIRRORING_CMD', 'DIRTY_PAGE_POLL', 'DISPATCHER_QUEUE_SEMAPHORE', 'FSAGENT', 'FT_IFTS_SCHEDULER_IDLE_WAIT', 'FT_IFTSHC_MUTEX', 'HADR_CLUSAPI_CALL', 'HADR_FILESTREAM_IOMGR_IOCOMPLETION', 'HADR_LOGCAPTURE_WAIT', 'HADR_NOTIFICATION_DEQUEUE', 'HADR_TIMER_TASK', 'HADR_WORK_QUEUE', 'KSOURCE_WAKEUP', 'LAZYWRITER_SLEEP', 'LOGMGR_QUEUE', 'MEMORY_ALLOCATION_EXT', 'ONDEMAND_TASK_QUEUE', 'PARALLEL_REDO_DRAIN_WORKER', 'PARALLEL_REDO_LOG_CACHE', 'PARALLEL_REDO_TRAN_LIST', 'PARALLEL_REDO_WORKER_SYNC', 'PARALLEL_REDO_WORKER_WAIT_WORK', 'PREEMPTIVE_OS_FLUSHFILEBUFFERS', 'PREEMPTIVE_XE_GETTARGETSTATE', 'PVS_PREALLOCATE', 'PWAIT_ALL_COMPONENTS_INITIALIZED', 'PWAIT_DIRECTLOGCONSUMER_GETNEXT', 'PWAIT_EXTENSIBILITY_CLEANUP_TASK', 'QDS_ASYNC_QUEUE', 'QDS_CLEANUP_STALE_QUERIES_TASK_MAIN_LOOP_SLEEP', 'QDS_PERSIST_TASK_MAIN_LOOP_SLEEP', 'QDS_SHUTDOWN_QUEUE', 'REDO_THREAD_PENDING_WORK', 'REQUEST_FOR_DEADLOCK_SEARCH', 'RESOURCE_QUEUE', 'SERVER_IDLE_CHECK', 'SLEEP_DBSTARTUP', 'SLEEP_DCOMSTARTUP', 'SLEEP_MASTERDBREADY', 'SLEEP_MASTERMDREADY', 'SLEEP_MASTERUPGRADED', 'SLEEP_MSDBSTARTUP', 'SLEEP_SYSTEMTASK', 'SLEEP_TEMPDBSTARTUP', 'SNI_HTTP_ACCEPT', 'SOS_WORK_DISPATCHER', 'SP_SERVER_DIAGNOSTICS_SLEEP', 'SQLTRACE_BUFFER_FLUSH', 'SQLTRACE_INCREMENTAL_FLUSH_SLEEP', 'SQLTRACE_WAIT_ENTRIES', 'UCS_SESSION_REGISTRATION', 'VDI_CLIENT_OTHER', 'WAIT_FOR_RESULTS', 'WAIT_XTP_CKPT_CLOSE', 'WAIT_XTP_HOST_WAIT', 'WAIT_XTP_OFFLINE_CKPT_NEW_LOG', 'WAIT_XTP_RECOVERY', 'WAITFOR', 'WAITFOR_TASKSHUTDOWN', 'XE_DISPATCHER_JOIN', 'XE_DISPATCHER_WAIT', 'XE_FILE_TARGET_TVF', 'XE_LIVE_TARGET_TVF', 'XE_TIMER_EVENT')"
+        }
+      ]
+    },
+    {
+      "id": 39,
+      "type": "timeseries",
+      "title": "Significant Waits per Hour",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 128
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'wait_info'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"wait_type\"]/text/text()', ev.xml))[1]::text AS wait_type,\n    (xpath('/*/data[@name=\"duration\"]/value/text()', ev.xml))[1]::text::bigint AS duration_ms,\n    (xpath('/*/data[@name=\"signal_duration\"]/value/text()', ev.xml))[1]::text::bigint AS signal_duration_ms,\n    (xpath('/*/data[@name=\"wait_resource\"]/value/text()', ev.xml))[1]::text AS wait_resource,\n    (xpath('/*/action[@name=\"session_id\"]/value/text()', ev.xml))[1]::text::int AS session_id,\n    (xpath('/*/action[@name=\"sql_text\"]/value/text()', ev.xml))[1]::text AS query_text\nFROM events ev\n)\nSELECT\n    date_trunc('hour', sig.event_time) AS time,\n    srv.name AS metric,\n    COUNT(*)::double precision AS value\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nWHERE sig.session_id <> 0\n  AND sig.query_text IS NOT NULL AND sig.query_text <> ''\n  AND sig.query_text NOT ILIKE '%BACKUP%'\n  AND sig.duration_ms >= 500\n  AND sig.wait_type NOT IN ('ASYNC_IO_COMPLETION', 'AZURE_IMDS_VERSIONS', 'BROKER_EVENTHANDLER', 'BROKER_RECEIVE_WAITFOR', 'BROKER_TASK_STOP', 'BROKER_TO_FLUSH', 'BROKER_TRANSMITTER', 'CHECKPOINT_QUEUE', 'CHKPT', 'CLR_AUTO_EVENT', 'CLR_MANUAL_EVENT', 'CLR_SEMAPHORE', 'DBMIRROR_DBM_EVENT', 'DBMIRROR_DBM_MUTEX', 'DBMIRROR_EVENTS_QUEUE', 'DBMIRROR_SEND', 'DBMIRROR_WORKER_QUEUE', 'DBMIRRORING_CMD', 'DIRTY_PAGE_POLL', 'DISPATCHER_QUEUE_SEMAPHORE', 'FSAGENT', 'FT_IFTS_SCHEDULER_IDLE_WAIT', 'FT_IFTSHC_MUTEX', 'HADR_CLUSAPI_CALL', 'HADR_FILESTREAM_IOMGR_IOCOMPLETION', 'HADR_LOGCAPTURE_WAIT', 'HADR_NOTIFICATION_DEQUEUE', 'HADR_TIMER_TASK', 'HADR_WORK_QUEUE', 'KSOURCE_WAKEUP', 'LAZYWRITER_SLEEP', 'LOGMGR_QUEUE', 'MEMORY_ALLOCATION_EXT', 'ONDEMAND_TASK_QUEUE', 'PARALLEL_REDO_DRAIN_WORKER', 'PARALLEL_REDO_LOG_CACHE', 'PARALLEL_REDO_TRAN_LIST', 'PARALLEL_REDO_WORKER_SYNC', 'PARALLEL_REDO_WORKER_WAIT_WORK', 'PREEMPTIVE_OS_FLUSHFILEBUFFERS', 'PREEMPTIVE_XE_GETTARGETSTATE', 'PVS_PREALLOCATE', 'PWAIT_ALL_COMPONENTS_INITIALIZED', 'PWAIT_DIRECTLOGCONSUMER_GETNEXT', 'PWAIT_EXTENSIBILITY_CLEANUP_TASK', 'QDS_ASYNC_QUEUE', 'QDS_CLEANUP_STALE_QUERIES_TASK_MAIN_LOOP_SLEEP', 'QDS_PERSIST_TASK_MAIN_LOOP_SLEEP', 'QDS_SHUTDOWN_QUEUE', 'REDO_THREAD_PENDING_WORK', 'REQUEST_FOR_DEADLOCK_SEARCH', 'RESOURCE_QUEUE', 'SERVER_IDLE_CHECK', 'SLEEP_DBSTARTUP', 'SLEEP_DCOMSTARTUP', 'SLEEP_MASTERDBREADY', 'SLEEP_MASTERMDREADY', 'SLEEP_MASTERUPGRADED', 'SLEEP_MSDBSTARTUP', 'SLEEP_SYSTEMTASK', 'SLEEP_TEMPDBSTARTUP', 'SNI_HTTP_ACCEPT', 'SOS_WORK_DISPATCHER', 'SP_SERVER_DIAGNOSTICS_SLEEP', 'SQLTRACE_BUFFER_FLUSH', 'SQLTRACE_INCREMENTAL_FLUSH_SLEEP', 'SQLTRACE_WAIT_ENTRIES', 'UCS_SESSION_REGISTRATION', 'VDI_CLIENT_OTHER', 'WAIT_FOR_RESULTS', 'WAIT_XTP_CKPT_CLOSE', 'WAIT_XTP_HOST_WAIT', 'WAIT_XTP_OFFLINE_CKPT_NEW_LOG', 'WAIT_XTP_RECOVERY', 'WAITFOR', 'WAITFOR_TASKSHUTDOWN', 'XE_DISPATCHER_JOIN', 'XE_DISPATCHER_WAIT', 'XE_FILE_TARGET_TVF', 'XE_LIVE_TARGET_TVF', 'XE_TIMER_EVENT')\nGROUP BY 1, 2\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 40,
+      "type": "table",
+      "title": "Significant Wait Events",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 136
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Event Time",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'wait_info'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"wait_type\"]/text/text()', ev.xml))[1]::text AS wait_type,\n    (xpath('/*/data[@name=\"duration\"]/value/text()', ev.xml))[1]::text::bigint AS duration_ms,\n    (xpath('/*/data[@name=\"signal_duration\"]/value/text()', ev.xml))[1]::text::bigint AS signal_duration_ms,\n    (xpath('/*/data[@name=\"wait_resource\"]/value/text()', ev.xml))[1]::text AS wait_resource,\n    (xpath('/*/action[@name=\"session_id\"]/value/text()', ev.xml))[1]::text::int AS session_id,\n    (xpath('/*/action[@name=\"sql_text\"]/value/text()', ev.xml))[1]::text AS query_text\nFROM events ev\n)\nSELECT\n    sig.event_time AS \"Event Time\",\n    srv.name AS \"Server\",\n    sig.wait_type AS \"Wait Type\",\n    sig.duration_ms AS \"Duration (ms)\",\n    sig.signal_duration_ms AS \"Signal Duration (ms)\",\n    sig.wait_resource AS \"Wait Resource\",\n    sig.session_id AS \"Session ID\",\n    sig.query_text AS \"SQL Text\"\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nWHERE sig.session_id <> 0\n  AND sig.query_text IS NOT NULL AND sig.query_text <> ''\n  AND sig.query_text NOT ILIKE '%BACKUP%'\n  AND sig.duration_ms >= 500\n  AND sig.wait_type NOT IN ('ASYNC_IO_COMPLETION', 'AZURE_IMDS_VERSIONS', 'BROKER_EVENTHANDLER', 'BROKER_RECEIVE_WAITFOR', 'BROKER_TASK_STOP', 'BROKER_TO_FLUSH', 'BROKER_TRANSMITTER', 'CHECKPOINT_QUEUE', 'CHKPT', 'CLR_AUTO_EVENT', 'CLR_MANUAL_EVENT', 'CLR_SEMAPHORE', 'DBMIRROR_DBM_EVENT', 'DBMIRROR_DBM_MUTEX', 'DBMIRROR_EVENTS_QUEUE', 'DBMIRROR_SEND', 'DBMIRROR_WORKER_QUEUE', 'DBMIRRORING_CMD', 'DIRTY_PAGE_POLL', 'DISPATCHER_QUEUE_SEMAPHORE', 'FSAGENT', 'FT_IFTS_SCHEDULER_IDLE_WAIT', 'FT_IFTSHC_MUTEX', 'HADR_CLUSAPI_CALL', 'HADR_FILESTREAM_IOMGR_IOCOMPLETION', 'HADR_LOGCAPTURE_WAIT', 'HADR_NOTIFICATION_DEQUEUE', 'HADR_TIMER_TASK', 'HADR_WORK_QUEUE', 'KSOURCE_WAKEUP', 'LAZYWRITER_SLEEP', 'LOGMGR_QUEUE', 'MEMORY_ALLOCATION_EXT', 'ONDEMAND_TASK_QUEUE', 'PARALLEL_REDO_DRAIN_WORKER', 'PARALLEL_REDO_LOG_CACHE', 'PARALLEL_REDO_TRAN_LIST', 'PARALLEL_REDO_WORKER_SYNC', 'PARALLEL_REDO_WORKER_WAIT_WORK', 'PREEMPTIVE_OS_FLUSHFILEBUFFERS', 'PREEMPTIVE_XE_GETTARGETSTATE', 'PVS_PREALLOCATE', 'PWAIT_ALL_COMPONENTS_INITIALIZED', 'PWAIT_DIRECTLOGCONSUMER_GETNEXT', 'PWAIT_EXTENSIBILITY_CLEANUP_TASK', 'QDS_ASYNC_QUEUE', 'QDS_CLEANUP_STALE_QUERIES_TASK_MAIN_LOOP_SLEEP', 'QDS_PERSIST_TASK_MAIN_LOOP_SLEEP', 'QDS_SHUTDOWN_QUEUE', 'REDO_THREAD_PENDING_WORK', 'REQUEST_FOR_DEADLOCK_SEARCH', 'RESOURCE_QUEUE', 'SERVER_IDLE_CHECK', 'SLEEP_DBSTARTUP', 'SLEEP_DCOMSTARTUP', 'SLEEP_MASTERDBREADY', 'SLEEP_MASTERMDREADY', 'SLEEP_MASTERUPGRADED', 'SLEEP_MSDBSTARTUP', 'SLEEP_SYSTEMTASK', 'SLEEP_TEMPDBSTARTUP', 'SNI_HTTP_ACCEPT', 'SOS_WORK_DISPATCHER', 'SP_SERVER_DIAGNOSTICS_SLEEP', 'SQLTRACE_BUFFER_FLUSH', 'SQLTRACE_INCREMENTAL_FLUSH_SLEEP', 'SQLTRACE_WAIT_ENTRIES', 'UCS_SESSION_REGISTRATION', 'VDI_CLIENT_OTHER', 'WAIT_FOR_RESULTS', 'WAIT_XTP_CKPT_CLOSE', 'WAIT_XTP_HOST_WAIT', 'WAIT_XTP_OFFLINE_CKPT_NEW_LOG', 'WAIT_XTP_RECOVERY', 'WAITFOR', 'WAITFOR_TASKSHUTDOWN', 'XE_DISPATCHER_JOIN', 'XE_DISPATCHER_WAIT', 'XE_FILE_TARGET_TVF', 'XE_LIVE_TARGET_TVF', 'XE_TIMER_EVENT')\nORDER BY sig.event_time DESC\nLIMIT 200\n"
+        }
+      ]
+    },
+    {
+      "id": 41,
+      "type": "row",
+      "title": "CPU Tasks",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 146
+      },
+      "panels": []
+    },
+    {
+      "id": 42,
+      "type": "stat",
+      "title": "Unresolvable Deadlocks (range)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 147
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, ev.xml, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//queryProcessing', ev.xml)) AS node\n)\nSELECT\n    n.server_id,\n    n.event_time,\n    (xpath('/*/data[@name=\"state\"]/text/text()', n.xml))[1]::text AS state,\n    (xpath('/*/@maxWorkers', node))[1]::text::bigint AS max_workers,\n    (xpath('/*/@workersCreated', node))[1]::text::bigint AS workers_created,\n    (xpath('/*/@workersIdle', node))[1]::text::bigint AS workers_idle,\n    (xpath('/*/@tasksCompletedWithinInterval', node))[1]::text::bigint AS tasks_completed_within_interval,\n    (xpath('/*/@pendingTasks', node))[1]::text::bigint AS pending_tasks,\n    (xpath('/*/@oldestPendingTaskWaitingTime', node))[1]::text::bigint AS oldest_pending_task_waiting_time,\n    CASE WHEN (xpath('/*/@hasUnresolvableDeadlockOccurred', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@hasUnresolvableDeadlockOccurred', node))[1]::text IN ('0', 'false') THEN false END AS has_unresolvable_deadlock_occurred,\n    CASE WHEN (xpath('/*/@hasDeadlockedSchedulersOccurred', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@hasDeadlockedSchedulersOccurred', node))[1]::text IN ('0', 'false') THEN false END AS has_deadlocked_schedulers_occurred,\n    cardinality(xpath('/*/blockingTasks/blocked-process-report', n.node)) > 0 AS did_blocking_occur\nFROM nodes n\n)\n            SELECT COUNT(*) AS v FROM sig WHERE sig.state = 'WARNING' AND sig.pending_tasks >= 10 AND has_unresolvable_deadlock_occurred"
+        }
+      ]
+    },
+    {
+      "id": 43,
+      "type": "stat",
+      "title": "Scheduler Deadlocks (range)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 147
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, ev.xml, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//queryProcessing', ev.xml)) AS node\n)\nSELECT\n    n.server_id,\n    n.event_time,\n    (xpath('/*/data[@name=\"state\"]/text/text()', n.xml))[1]::text AS state,\n    (xpath('/*/@maxWorkers', node))[1]::text::bigint AS max_workers,\n    (xpath('/*/@workersCreated', node))[1]::text::bigint AS workers_created,\n    (xpath('/*/@workersIdle', node))[1]::text::bigint AS workers_idle,\n    (xpath('/*/@tasksCompletedWithinInterval', node))[1]::text::bigint AS tasks_completed_within_interval,\n    (xpath('/*/@pendingTasks', node))[1]::text::bigint AS pending_tasks,\n    (xpath('/*/@oldestPendingTaskWaitingTime', node))[1]::text::bigint AS oldest_pending_task_waiting_time,\n    CASE WHEN (xpath('/*/@hasUnresolvableDeadlockOccurred', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@hasUnresolvableDeadlockOccurred', node))[1]::text IN ('0', 'false') THEN false END AS has_unresolvable_deadlock_occurred,\n    CASE WHEN (xpath('/*/@hasDeadlockedSchedulersOccurred', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@hasDeadlockedSchedulersOccurred', node))[1]::text IN ('0', 'false') THEN false END AS has_deadlocked_schedulers_occurred,\n    cardinality(xpath('/*/blockingTasks/blocked-process-report', n.node)) > 0 AS did_blocking_occur\nFROM nodes n\n)\n            SELECT COUNT(*) AS v FROM sig WHERE sig.state = 'WARNING' AND sig.pending_tasks >= 10 AND has_deadlocked_schedulers_occurred"
+        }
+      ]
+    },
+    {
+      "id": 44,
+      "type": "stat",
+      "title": "Blocking Events (range)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 147
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, ev.xml, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//queryProcessing', ev.xml)) AS node\n)\nSELECT\n    n.server_id,\n    n.event_time,\n    (xpath('/*/data[@name=\"state\"]/text/text()', n.xml))[1]::text AS state,\n    (xpath('/*/@maxWorkers', node))[1]::text::bigint AS max_workers,\n    (xpath('/*/@workersCreated', node))[1]::text::bigint AS workers_created,\n    (xpath('/*/@workersIdle', node))[1]::text::bigint AS workers_idle,\n    (xpath('/*/@tasksCompletedWithinInterval', node))[1]::text::bigint AS tasks_completed_within_interval,\n    (xpath('/*/@pendingTasks', node))[1]::text::bigint AS pending_tasks,\n    (xpath('/*/@oldestPendingTaskWaitingTime', node))[1]::text::bigint AS oldest_pending_task_waiting_time,\n    CASE WHEN (xpath('/*/@hasUnresolvableDeadlockOccurred', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@hasUnresolvableDeadlockOccurred', node))[1]::text IN ('0', 'false') THEN false END AS has_unresolvable_deadlock_occurred,\n    CASE WHEN (xpath('/*/@hasDeadlockedSchedulersOccurred', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@hasDeadlockedSchedulersOccurred', node))[1]::text IN ('0', 'false') THEN false END AS has_deadlocked_schedulers_occurred,\n    cardinality(xpath('/*/blockingTasks/blocked-process-report', n.node)) > 0 AS did_blocking_occur\nFROM nodes n\n)\n            SELECT COUNT(*) AS v FROM sig WHERE sig.state = 'WARNING' AND sig.pending_tasks >= 10 AND did_blocking_occur"
+        }
+      ]
+    },
+    {
+      "id": 45,
+      "type": "stat",
+      "title": "Pending w/o Blocking (range)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 147
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, ev.xml, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//queryProcessing', ev.xml)) AS node\n)\nSELECT\n    n.server_id,\n    n.event_time,\n    (xpath('/*/data[@name=\"state\"]/text/text()', n.xml))[1]::text AS state,\n    (xpath('/*/@maxWorkers', node))[1]::text::bigint AS max_workers,\n    (xpath('/*/@workersCreated', node))[1]::text::bigint AS workers_created,\n    (xpath('/*/@workersIdle', node))[1]::text::bigint AS workers_idle,\n    (xpath('/*/@tasksCompletedWithinInterval', node))[1]::text::bigint AS tasks_completed_within_interval,\n    (xpath('/*/@pendingTasks', node))[1]::text::bigint AS pending_tasks,\n    (xpath('/*/@oldestPendingTaskWaitingTime', node))[1]::text::bigint AS oldest_pending_task_waiting_time,\n    CASE WHEN (xpath('/*/@hasUnresolvableDeadlockOccurred', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@hasUnresolvableDeadlockOccurred', node))[1]::text IN ('0', 'false') THEN false END AS has_unresolvable_deadlock_occurred,\n    CASE WHEN (xpath('/*/@hasDeadlockedSchedulersOccurred', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@hasDeadlockedSchedulersOccurred', node))[1]::text IN ('0', 'false') THEN false END AS has_deadlocked_schedulers_occurred,\n    cardinality(xpath('/*/blockingTasks/blocked-process-report', n.node)) > 0 AS did_blocking_occur\nFROM nodes n\n)\n            SELECT COUNT(*) AS v FROM sig WHERE sig.state = 'WARNING' AND sig.pending_tasks >= 10 AND NOT did_blocking_occur"
+        }
+      ]
+    },
+    {
+      "id": 46,
+      "type": "timeseries",
+      "title": "Worker Threads",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 151
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, ev.xml, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//queryProcessing', ev.xml)) AS node\n)\nSELECT\n    n.server_id,\n    n.event_time,\n    (xpath('/*/data[@name=\"state\"]/text/text()', n.xml))[1]::text AS state,\n    (xpath('/*/@maxWorkers', node))[1]::text::bigint AS max_workers,\n    (xpath('/*/@workersCreated', node))[1]::text::bigint AS workers_created,\n    (xpath('/*/@workersIdle', node))[1]::text::bigint AS workers_idle,\n    (xpath('/*/@tasksCompletedWithinInterval', node))[1]::text::bigint AS tasks_completed_within_interval,\n    (xpath('/*/@pendingTasks', node))[1]::text::bigint AS pending_tasks,\n    (xpath('/*/@oldestPendingTaskWaitingTime', node))[1]::text::bigint AS oldest_pending_task_waiting_time,\n    CASE WHEN (xpath('/*/@hasUnresolvableDeadlockOccurred', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@hasUnresolvableDeadlockOccurred', node))[1]::text IN ('0', 'false') THEN false END AS has_unresolvable_deadlock_occurred,\n    CASE WHEN (xpath('/*/@hasDeadlockedSchedulersOccurred', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@hasDeadlockedSchedulersOccurred', node))[1]::text IN ('0', 'false') THEN false END AS has_deadlocked_schedulers_occurred,\n    cardinality(xpath('/*/blockingTasks/blocked-process-report', n.node)) > 0 AS did_blocking_occur\nFROM nodes n\n)\nSELECT\n    sig.event_time AS time,\n    srv.name || ' - ' || s.label AS metric,\n    s.value::double precision AS value\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nCROSS JOIN LATERAL (VALUES\n    ('Workers Created', sig.workers_created),\n    ('Workers Idle', sig.workers_idle),\n    ('Max Workers', sig.max_workers)\n) AS s(label, value)\nWHERE sig.state = 'WARNING' AND sig.pending_tasks >= 10\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 47,
+      "type": "timeseries",
+      "title": "Pending Tasks & Oldest Pending Wait",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 151
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, ev.xml, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//queryProcessing', ev.xml)) AS node\n)\nSELECT\n    n.server_id,\n    n.event_time,\n    (xpath('/*/data[@name=\"state\"]/text/text()', n.xml))[1]::text AS state,\n    (xpath('/*/@maxWorkers', node))[1]::text::bigint AS max_workers,\n    (xpath('/*/@workersCreated', node))[1]::text::bigint AS workers_created,\n    (xpath('/*/@workersIdle', node))[1]::text::bigint AS workers_idle,\n    (xpath('/*/@tasksCompletedWithinInterval', node))[1]::text::bigint AS tasks_completed_within_interval,\n    (xpath('/*/@pendingTasks', node))[1]::text::bigint AS pending_tasks,\n    (xpath('/*/@oldestPendingTaskWaitingTime', node))[1]::text::bigint AS oldest_pending_task_waiting_time,\n    CASE WHEN (xpath('/*/@hasUnresolvableDeadlockOccurred', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@hasUnresolvableDeadlockOccurred', node))[1]::text IN ('0', 'false') THEN false END AS has_unresolvable_deadlock_occurred,\n    CASE WHEN (xpath('/*/@hasDeadlockedSchedulersOccurred', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@hasDeadlockedSchedulersOccurred', node))[1]::text IN ('0', 'false') THEN false END AS has_deadlocked_schedulers_occurred,\n    cardinality(xpath('/*/blockingTasks/blocked-process-report', n.node)) > 0 AS did_blocking_occur\nFROM nodes n\n)\nSELECT\n    sig.event_time AS time,\n    srv.name || ' - ' || s.label AS metric,\n    s.value::double precision AS value\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nCROSS JOIN LATERAL (VALUES\n    ('Pending Tasks', sig.pending_tasks),\n    ('Oldest Pending Wait (ms)', sig.oldest_pending_task_waiting_time)\n) AS s(label, value)\nWHERE sig.state = 'WARNING' AND sig.pending_tasks >= 10\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 48,
+      "type": "table",
+      "title": "CPU Task Events",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 159
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Event Time",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, ev.xml, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//queryProcessing', ev.xml)) AS node\n)\nSELECT\n    n.server_id,\n    n.event_time,\n    (xpath('/*/data[@name=\"state\"]/text/text()', n.xml))[1]::text AS state,\n    (xpath('/*/@maxWorkers', node))[1]::text::bigint AS max_workers,\n    (xpath('/*/@workersCreated', node))[1]::text::bigint AS workers_created,\n    (xpath('/*/@workersIdle', node))[1]::text::bigint AS workers_idle,\n    (xpath('/*/@tasksCompletedWithinInterval', node))[1]::text::bigint AS tasks_completed_within_interval,\n    (xpath('/*/@pendingTasks', node))[1]::text::bigint AS pending_tasks,\n    (xpath('/*/@oldestPendingTaskWaitingTime', node))[1]::text::bigint AS oldest_pending_task_waiting_time,\n    CASE WHEN (xpath('/*/@hasUnresolvableDeadlockOccurred', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@hasUnresolvableDeadlockOccurred', node))[1]::text IN ('0', 'false') THEN false END AS has_unresolvable_deadlock_occurred,\n    CASE WHEN (xpath('/*/@hasDeadlockedSchedulersOccurred', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@hasDeadlockedSchedulersOccurred', node))[1]::text IN ('0', 'false') THEN false END AS has_deadlocked_schedulers_occurred,\n    cardinality(xpath('/*/blockingTasks/blocked-process-report', n.node)) > 0 AS did_blocking_occur\nFROM nodes n\n)\nSELECT\n    sig.event_time AS \"Event Time\",\n    srv.name AS \"Server\",\n    sig.state AS \"State\",\n    sig.max_workers AS \"Max Workers\",\n    sig.workers_created AS \"Workers Created\",\n    sig.workers_idle AS \"Workers Idle\",\n    sig.tasks_completed_within_interval AS \"Tasks Completed\",\n    sig.pending_tasks AS \"Pending Tasks\",\n    sig.oldest_pending_task_waiting_time AS \"Oldest Pending Wait\",\n    sig.has_unresolvable_deadlock_occurred AS \"Unresolvable Deadlock\",\n    sig.has_deadlocked_schedulers_occurred AS \"Deadlocked Schedulers\",\n    sig.did_blocking_occur AS \"Blocking Occurred\"\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nWHERE sig.state = 'WARNING' AND sig.pending_tasks >= 10\nORDER BY sig.event_time DESC\nLIMIT 200\n"
+        }
+      ]
+    },
+    {
+      "id": 49,
+      "type": "row",
+      "title": "I/O Issues",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 167
+      },
+      "panels": []
+    },
+    {
+      "id": 50,
+      "type": "timeseries",
+      "title": "I/O Latch Timeouts & Long I/Os",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 168
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, ev.xml, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//ioSubsystem', ev.xml)) AS node\n),\npending AS (\n    SELECT\n        n.server_id,\n        n.event_time,\n        (xpath('/*/data[@name=\"state\"]/text/text()', n.xml))[1]::text AS state,\n        (xpath('/*/@ioLatchTimeouts', node))[1]::text::bigint AS io_latch_timeouts,\n        (xpath('/*/@intervalLongIos', node))[1]::text::bigint AS interval_long_ios,\n        (xpath('/*/@totalLongIos', node))[1]::text::bigint AS total_long_ios,\n        COALESCE((xpath('/*/@filePath', pr))[1]::text, 'N/A') AS file_path,\n        (xpath('/*/@duration', pr))[1]::text::bigint AS duration\n    FROM nodes n\n    CROSS JOIN LATERAL unnest(xpath('/*/longestPendingRequests/pendingRequest', n.node)) AS pr\n)\nSELECT\n    server_id, event_time, state, io_latch_timeouts, interval_long_ios, total_long_ios,\n    file_path,\n    SUM(duration) AS longest_pending_requests_duration_ms\nFROM pending\nWHERE duration IS NOT NULL\nGROUP BY server_id, event_time, state, io_latch_timeouts, interval_long_ios, total_long_ios, file_path\n)\nSELECT\n    sig.event_time AS time,\n    srv.name || ' - ' || s.label AS metric,\n    s.value::double precision AS value\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nCROSS JOIN LATERAL (VALUES\n    ('I/O Latch Timeouts', sig.io_latch_timeouts),\n    ('Interval Long I/Os', sig.interval_long_ios)\n) AS s(label, value)\nWHERE sig.state = 'WARNING'\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 51,
+      "type": "table",
+      "title": "I/O Issue Events",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 168
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Event Time",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, ev.xml, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//ioSubsystem', ev.xml)) AS node\n),\npending AS (\n    SELECT\n        n.server_id,\n        n.event_time,\n        (xpath('/*/data[@name=\"state\"]/text/text()', n.xml))[1]::text AS state,\n        (xpath('/*/@ioLatchTimeouts', node))[1]::text::bigint AS io_latch_timeouts,\n        (xpath('/*/@intervalLongIos', node))[1]::text::bigint AS interval_long_ios,\n        (xpath('/*/@totalLongIos', node))[1]::text::bigint AS total_long_ios,\n        COALESCE((xpath('/*/@filePath', pr))[1]::text, 'N/A') AS file_path,\n        (xpath('/*/@duration', pr))[1]::text::bigint AS duration\n    FROM nodes n\n    CROSS JOIN LATERAL unnest(xpath('/*/longestPendingRequests/pendingRequest', n.node)) AS pr\n)\nSELECT\n    server_id, event_time, state, io_latch_timeouts, interval_long_ios, total_long_ios,\n    file_path,\n    SUM(duration) AS longest_pending_requests_duration_ms\nFROM pending\nWHERE duration IS NOT NULL\nGROUP BY server_id, event_time, state, io_latch_timeouts, interval_long_ios, total_long_ios, file_path\n)\nSELECT\n    sig.event_time AS \"Event Time\",\n    srv.name AS \"Server\",\n    sig.state AS \"State\",\n    sig.io_latch_timeouts AS \"I/O Latch Timeouts\",\n    sig.interval_long_ios AS \"Interval Long I/Os\",\n    sig.total_long_ios AS \"Total Long I/Os\",\n    sig.longest_pending_requests_duration_ms AS \"Duration (ms)\",\n    sig.file_path AS \"File Path\"\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nWHERE sig.state = 'WARNING'\nORDER BY sig.event_time DESC\nLIMIT 100\n"
+        }
+      ]
+    },
+    {
+      "id": 52,
+      "type": "row",
+      "title": "Default Trace",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 176
+      },
+      "panels": []
+    },
+    {
+      "id": 53,
+      "type": "timeseries",
+      "title": "Events per Hour by Category",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 177
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH sig AS (\nWITH svr_offsets AS (\n    SELECT DISTINCT ON (sp.server_id) sp.server_id, sp.utc_offset_minutes\n    FROM collect.server_properties AS sp\n    WHERE sp.utc_offset_minutes IS NOT NULL\n    ORDER BY sp.server_id, sp.collection_time DESC\n),\nevents AS (\n    SELECT\n        dte.server_id,\n        dte.event_time - make_interval(mins => COALESCE(o.utc_offset_minutes, 0)) AS event_time_utc,\n        dte.event_name,\n        dte.database_name,\n        dte.object_name,\n        dte.login_name,\n        dte.host_name,\n        dte.application_name,\n        dte.spid,\n        dte.duration_us,\n        dte.integer_data,\n        dte.severity,\n        dte.error_number,\n        dte.text_data\n    FROM collect.default_trace_events AS dte\n    LEFT JOIN svr_offsets o ON o.server_id = dte.server_id\n    WHERE dte.server_id IN (${server:csv})\n),\ncategorized AS (\n    SELECT c.*, CASE\n        WHEN c.event_name ILIKE '%Server Memory Change%' THEN 'Memory Change'\n        WHEN c.event_name ILIKE '%Auto Grow%' OR c.event_name ILIKE '%Auto Shrink%' THEN 'Auto Grow/Shrink'\n        WHEN c.event_name ILIKE 'ErrorLog' THEN 'Error Log'\n        WHEN c.event_name ILIKE ANY(ARRAY['Object:Created', 'Object:Altered', 'Object:Deleted']) THEN 'Schema Change'\n        WHEN c.event_name ILIKE ANY(ARRAY['Audit Change Audit Event', 'Audit DBCC Event', 'Audit Server Alter Trace Event']) THEN 'Security Audit'\n        ELSE 'Other'\n    END AS category\n    FROM events c\n    WHERE $__timeFilter(c.event_time_utc)\n)\nSELECT * FROM categorized\n)\nSELECT\n    date_trunc('hour', sig.event_time_utc) AS time,\n    sig.category AS metric,\n    COUNT(*)::double precision AS value\nFROM sig\nWHERE (sig.category <> 'Error Log' OR sig.severity IS NULL OR sig.severity >= 16)\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR sig.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nGROUP BY 1, 2\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 54,
+      "type": "table",
+      "title": "Default Trace Events",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 185
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Event Time",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH sig AS (\nWITH svr_offsets AS (\n    SELECT DISTINCT ON (sp.server_id) sp.server_id, sp.utc_offset_minutes\n    FROM collect.server_properties AS sp\n    WHERE sp.utc_offset_minutes IS NOT NULL\n    ORDER BY sp.server_id, sp.collection_time DESC\n),\nevents AS (\n    SELECT\n        dte.server_id,\n        dte.event_time - make_interval(mins => COALESCE(o.utc_offset_minutes, 0)) AS event_time_utc,\n        dte.event_name,\n        dte.database_name,\n        dte.object_name,\n        dte.login_name,\n        dte.host_name,\n        dte.application_name,\n        dte.spid,\n        dte.duration_us,\n        dte.integer_data,\n        dte.severity,\n        dte.error_number,\n        dte.text_data\n    FROM collect.default_trace_events AS dte\n    LEFT JOIN svr_offsets o ON o.server_id = dte.server_id\n    WHERE dte.server_id IN (${server:csv})\n),\ncategorized AS (\n    SELECT c.*, CASE\n        WHEN c.event_name ILIKE '%Server Memory Change%' THEN 'Memory Change'\n        WHEN c.event_name ILIKE '%Auto Grow%' OR c.event_name ILIKE '%Auto Shrink%' THEN 'Auto Grow/Shrink'\n        WHEN c.event_name ILIKE 'ErrorLog' THEN 'Error Log'\n        WHEN c.event_name ILIKE ANY(ARRAY['Object:Created', 'Object:Altered', 'Object:Deleted']) THEN 'Schema Change'\n        WHEN c.event_name ILIKE ANY(ARRAY['Audit Change Audit Event', 'Audit DBCC Event', 'Audit Server Alter Trace Event']) THEN 'Security Audit'\n        ELSE 'Other'\n    END AS category\n    FROM events c\n    WHERE $__timeFilter(c.event_time_utc)\n)\nSELECT * FROM categorized\n)\nSELECT\n    sig.event_time_utc AS \"Event Time\",\n    srv.name AS \"Server\",\n    sig.category AS \"Category\",\n    sig.event_name AS \"Event\",\n    sig.database_name AS \"Database\",\n    sig.object_name AS \"Object\",\n    sig.login_name AS \"Login\",\n    sig.host_name AS \"Host\",\n    sig.application_name AS \"App\",\n    sig.spid AS \"SPID\",\n    CASE WHEN sig.category = 'Auto Grow/Shrink' AND sig.duration_us IS NOT NULL\n        THEN ROUND(sig.duration_us / 1000.0, 1) END AS \"Duration (ms)\",\n    CASE WHEN sig.category = 'Auto Grow/Shrink' AND sig.integer_data IS NOT NULL\n        THEN ROUND(sig.integer_data * 8.0 / 1024.0, 1) END AS \"Growth (MB)\",\n    sig.severity AS \"Severity\",\n    sig.error_number AS \"Error Number\",\n    sig.text_data AS \"Text\"\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nWHERE (sig.category <> 'Error Log' OR sig.severity IS NULL OR sig.severity >= 16)\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR sig.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nORDER BY sig.event_time_utc DESC\nLIMIT 200\n"
+        }
+      ],
+      "description": "The always-on server events no DMV captures: file auto-grow/shrink stalls, severe ErrorLog writes, schema DDL, security audits, Server Memory Change."
+    }
+  ]
+}

@@ -34,6 +34,7 @@ from darling_defs.memory import memory  # noqa: E402
 from darling_defs.perfmon import perfmon  # noqa: E402
 from darling_defs.queries import queries  # noqa: E402
 from darling_defs.session_stats import session_stats  # noqa: E402
+from darling_defs.system_events import system_events  # noqa: E402
 from darling_defs.tempdb import tempdb  # noqa: E402
 from darling_defs.waits import waits  # noqa: E402
 from darling_defs.finops.application_connections import (  # noqa: E402
@@ -69,6 +70,7 @@ DASHBOARDS = [
     perfmon,
     queries,
     session_stats,
+    system_events,
     tempdb,
     waits,
     # FinOps: one dashboard per upstream FinOps sub-tab, plus the two Storage Growth
