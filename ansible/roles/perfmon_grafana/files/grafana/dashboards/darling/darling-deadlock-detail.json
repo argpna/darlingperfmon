@@ -1,0 +1,254 @@
+{
+  "uid": "darling-deadlock-detail",
+  "title": "Perfmon (Darling) - Deadlock Detail",
+  "tags": [
+    "perfmon-darling-detail",
+    "nav-only"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "refresh": "",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon-darling"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon (Darling) Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      },
+      {
+        "name": "deadlock_id",
+        "label": "Deadlock ID",
+        "type": "textbox",
+        "current": {
+          "text": "*",
+          "value": "*"
+        },
+        "options": [
+          {
+            "text": "*",
+            "value": "*"
+          }
+        ],
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Participants",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Deadlock Participants",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "deadlock_id"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Time",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH graphs AS (\n    SELECT\n        dl.server_id, dl.deadlock_id, dl.deadlock_time, dl.victim_process_id,\n        dl.deadlock_graph_xml::xml AS graph\n    FROM collect.v_deadlocks AS dl\n    WHERE (${deadlock_id:sqlstring} = '*' OR ${deadlock_id:sqlstring} = '' OR dl.deadlock_id::text = ${deadlock_id:sqlstring})\n),\nprocesses AS (\n    SELECT\n        g.server_id,\n        g.deadlock_id,\n        g.deadlock_time,\n        g.victim_process_id,\n        (xpath('/*/@id', proc))[1]::text AS process_id,\n        (xpath('/*/@spid', proc))[1]::text AS spid,\n        (xpath('/*/@waittime', proc))[1]::text::bigint AS wait_ms,\n        (xpath('/*/@lockMode', proc))[1]::text AS lock_mode,\n        (xpath('/*/@waitresource', proc))[1]::text AS wait_resource,\n        (xpath('/*/@isolationlevel', proc))[1]::text AS isolation_level,\n        (xpath('/*/@currentdbname', proc))[1]::text AS database_name,\n        (xpath('/*/@trancount', proc))[1]::text::integer AS tran_count,\n        (xpath('/*/@loginname', proc))[1]::text AS login_name,\n        (xpath('/*/@hostname', proc))[1]::text AS host_name,\n        (xpath('/*/@clientapp', proc))[1]::text AS client_app,\n        (xpath('/*/inputbuf/text()', proc))[1]::text AS sql_text\n    FROM graphs g\n    CROSS JOIN LATERAL unnest(xpath('/deadlock/process-list/process', g.graph)) AS proc\n),\nlock_elems AS (\n    SELECT g.deadlock_id, lock\n    FROM graphs g\n    CROSS JOIN LATERAL unnest(xpath('/deadlock/resource-list/*', g.graph)) AS lock\n),\nparticipants AS (\n    SELECT\n        le.deadlock_id,\n        (xpath('/*/@objectname', le.lock))[1]::text AS object_name,\n        xpath('/*/owner-list/owner/@id', le.lock) AS owner_ids,\n        xpath('/*/waiter-list/waiter/@id', le.lock) AS waiter_ids\n    FROM lock_elems le\n),\nobject_by_process AS (\n    SELECT p.deadlock_id, unnest(p.owner_ids)::text AS process_id, p.object_name\n    FROM participants p\n    UNION ALL\n    SELECT p.deadlock_id, unnest(p.waiter_ids)::text AS process_id, p.object_name\n    FROM participants p\n),\nobject_agg AS (\n    SELECT deadlock_id, process_id, string_agg(DISTINCT object_name, ', ') AS objects\n    FROM object_by_process\n    WHERE object_name IS NOT NULL\n    GROUP BY deadlock_id, process_id\n)\nSELECT\n    /* ::text: a numeric field round-trips through a JS double in the drill-down data\n       link and loses precision past 2^53, which this id exceeds. */\n    p.deadlock_id::text AS \"deadlock_id\",\n    p.deadlock_time AS \"Time\",\n    CASE WHEN p.process_id = p.victim_process_id THEN 'Victim' ELSE '' END AS \"Victim\",\n    p.spid AS \"SPID\",\n    p.database_name AS \"Database\",\n    oa.objects AS \"Object(s)\",\n    p.lock_mode AS \"Lock Mode\",\n    p.wait_resource AS \"Wait Resource\",\n    p.wait_ms AS \"Wait (ms)\",\n    p.isolation_level AS \"Isolation\",\n    p.tran_count AS \"Tran Count\",\n    p.login_name AS \"Login\",\n    p.host_name AS \"Host\",\n    p.client_app AS \"App\",\n    p.sql_text AS \"SQL Text\"\nFROM processes p\nJOIN config.config_monitored_servers AS srv ON srv.server_id = p.server_id\nLEFT JOIN object_agg AS oa\n  ON oa.deadlock_id = p.deadlock_id AND oa.process_id = p.process_id\nWHERE true\nORDER BY p.deadlock_time DESC, p.spid\nLIMIT 200\n"
+        }
+      ],
+      "description": "One row per process in this deadlock's graph, parsed from deadlock_graph_xml."
+    },
+    {
+      "id": 3,
+      "type": "row",
+      "title": "Deadlock Graph (XML)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 13
+      },
+      "panels": []
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Deadlock Graph (XML)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 14
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    dl.deadlock_time AS \"Time\",\n    srv.name AS \"Server\",\n    dl.database_name AS \"Database\",\n    dl.victim_sql_text AS \"Victim SQL\",\n    dl.deadlock_graph_xml AS \"Deadlock Graph (XML)\"\nFROM collect.v_deadlocks AS dl\nJOIN config.config_monitored_servers AS srv ON srv.server_id = dl.server_id\nWHERE (${deadlock_id:sqlstring} = '*' OR ${deadlock_id:sqlstring} = '' OR dl.deadlock_id::text = ${deadlock_id:sqlstring})\nORDER BY dl.deadlock_time DESC\nLIMIT 1\n"
+        }
+      ],
+      "description": "Full deadlock_graph_xml for this event. Grafana has no XDL graph renderer. To export: panel menu (three dots) -> Inspect -> Data -> Download CSV; the Deadlock Graph (XML) column holds the complete XML."
+    }
+  ]
+}

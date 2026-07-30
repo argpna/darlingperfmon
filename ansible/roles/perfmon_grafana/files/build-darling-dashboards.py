@@ -21,6 +21,7 @@ from darling_defs.availability_groups import (  # noqa: E402
     availability_group_detail,
     availability_groups,
 )
+from darling_defs.blocking import blocking, deadlock_detail  # noqa: E402
 from darling_defs.collection_health import collection_health  # noqa: E402
 from darling_defs.config_changes import config_changes  # noqa: E402
 from darling_defs.configuration import configuration  # noqa: E402
@@ -54,6 +55,8 @@ from darling_defs.finops.utilization import utilization  # noqa: E402
 DASHBOARDS = [
     availability_groups,
     availability_group_detail,
+    blocking,
+    deadlock_detail,
     collection_health,
     config_changes,
     configuration,

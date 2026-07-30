@@ -1,0 +1,1388 @@
+{
+  "uid": "darling-blocking",
+  "title": "Perfmon (Darling) - Blocking",
+  "tags": [
+    "perfmon-darling"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon-darling"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon (Darling) Dashboards",
+      "type": "dashboards",
+      "url": ""
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "finops-darling"
+      ],
+      "targetBlank": false,
+      "title": "All FinOps (Darling) Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      },
+      {
+        "name": "database",
+        "label": "Database",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "\nSELECT database_name FROM (\n    SELECT bpr.database_name\n    FROM collect.v_blocked_process_reports AS bpr\n    WHERE $__timeFilter(bpr.collection_time) AND bpr.server_id IN (${server:csv})\n    UNION\n    SELECT d.database_name\n    FROM collect.v_dmv_blocking_snapshots AS d\n    WHERE $__timeFilter(d.collection_time) AND d.server_id IN (${server:csv})\n) AS dbs\nWHERE database_name IS NOT NULL\nORDER BY 1\n",
+        "definition": "\nSELECT database_name FROM (\n    SELECT bpr.database_name\n    FROM collect.v_blocked_process_reports AS bpr\n    WHERE $__timeFilter(bpr.collection_time) AND bpr.server_id IN (${server:csv})\n    UNION\n    SELECT d.database_name\n    FROM collect.v_dmv_blocking_snapshots AS d\n    WHERE $__timeFilter(d.collection_time) AND d.server_id IN (${server:csv})\n) AS dbs\nWHERE database_name IS NOT NULL\nORDER BY 1\n",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "refresh": 2,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 0,
+        "description": "Databases seen in blocking/deadlock events over the window."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Trends",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Lock Wait Trend",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Lock Wait Time (ms/sec)"
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH windowed AS (\n    SELECT\n        ws.server_id,\n        srv.name AS server_label,\n        ws.wait_type,\n        ws.collection_time,\n        ws.delta_wait_time_ms,\n        EXTRACT(EPOCH FROM (date_trunc('second', ws.collection_time)\n            - date_trunc('second', LAG(ws.collection_time) OVER (\n                PARTITION BY ws.server_id, ws.wait_type\n                ORDER BY ws.collection_time)))) AS interval_seconds\n    FROM collect.v_wait_stats AS ws\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = ws.server_id\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n      AND ws.wait_type LIKE 'LCK%'\n)\nSELECT\n    collection_time AS time,\n    server_label || ' - ' || wait_type AS metric,\n    CASE\n        WHEN interval_seconds > 0 AND delta_wait_time_ms >= 0\n        THEN delta_wait_time_ms::double precision / interval_seconds\n        ELSE 0\n    END AS value\nFROM windowed\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Blocking Trend",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 8,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Blocking Events per Minute"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH xe AS (\n    SELECT bpr.server_id, date_trunc('minute', bpr.event_time) AS t, COUNT(*) AS c\n    FROM collect.v_blocked_process_reports AS bpr\n    WHERE $__timeFilter(bpr.collection_time)\n      AND bpr.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR bpr.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n    GROUP BY 1, 2\n),\ndmv AS (\n    SELECT d.server_id, date_trunc('minute', d.event_time) AS t, COUNT(*) AS c\n    FROM collect.v_dmv_blocking_snapshots AS d\n    WHERE $__timeFilter(d.collection_time)\n      AND d.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR d.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n      AND NOT EXISTS (SELECT 1 FROM xe)\n    GROUP BY 1, 2\n)\nSELECT b.t AS time, srv.name AS metric, b.c AS value\nFROM (SELECT * FROM xe UNION ALL SELECT * FROM dmv) AS b\nJOIN config.config_monitored_servers AS srv ON srv.server_id = b.server_id\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Deadlock Trend",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 16,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Deadlocks per Minute"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    date_trunc('minute', dl.deadlock_time) AS time,\n    srv.name AS metric,\n    COUNT(*) AS value\nFROM collect.v_deadlocks AS dl\nJOIN config.config_monitored_servers AS srv ON srv.server_id = dl.server_id\nWHERE $__timeFilter(dl.collection_time)\n  AND dl.server_id IN (${server:csv})\nGROUP BY 1, 2\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "row",
+      "title": "Blocking Stats",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 10
+      },
+      "panels": []
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Blocking Duration (Max/Avg)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 11
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH b AS (\nWITH xe AS (\n    SELECT bpr.server_id, date_trunc('minute', bpr.event_time) AS t,\n           COUNT(*) AS c, SUM(bpr.wait_time_ms) AS sum_ms,\n           MAX(bpr.wait_time_ms) AS max_ms, AVG(bpr.wait_time_ms) AS avg_ms\n    FROM collect.v_blocked_process_reports AS bpr\n    WHERE $__timeFilter(bpr.collection_time)\n      AND bpr.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR bpr.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n    GROUP BY 1, 2\n),\ndmv AS (\n    SELECT d.server_id, date_trunc('minute', d.event_time) AS t,\n           COUNT(*) AS c, SUM(d.wait_time_ms) AS sum_ms,\n           MAX(d.wait_time_ms) AS max_ms, AVG(d.wait_time_ms) AS avg_ms\n    FROM collect.v_dmv_blocking_snapshots AS d\n    WHERE $__timeFilter(d.collection_time)\n      AND d.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR d.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n      AND NOT EXISTS (SELECT 1 FROM xe)\n    GROUP BY 1, 2\n)\nSELECT * FROM xe\nUNION ALL\nSELECT * FROM dmv\n)\nSELECT b.t AS time, srv.name || ' - Max' AS metric, b.max_ms AS value\nFROM b JOIN config.config_monitored_servers AS srv ON srv.server_id = b.server_id\nUNION ALL\nSELECT b.t, srv.name || ' - Avg', b.avg_ms\nFROM b JOIN config.config_monitored_servers AS srv ON srv.server_id = b.server_id\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Blocking Total Duration",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 11
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH b AS (\nWITH xe AS (\n    SELECT bpr.server_id, date_trunc('minute', bpr.event_time) AS t,\n           COUNT(*) AS c, SUM(bpr.wait_time_ms) AS sum_ms,\n           MAX(bpr.wait_time_ms) AS max_ms, AVG(bpr.wait_time_ms) AS avg_ms\n    FROM collect.v_blocked_process_reports AS bpr\n    WHERE $__timeFilter(bpr.collection_time)\n      AND bpr.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR bpr.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n    GROUP BY 1, 2\n),\ndmv AS (\n    SELECT d.server_id, date_trunc('minute', d.event_time) AS t,\n           COUNT(*) AS c, SUM(d.wait_time_ms) AS sum_ms,\n           MAX(d.wait_time_ms) AS max_ms, AVG(d.wait_time_ms) AS avg_ms\n    FROM collect.v_dmv_blocking_snapshots AS d\n    WHERE $__timeFilter(d.collection_time)\n      AND d.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR d.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n      AND NOT EXISTS (SELECT 1 FROM xe)\n    GROUP BY 1, 2\n)\nSELECT * FROM xe\nUNION ALL\nSELECT * FROM dmv\n)\nSELECT b.t AS time, srv.name AS metric, b.sum_ms AS value\nFROM b JOIN config.config_monitored_servers AS srv ON srv.server_id = b.server_id\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Deadlock Wait (Max/Avg)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 19
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH d AS (\nWITH graphs AS (\n    SELECT dl.server_id, dl.deadlock_time, dl.deadlock_graph_xml::xml AS graph\n    FROM collect.v_deadlocks AS dl\n    WHERE $__timeFilter(dl.collection_time)\n      AND dl.server_id IN (${server:csv})\n),\nprocesses AS (\n    SELECT\n        g.server_id,\n        g.deadlock_time,\n        (xpath('/*/@waittime', proc))[1]::text::bigint AS wait_ms\n    FROM graphs g\n    CROSS JOIN LATERAL unnest(xpath('/deadlock/process-list/process', g.graph)) AS proc\n)\nSELECT\n    date_trunc('minute', p.deadlock_time) AS t,\n    p.server_id,\n    COUNT(*) AS victim_count,\n    SUM(p.wait_ms) AS sum_ms,\n    MAX(p.wait_ms) AS max_ms,\n    AVG(p.wait_ms) AS avg_ms\nFROM processes p\nGROUP BY 1, 2\n)\nSELECT d.t AS time, srv.name || ' - Max' AS metric, d.max_ms AS value\nFROM d JOIN config.config_monitored_servers AS srv ON srv.server_id = d.server_id\nUNION ALL\nSELECT d.t, srv.name || ' - Avg', d.avg_ms\nFROM d JOIN config.config_monitored_servers AS srv ON srv.server_id = d.server_id\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Deadlock Total Wait",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 19
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH d AS (\nWITH graphs AS (\n    SELECT dl.server_id, dl.deadlock_time, dl.deadlock_graph_xml::xml AS graph\n    FROM collect.v_deadlocks AS dl\n    WHERE $__timeFilter(dl.collection_time)\n      AND dl.server_id IN (${server:csv})\n),\nprocesses AS (\n    SELECT\n        g.server_id,\n        g.deadlock_time,\n        (xpath('/*/@waittime', proc))[1]::text::bigint AS wait_ms\n    FROM graphs g\n    CROSS JOIN LATERAL unnest(xpath('/deadlock/process-list/process', g.graph)) AS proc\n)\nSELECT\n    date_trunc('minute', p.deadlock_time) AS t,\n    p.server_id,\n    COUNT(*) AS victim_count,\n    SUM(p.wait_ms) AS sum_ms,\n    MAX(p.wait_ms) AS max_ms,\n    AVG(p.wait_ms) AS avg_ms\nFROM processes p\nGROUP BY 1, 2\n)\nSELECT d.t AS time, srv.name AS metric, d.sum_ms AS value\nFROM d JOIN config.config_monitored_servers AS srv ON srv.server_id = d.server_id\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Blocking Events",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 0,
+        "y": 27
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 20
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\n            WITH b AS (\nWITH xe AS (\n    SELECT bpr.server_id, date_trunc('minute', bpr.event_time) AS t,\n           COUNT(*) AS c, SUM(bpr.wait_time_ms) AS sum_ms,\n           MAX(bpr.wait_time_ms) AS max_ms, AVG(bpr.wait_time_ms) AS avg_ms\n    FROM collect.v_blocked_process_reports AS bpr\n    WHERE $__timeFilter(bpr.collection_time)\n      AND bpr.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR bpr.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n    GROUP BY 1, 2\n),\ndmv AS (\n    SELECT d.server_id, date_trunc('minute', d.event_time) AS t,\n           COUNT(*) AS c, SUM(d.wait_time_ms) AS sum_ms,\n           MAX(d.wait_time_ms) AS max_ms, AVG(d.wait_time_ms) AS avg_ms\n    FROM collect.v_dmv_blocking_snapshots AS d\n    WHERE $__timeFilter(d.collection_time)\n      AND d.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR d.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n      AND NOT EXISTS (SELECT 1 FROM xe)\n    GROUP BY 1, 2\n)\nSELECT * FROM xe\nUNION ALL\nSELECT * FROM dmv\n)\n            SELECT COALESCE(SUM(c), 0) AS v FROM b\n        "
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Total Duration",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 6,
+        "y": 27
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\n            WITH b AS (\nWITH xe AS (\n    SELECT bpr.server_id, date_trunc('minute', bpr.event_time) AS t,\n           COUNT(*) AS c, SUM(bpr.wait_time_ms) AS sum_ms,\n           MAX(bpr.wait_time_ms) AS max_ms, AVG(bpr.wait_time_ms) AS avg_ms\n    FROM collect.v_blocked_process_reports AS bpr\n    WHERE $__timeFilter(bpr.collection_time)\n      AND bpr.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR bpr.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n    GROUP BY 1, 2\n),\ndmv AS (\n    SELECT d.server_id, date_trunc('minute', d.event_time) AS t,\n           COUNT(*) AS c, SUM(d.wait_time_ms) AS sum_ms,\n           MAX(d.wait_time_ms) AS max_ms, AVG(d.wait_time_ms) AS avg_ms\n    FROM collect.v_dmv_blocking_snapshots AS d\n    WHERE $__timeFilter(d.collection_time)\n      AND d.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR d.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n      AND NOT EXISTS (SELECT 1 FROM xe)\n    GROUP BY 1, 2\n)\nSELECT * FROM xe\nUNION ALL\nSELECT * FROM dmv\n)\n            SELECT COALESCE(SUM(sum_ms), 0) AS v FROM b\n        "
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "Max Duration",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 12,
+        "y": 27
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 30000
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\n            WITH b AS (\nWITH xe AS (\n    SELECT bpr.server_id, date_trunc('minute', bpr.event_time) AS t,\n           COUNT(*) AS c, SUM(bpr.wait_time_ms) AS sum_ms,\n           MAX(bpr.wait_time_ms) AS max_ms, AVG(bpr.wait_time_ms) AS avg_ms\n    FROM collect.v_blocked_process_reports AS bpr\n    WHERE $__timeFilter(bpr.collection_time)\n      AND bpr.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR bpr.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n    GROUP BY 1, 2\n),\ndmv AS (\n    SELECT d.server_id, date_trunc('minute', d.event_time) AS t,\n           COUNT(*) AS c, SUM(d.wait_time_ms) AS sum_ms,\n           MAX(d.wait_time_ms) AS max_ms, AVG(d.wait_time_ms) AS avg_ms\n    FROM collect.v_dmv_blocking_snapshots AS d\n    WHERE $__timeFilter(d.collection_time)\n      AND d.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR d.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n      AND NOT EXISTS (SELECT 1 FROM xe)\n    GROUP BY 1, 2\n)\nSELECT * FROM xe\nUNION ALL\nSELECT * FROM dmv\n)\n            SELECT COALESCE(MAX(max_ms), 0) AS v FROM b\n        "
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "Avg Duration",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 18,
+        "y": 27
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 30000
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\n            WITH b AS (\nWITH xe AS (\n    SELECT bpr.server_id, date_trunc('minute', bpr.event_time) AS t,\n           COUNT(*) AS c, SUM(bpr.wait_time_ms) AS sum_ms,\n           MAX(bpr.wait_time_ms) AS max_ms, AVG(bpr.wait_time_ms) AS avg_ms\n    FROM collect.v_blocked_process_reports AS bpr\n    WHERE $__timeFilter(bpr.collection_time)\n      AND bpr.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR bpr.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n    GROUP BY 1, 2\n),\ndmv AS (\n    SELECT d.server_id, date_trunc('minute', d.event_time) AS t,\n           COUNT(*) AS c, SUM(d.wait_time_ms) AS sum_ms,\n           MAX(d.wait_time_ms) AS max_ms, AVG(d.wait_time_ms) AS avg_ms\n    FROM collect.v_dmv_blocking_snapshots AS d\n    WHERE $__timeFilter(d.collection_time)\n      AND d.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR d.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n      AND NOT EXISTS (SELECT 1 FROM xe)\n    GROUP BY 1, 2\n)\nSELECT * FROM xe\nUNION ALL\nSELECT * FROM dmv\n)\n            SELECT CASE WHEN SUM(c) > 0 THEN SUM(sum_ms) / SUM(c) ELSE 0 END AS v FROM b\n        "
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Deadlocks",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 0,
+        "y": 30
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\n            SELECT COUNT(*) AS v FROM collect.v_deadlocks AS dl\n            WHERE $__timeFilter(dl.collection_time) AND dl.server_id IN (${server:csv})\n        "
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "stat",
+      "title": "Deadlock Victims",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 6,
+        "y": 30
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\n            WITH d AS (\nWITH graphs AS (\n    SELECT dl.server_id, dl.deadlock_time, dl.deadlock_graph_xml::xml AS graph\n    FROM collect.v_deadlocks AS dl\n    WHERE $__timeFilter(dl.collection_time)\n      AND dl.server_id IN (${server:csv})\n),\nprocesses AS (\n    SELECT\n        g.server_id,\n        g.deadlock_time,\n        (xpath('/*/@waittime', proc))[1]::text::bigint AS wait_ms\n    FROM graphs g\n    CROSS JOIN LATERAL unnest(xpath('/deadlock/process-list/process', g.graph)) AS proc\n)\nSELECT\n    date_trunc('minute', p.deadlock_time) AS t,\n    p.server_id,\n    COUNT(*) AS victim_count,\n    SUM(p.wait_ms) AS sum_ms,\n    MAX(p.wait_ms) AS max_ms,\n    AVG(p.wait_ms) AS avg_ms\nFROM processes p\nGROUP BY 1, 2\n)\n            SELECT COALESCE(SUM(victim_count), 0) AS v FROM d\n        "
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "stat",
+      "title": "Deadlock Wait",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 12,
+        "y": 30
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\n            WITH d AS (\nWITH graphs AS (\n    SELECT dl.server_id, dl.deadlock_time, dl.deadlock_graph_xml::xml AS graph\n    FROM collect.v_deadlocks AS dl\n    WHERE $__timeFilter(dl.collection_time)\n      AND dl.server_id IN (${server:csv})\n),\nprocesses AS (\n    SELECT\n        g.server_id,\n        g.deadlock_time,\n        (xpath('/*/@waittime', proc))[1]::text::bigint AS wait_ms\n    FROM graphs g\n    CROSS JOIN LATERAL unnest(xpath('/deadlock/process-list/process', g.graph)) AS proc\n)\nSELECT\n    date_trunc('minute', p.deadlock_time) AS t,\n    p.server_id,\n    COUNT(*) AS victim_count,\n    SUM(p.wait_ms) AS sum_ms,\n    MAX(p.wait_ms) AS max_ms,\n    AVG(p.wait_ms) AS avg_ms\nFROM processes p\nGROUP BY 1, 2\n)\n            SELECT COALESCE(SUM(sum_ms), 0) AS v FROM d\n        "
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "row",
+      "title": "Current Waits",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 33
+      },
+      "panels": []
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Current Waits Duration",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 34
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Wait Duration (ms)"
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    wt.collection_time AS time,\n    srv.name || ' - ' || wt.wait_type AS metric,\n    SUM(wt.wait_duration_ms) AS value\nFROM collect.waiting_tasks AS wt\nJOIN config.config_monitored_servers AS srv ON srv.server_id = wt.server_id\nWHERE $__timeFilter(wt.collection_time)\n  AND wt.server_id IN (${server:csv})\n  AND wt.wait_type IS NOT NULL\nGROUP BY 1, 2\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "Current Waits Blocked (by Database)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 34
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Blocked Sessions"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    wt.collection_time AS time,\n    srv.name || ' - ' || wt.database_name AS metric,\n    COUNT(*) AS value\nFROM collect.waiting_tasks AS wt\nJOIN config.config_monitored_servers AS srv ON srv.server_id = wt.server_id\nWHERE $__timeFilter(wt.collection_time)\n  AND wt.server_id IN (${server:csv})\n  AND wt.blocking_session_id > 0\nGROUP BY 1, 2\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Blocked Process Reports",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 43
+      },
+      "panels": []
+    },
+    {
+      "id": 21,
+      "type": "table",
+      "title": "Blocked Process Reports",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 44
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Wait (ms)"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 30000
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Event Time",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH xe AS (\n    SELECT\n        bpr.event_time, 'XE' AS source, bpr.database_name,\n        bpr.blocked_spid, bpr.blocking_spid, bpr.wait_time_ms, bpr.wait_resource,\n        bpr.lock_mode, bpr.blocked_status, bpr.blocking_status,\n        bpr.blocked_isolation_level, bpr.blocking_isolation_level,\n        bpr.blocked_transaction_name, bpr.blocked_priority,\n        bpr.blocked_transaction_count, bpr.blocked_log_used,\n        bpr.blocked_login_name, bpr.blocked_host_name, bpr.blocked_client_app,\n        bpr.blocked_sql_text, bpr.blocking_login_name, bpr.blocking_host_name,\n        bpr.blocking_client_app, bpr.blocking_sql_text\n    FROM collect.v_blocked_process_reports AS bpr\n    WHERE $__timeFilter(bpr.collection_time)\n      AND bpr.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR bpr.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n),\ndmv AS (\n    SELECT\n        d.event_time, 'DMV' AS source, d.database_name,\n        d.blocked_spid, d.blocking_spid, d.wait_time_ms,\n        NULL::text AS wait_resource, d.lock_mode,\n        NULL::text AS blocked_status, d.blocking_status,\n        NULL::text AS blocked_isolation_level, NULL::text AS blocking_isolation_level,\n        NULL::text AS blocked_transaction_name, NULL::integer AS blocked_priority,\n        NULL::integer AS blocked_transaction_count, NULL::bigint AS blocked_log_used,\n        d.blocked_login_name, d.blocked_host_name, d.blocked_client_app,\n        d.blocked_sql_text, d.blocking_login_name, d.blocking_host_name,\n        d.blocking_client_app, d.blocking_sql_text\n    FROM collect.v_dmv_blocking_snapshots AS d\n    WHERE $__timeFilter(d.collection_time)\n      AND d.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR d.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n      AND NOT EXISTS (\n          SELECT 1 FROM xe\n          WHERE xe.blocked_spid = d.blocked_spid\n            AND xe.blocking_spid = d.blocking_spid\n            AND date_trunc('minute', xe.event_time) = date_trunc('minute', d.event_time)\n      )\n)\nSELECT\n    r.event_time AS \"Event Time\",\n    r.source AS \"Source\",\n    r.database_name AS \"Database\",\n    r.blocked_spid AS \"Blocked SPID\",\n    r.blocking_spid AS \"Blocking SPID\",\n    r.wait_time_ms AS \"Wait (ms)\",\n    r.wait_resource AS \"Wait Resource\",\n    r.lock_mode AS \"Lock Mode\",\n    r.blocked_status AS \"Blocked Status\",\n    r.blocking_status AS \"Blocking Status\",\n    r.blocked_isolation_level AS \"Blocked Isolation\",\n    r.blocking_isolation_level AS \"Blocking Isolation\",\n    r.blocked_transaction_name AS \"Blocked Tran\",\n    r.blocked_priority AS \"Blocked Priority\",\n    r.blocked_transaction_count AS \"Blocked Tran Count\",\n    r.blocked_log_used AS \"Blocked Log Used\",\n    r.blocked_login_name AS \"Blocked Login\",\n    r.blocked_host_name AS \"Blocked Host\",\n    r.blocked_client_app AS \"Blocked App\",\n    r.blocked_sql_text AS \"Blocked SQL\",\n    r.blocking_login_name AS \"Blocking Login\",\n    r.blocking_host_name AS \"Blocking Host\",\n    r.blocking_client_app AS \"Blocking App\",\n    r.blocking_sql_text AS \"Blocking SQL\"\nFROM (SELECT * FROM xe UNION ALL SELECT * FROM dmv) AS r\nORDER BY r.event_time DESC\nLIMIT 200\n"
+        }
+      ],
+      "description": "Merges the blocked-process-report trace (XE) with DMV blocking snapshots, XE preferred; a DMV row only fills a blocked/blocker pair no XE row already covers in the same minute."
+    },
+    {
+      "id": 22,
+      "type": "row",
+      "title": "Deadlocks",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 58
+      },
+      "panels": []
+    },
+    {
+      "id": 23,
+      "type": "table",
+      "title": "Deadlocks",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 59
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "deadlock_id"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Time"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "View deadlock detail",
+                    "url": "/d/darling-deadlock-detail?${__url_time_range}&var-deadlock_id=${__data.fields.deadlock_id}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Time",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH graphs AS (\n    SELECT\n        dl.server_id, dl.deadlock_id, dl.deadlock_time, dl.victim_process_id,\n        dl.deadlock_graph_xml::xml AS graph\n    FROM collect.v_deadlocks AS dl\n    WHERE $__timeFilter(dl.collection_time) AND dl.server_id IN (${server:csv})\n),\nprocesses AS (\n    SELECT\n        g.server_id,\n        g.deadlock_id,\n        g.deadlock_time,\n        g.victim_process_id,\n        (xpath('/*/@id', proc))[1]::text AS process_id,\n        (xpath('/*/@spid', proc))[1]::text AS spid,\n        (xpath('/*/@waittime', proc))[1]::text::bigint AS wait_ms,\n        (xpath('/*/@lockMode', proc))[1]::text AS lock_mode,\n        (xpath('/*/@waitresource', proc))[1]::text AS wait_resource,\n        (xpath('/*/@isolationlevel', proc))[1]::text AS isolation_level,\n        (xpath('/*/@currentdbname', proc))[1]::text AS database_name,\n        (xpath('/*/@trancount', proc))[1]::text::integer AS tran_count,\n        (xpath('/*/@loginname', proc))[1]::text AS login_name,\n        (xpath('/*/@hostname', proc))[1]::text AS host_name,\n        (xpath('/*/@clientapp', proc))[1]::text AS client_app,\n        (xpath('/*/inputbuf/text()', proc))[1]::text AS sql_text\n    FROM graphs g\n    CROSS JOIN LATERAL unnest(xpath('/deadlock/process-list/process', g.graph)) AS proc\n),\nlock_elems AS (\n    SELECT g.deadlock_id, lock\n    FROM graphs g\n    CROSS JOIN LATERAL unnest(xpath('/deadlock/resource-list/*', g.graph)) AS lock\n),\nparticipants AS (\n    SELECT\n        le.deadlock_id,\n        (xpath('/*/@objectname', le.lock))[1]::text AS object_name,\n        xpath('/*/owner-list/owner/@id', le.lock) AS owner_ids,\n        xpath('/*/waiter-list/waiter/@id', le.lock) AS waiter_ids\n    FROM lock_elems le\n),\nobject_by_process AS (\n    SELECT p.deadlock_id, unnest(p.owner_ids)::text AS process_id, p.object_name\n    FROM participants p\n    UNION ALL\n    SELECT p.deadlock_id, unnest(p.waiter_ids)::text AS process_id, p.object_name\n    FROM participants p\n),\nobject_agg AS (\n    SELECT deadlock_id, process_id, string_agg(DISTINCT object_name, ', ') AS objects\n    FROM object_by_process\n    WHERE object_name IS NOT NULL\n    GROUP BY deadlock_id, process_id\n)\nSELECT\n    /* ::text: a numeric field round-trips through a JS double in the drill-down data\n       link and loses precision past 2^53, which this id exceeds. */\n    p.deadlock_id::text AS \"deadlock_id\",\n    p.deadlock_time AS \"Time\",\n    CASE WHEN p.process_id = p.victim_process_id THEN 'Victim' ELSE '' END AS \"Victim\",\n    p.spid AS \"SPID\",\n    p.database_name AS \"Database\",\n    oa.objects AS \"Object(s)\",\n    p.lock_mode AS \"Lock Mode\",\n    p.wait_resource AS \"Wait Resource\",\n    p.wait_ms AS \"Wait (ms)\",\n    p.isolation_level AS \"Isolation\",\n    p.tran_count AS \"Tran Count\",\n    p.login_name AS \"Login\",\n    p.host_name AS \"Host\",\n    p.client_app AS \"App\",\n    p.sql_text AS \"SQL Text\"\nFROM processes p\nJOIN config.config_monitored_servers AS srv ON srv.server_id = p.server_id\nLEFT JOIN object_agg AS oa\n  ON oa.deadlock_id = p.deadlock_id AND oa.process_id = p.process_id\nWHERE (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR p.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nORDER BY p.deadlock_time DESC, p.spid\nLIMIT 200\n"
+        }
+      ],
+      "description": "One row per process in each deadlock graph, parsed from deadlock_graph_xml. Click a Time value to open the full participant detail and exportable graph XML. Per-lock owner/waiter role is not portable - see the module docstring."
+    }
+  ]
+}
