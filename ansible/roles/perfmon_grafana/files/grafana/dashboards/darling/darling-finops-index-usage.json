@@ -1,0 +1,229 @@
+{
+  "uid": "darling-finops-index-usage",
+  "title": "FinOps - Index Detail",
+  "tags": [
+    "perfmon-detail",
+    "nav-only"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "refresh": "",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      },
+      {
+        "name": "database",
+        "label": "Database",
+        "type": "textbox",
+        "current": {
+          "text": "*",
+          "value": "*"
+        },
+        "options": [
+          {
+            "text": "*",
+            "value": "*"
+          }
+        ],
+        "hide": 0
+      },
+      {
+        "name": "schema",
+        "label": "Schema",
+        "type": "textbox",
+        "current": {
+          "text": "*",
+          "value": "*"
+        },
+        "options": [
+          {
+            "text": "*",
+            "value": "*"
+          }
+        ],
+        "hide": 0
+      },
+      {
+        "name": "table",
+        "label": "Table",
+        "type": "textbox",
+        "current": {
+          "text": "*",
+          "value": "*"
+        },
+        "options": [
+          {
+            "text": "*",
+            "value": "*"
+          }
+        ],
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Index Detail",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Unused": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "Write-only": {
+                        "color": "yellow",
+                        "index": 1
+                      },
+                      "Active": {
+                        "color": "green",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Reserved MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    ios.database_name AS \"Database\",\n    ios.schema_name AS \"Schema\",\n    ios.table_name AS \"Table\",\n    COALESCE(ios.index_name, '(heap)') AS \"Index\",\n    CASE\n        WHEN COALESCE(ios.user_seeks, 0) + COALESCE(ios.user_scans, 0) + COALESCE(ios.user_lookups, 0) = 0 AND COALESCE(ios.user_updates, 0) = 0 THEN 'Unused'\n        WHEN COALESCE(ios.user_seeks, 0) + COALESCE(ios.user_scans, 0) + COALESCE(ios.user_lookups, 0) = 0 AND COALESCE(ios.user_updates, 0) > 0 THEN 'Write-only'\n        ELSE 'Active'\n    END AS \"Status\",\n    ios.index_type_desc AS \"Type\",\n    ios.index_id AS \"Index ID\",\n    round(ios.reserved_mb, 1) AS \"Reserved MB\",\n    ios.total_rows AS \"Rows\",\n    COALESCE(ios.user_seeks, 0) AS \"Seeks\",\n    COALESCE(ios.user_scans, 0) AS \"Scans\",\n    COALESCE(ios.user_lookups, 0) AS \"Lookups\",\n    COALESCE(ios.user_seeks, 0) + COALESCE(ios.user_scans, 0) + COALESCE(ios.user_lookups, 0) AS \"Total Reads\",\n    COALESCE(ios.user_updates, 0) AS \"Updates\",\n    GREATEST(ios.last_user_seek, ios.last_user_scan,\n             ios.last_user_lookup, ios.last_user_update) AS \"Last Access\"\nFROM collect.v_index_object_stats AS ios\nWHERE ios.server_id IN (${server:csv})\n  AND (server_id, collection_time) IN (SELECT server_id, MAX(collection_time) FROM collect.v_index_object_stats WHERE server_id IN (${server:csv}) GROUP BY server_id)\n  AND (${database:sqlstring} = '*' OR ${database:sqlstring} = '' OR ios.database_name = ${database:sqlstring})\n  AND (${schema:sqlstring} = '*' OR ${schema:sqlstring} = '' OR ios.schema_name = ${schema:sqlstring})\n  AND (${table:sqlstring} = '*' OR ${table:sqlstring} = '' OR ios.table_name = ${table:sqlstring})\nORDER BY ios.database_name, ios.schema_name, ios.table_name, ios.index_id\n"
+        }
+      ],
+      "description": "Latest snapshot per server. Usage counters are lifetime totals since an unreliable reset point - never diff them."
+    }
+  ]
+}

@@ -1,0 +1,1113 @@
+{
+  "uid": "darling-finops-utilization",
+  "title": "FinOps - Utilization",
+  "tags": [
+    "finops"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "refresh": "5m",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "finops"
+      ],
+      "targetBlank": false,
+      "title": "All FinOps Dashboards",
+      "type": "dashboards",
+      "url": ""
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Utilization Efficiency",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "RIGHT SIZED": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "OVER PROVISIONED": {
+                        "color": "yellow",
+                        "index": 1
+                      },
+                      "UNDER PROVISIONED": {
+                        "color": "red",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Health"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 60
+                    },
+                    {
+                      "color": "green",
+                      "value": 80
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg CPU %"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "P95 CPU %"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Max CPU %"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Stolen Mem %"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Buffer Pool %"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Storage Free %"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Physical MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Target MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Buffer Pool MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Budget $/mo"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Budget $/yr"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH cpu_stats AS (\n    SELECT server_id,\n           AVG(sqlserver_cpu_utilization::numeric) AS avg_cpu_pct,\n           MAX(sqlserver_cpu_utilization) AS max_cpu_pct,\n           PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY sqlserver_cpu_utilization)::numeric\n               AS p95_cpu_pct,\n           COUNT(*) AS cpu_samples\n    FROM collect.v_cpu_utilization_stats\n    WHERE server_id IN (${server:csv}) AND collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '24 hours'\n    GROUP BY server_id\n),\nmem_latest AS (\n    SELECT DISTINCT ON (server_id)\n           server_id,\n           total_server_memory_mb,\n           target_server_memory_mb,\n           total_physical_memory_mb,\n           buffer_pool_mb,\n           max_workers_count,\n           current_workers_count,\n           total_server_memory_mb::numeric / NULLIF(target_server_memory_mb, 0)\n               AS memory_ratio\n    FROM collect.v_memory_stats\n    WHERE server_id IN (${server:csv})\n    ORDER BY server_id, collection_time DESC\n),\nserver_info AS (\n    /* vcore_count is the licensable number where the platform bills by vCore. */\n    SELECT DISTINCT ON (server_id)\n           server_id, COALESCE(vcore_count, cpu_count) AS cpu_count\n    FROM collect.server_properties\n    WHERE server_id IN (${server:csv})\n    ORDER BY server_id, collection_time DESC\n),\nstorage AS (\n    SELECT server_id,\n           SUM(total_size_mb) AS total_mb,\n           SUM(CASE WHEN used_size_mb IS NOT NULL\n                    THEN total_size_mb - used_size_mb ELSE 0 END) AS free_mb\n    FROM collect.v_database_size_stats\n    WHERE server_id IN (${server:csv}) AND (server_id, collection_time) IN (SELECT server_id, MAX(collection_time) FROM collect.v_database_size_stats WHERE server_id IN (${server:csv}) GROUP BY server_id)\n    GROUP BY server_id\n),\nbudget AS (\n    SELECT server_id, COALESCE(monthly_cost_usd, 0)::numeric AS monthly_cost\n    FROM config.config_monitored_servers\n    WHERE server_id IN (${server:csv})\n)\nSELECT\n    srv.name AS \"Server\",\n    replace(CASE\n        WHEN c.avg_cpu_pct < 15 AND c.max_cpu_pct < 40 AND COALESCE(m.memory_ratio, 0) < 0.5\n        THEN 'OVER_PROVISIONED'\n        WHEN c.p95_cpu_pct > 85 OR COALESCE(m.memory_ratio, 0) > 0.95\n        THEN 'UNDER_PROVISIONED'\n        ELSE 'RIGHT_SIZED'\n    END, '_', ' ') AS \"Status\",\n    trunc((CASE\n        WHEN c.p95_cpu_pct <= 70 THEN trunc(100 - c.p95_cpu_pct * 50 / 70.0)\n        ELSE trunc(GREATEST(0, 50 - (c.p95_cpu_pct - 70) * 50 / 30.0))\n    END) * 0.40 + (CASE\n        WHEN CASE WHEN m.total_physical_memory_mb > 0 THEN m.buffer_pool_mb::numeric / m.total_physical_memory_mb ELSE 0 END <= 0.30 THEN 60\n        WHEN CASE WHEN m.total_physical_memory_mb > 0 THEN m.buffer_pool_mb::numeric / m.total_physical_memory_mb ELSE 0 END <= 0.85 THEN 100\n        WHEN CASE WHEN m.total_physical_memory_mb > 0 THEN m.buffer_pool_mb::numeric / m.total_physical_memory_mb ELSE 0 END <= 0.95 THEN trunc(100 - (CASE WHEN m.total_physical_memory_mb > 0 THEN m.buffer_pool_mb::numeric / m.total_physical_memory_mb ELSE 0 END - 0.85) * 800)\n        ELSE trunc(GREATEST(0, 20 - (CASE WHEN m.total_physical_memory_mb > 0 THEN m.buffer_pool_mb::numeric / m.total_physical_memory_mb ELSE 0 END - 0.95) * 400))\n    END) * 0.30 + (CASE\n        WHEN CASE WHEN COALESCE(st.total_mb, 0) > 0\n        THEN st.free_mb * 100.0 / st.total_mb\n        ELSE 100 END >= 30 THEN 100\n        WHEN CASE WHEN COALESCE(st.total_mb, 0) > 0\n        THEN st.free_mb * 100.0 / st.total_mb\n        ELSE 100 END >= 10 THEN trunc(50 + (CASE WHEN COALESCE(st.total_mb, 0) > 0\n        THEN st.free_mb * 100.0 / st.total_mb\n        ELSE 100 END - 10) * 2.5)\n        ELSE trunc(CASE WHEN COALESCE(st.total_mb, 0) > 0\n        THEN st.free_mb * 100.0 / st.total_mb\n        ELSE 100 END * 5)\n    END) * 0.30) AS \"Health\",\n    CASE CASE\n        WHEN c.avg_cpu_pct < 15 AND c.max_cpu_pct < 40 AND COALESCE(m.memory_ratio, 0) < 0.5\n        THEN 'OVER_PROVISIONED'\n        WHEN c.p95_cpu_pct > 85 OR COALESCE(m.memory_ratio, 0) > 0.95\n        THEN 'UNDER_PROVISIONED'\n        ELSE 'RIGHT_SIZED'\n    END\n        WHEN 'RIGHT_SIZED' THEN\n            'CPU is moderately loaded (avg ' || to_char(round((c.avg_cpu_pct)::numeric, 1), 'FM999999990.0') || '%, p95 '\n            || to_char(round((c.p95_cpu_pct)::numeric, 1), 'FM999999990.0') || '%) and memory is well-utilized (buffer pool uses '\n            || to_char(round((CASE WHEN m.total_physical_memory_mb > 0\n        THEN m.buffer_pool_mb::numeric * 100.0 / m.total_physical_memory_mb\n        ELSE 0 END)::numeric, 0), 'FM999999990') || '% of physical RAM). No action needed.'\n        WHEN 'OVER_PROVISIONED' THEN\n            'CPU is lightly loaded (avg ' || to_char(round((c.avg_cpu_pct)::numeric, 1), 'FM999999990.0') || '%, max '\n            || to_char(c.max_cpu_pct, 'FM999,999,999,990') || '%) and buffer pool uses only ' || to_char(round((CASE WHEN m.total_physical_memory_mb > 0\n        THEN m.buffer_pool_mb::numeric * 100.0 / m.total_physical_memory_mb\n        ELSE 0 END)::numeric, 0), 'FM999999990')\n            || '% of physical RAM. This server may have more resources than it needs.'\n        WHEN 'UNDER_PROVISIONED' THEN\n            CASE WHEN c.p95_cpu_pct > 85\n                THEN 'CPU p95 is ' || to_char(round((c.p95_cpu_pct)::numeric, 1), 'FM999999990.0')\n                     || '% (threshold: 85%). This server may need more CPU capacity.'\n                ELSE 'Buffer pool uses ' || to_char(round((CASE WHEN m.total_physical_memory_mb > 0\n        THEN m.buffer_pool_mb::numeric * 100.0 / m.total_physical_memory_mb\n        ELSE 0 END)::numeric, 0), 'FM999999990')\n                     || '% of physical RAM and memory ratio is ' || to_char(round((COALESCE(m.memory_ratio, 0))::numeric, 2), 'FM999999990.00')\n                     || ' (threshold: 0.95). Memory pressure is high.'\n            END\n        ELSE ''\n    END AS \"Why\",\n    round(c.avg_cpu_pct, 2) AS \"Avg CPU %\",\n    round(c.p95_cpu_pct, 2) AS \"P95 CPU %\",\n    c.max_cpu_pct AS \"Max CPU %\",\n    s.cpu_count AS \"CPUs\",\n    to_char(m.current_workers_count, 'FM999,999,999,990') || ' / ' || to_char(m.max_workers_count, 'FM999,999,999,990') AS \"Workers\",\n    c.cpu_samples AS \"Samples (24h)\",\n    round(CASE WHEN m.total_server_memory_mb > 0\n        THEN (m.total_server_memory_mb - m.buffer_pool_mb)::numeric * 100.0\n             / m.total_server_memory_mb\n        ELSE 0 END, 1) AS \"Stolen Mem %\",\n    round(CASE WHEN m.total_physical_memory_mb > 0\n        THEN m.buffer_pool_mb::numeric * 100.0 / m.total_physical_memory_mb\n        ELSE 0 END, 1) AS \"Buffer Pool %\",\n    round(m.memory_ratio, 2) AS \"Mem Ratio\",\n    m.total_physical_memory_mb AS \"Physical MB\",\n    m.target_server_memory_mb AS \"Target MB\",\n    m.total_server_memory_mb AS \"Total MB\",\n    m.buffer_pool_mb AS \"Buffer Pool MB\",\n    round(CASE WHEN COALESCE(st.total_mb, 0) > 0\n        THEN st.free_mb * 100.0 / st.total_mb\n        ELSE 100 END, 1) AS \"Storage Free %\",\n    b.monthly_cost AS \"Budget $/mo\",\n    b.monthly_cost * 12 AS \"Budget $/yr\"\nFROM cpu_stats c\nJOIN mem_latest m ON m.server_id = c.server_id\nLEFT JOIN server_info s ON s.server_id = c.server_id\nLEFT JOIN storage st ON st.server_id = c.server_id\nLEFT JOIN budget b ON b.server_id = c.server_id\nJOIN config.config_monitored_servers AS srv ON srv.server_id = c.server_id\nORDER BY srv.name\n"
+        }
+      ],
+      "description": "Fixed 24h window, as upstream's is. Health weights CPU 40 %, memory 30 %, storage 30 %. Budget columns read 0 until one is configured for the server."
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "7-Day Provisioning Trend",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "RIGHT SIZED": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "OVER PROVISIONED": {
+                        "color": "yellow",
+                        "index": 1
+                      },
+                      "UNDER PROVISIONED": {
+                        "color": "red",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg CPU %"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "P95 CPU %"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Max CPU %"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Day",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH daily_cpu AS (\n    SELECT server_id,\n           collection_time::date AS day,\n           AVG(sqlserver_cpu_utilization::numeric) AS avg_cpu_pct,\n           MAX(sqlserver_cpu_utilization) AS max_cpu_pct,\n           PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY sqlserver_cpu_utilization)::numeric\n               AS p95_cpu_pct\n    FROM collect.v_cpu_utilization_stats\n    WHERE server_id IN (${server:csv})\n      AND collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '7 days'\n    GROUP BY server_id, collection_time::date\n),\ndaily_mem AS (\n    SELECT server_id,\n           collection_time::date AS day,\n           AVG(total_server_memory_mb::numeric / NULLIF(target_server_memory_mb, 0))\n               AS avg_memory_ratio\n    FROM collect.v_memory_stats\n    WHERE server_id IN (${server:csv})\n      AND collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '7 days'\n    GROUP BY server_id, collection_time::date\n)\nSELECT\n    c.day AS \"Day\",\n    srv.name AS \"Server\",\n    replace(CASE\n        WHEN c.avg_cpu_pct < 15 AND c.max_cpu_pct < 40 AND COALESCE(m.avg_memory_ratio, 0) < 0.5\n        THEN 'OVER_PROVISIONED'\n        WHEN c.p95_cpu_pct > 85 OR COALESCE(m.avg_memory_ratio, 0) > 0.95\n        THEN 'UNDER_PROVISIONED'\n        ELSE 'RIGHT_SIZED'\n    END, '_', ' ') AS \"Status\",\n    round(c.avg_cpu_pct, 1) AS \"Avg CPU %\",\n    round(c.p95_cpu_pct, 1) AS \"P95 CPU %\",\n    c.max_cpu_pct AS \"Max CPU %\",\n    round(COALESCE(m.avg_memory_ratio, 0), 2) AS \"Mem Ratio\"\nFROM daily_cpu c\nLEFT JOIN daily_mem m ON m.server_id = c.server_id AND m.day = c.day\nJOIN config.config_monitored_servers AS srv ON srv.server_id = c.server_id\nORDER BY c.day DESC, srv.name\n"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "row",
+      "title": "Top Databases",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "panels": []
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Top Databases by Total CPU",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 17
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU %"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "IO %"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU (ms)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "IO (MB)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH \nworkload AS (\n    SELECT server_id, database_name,\n           SUM(delta_worker_time) / 1000.0 AS cpu_time_ms,\n           SUM(delta_execution_count) AS execution_count\n    FROM collect.v_query_stats\n    WHERE server_id IN (${server:csv})\n      AND collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '24 hours'\n      AND delta_worker_time IS NOT NULL\n    GROUP BY server_id, database_name\n),\nio AS (\n    SELECT server_id, database_name,\n           SUM(delta_read_bytes + delta_write_bytes) / 1048576.0 AS io_total_mb\n    FROM collect.v_file_io_stats\n    WHERE server_id IN (${server:csv})\n      AND collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '24 hours'\n      AND delta_read_bytes IS NOT NULL\n    GROUP BY server_id, database_name\n),\ncombined AS (\n    SELECT COALESCE(w.server_id, i.server_id) AS server_id,\n           COALESCE(w.database_name, i.database_name) AS database_name,\n           COALESCE(w.cpu_time_ms, 0) AS cpu_time_ms,\n           COALESCE(w.execution_count, 0) AS execution_count,\n           COALESCE(i.io_total_mb, 0) AS io_total_mb\n    FROM workload w\n    FULL JOIN io i ON i.server_id = w.server_id AND i.database_name = w.database_name\n),\ntotals AS (\n    SELECT server_id,\n           NULLIF(SUM(cpu_time_ms), 0) AS total_cpu,\n           NULLIF(SUM(io_total_mb), 0) AS total_io\n    FROM combined\n    GROUP BY server_id\n),\nranked AS (\n    SELECT c.*,\n           ROW_NUMBER() OVER (PARTITION BY c.server_id ORDER BY c.cpu_time_ms DESC) AS rn\n    FROM combined c\n    WHERE c.database_name IS NOT NULL\n)\nSELECT\n    srv.name AS \"Server\",\n    r.database_name AS \"Database\",\n    round(r.cpu_time_ms * 100.0 / t.total_cpu, 1) AS \"CPU %\",\n    round(r.io_total_mb * 100.0 / t.total_io, 1) AS \"IO %\",\n    round(r.cpu_time_ms, 0) AS \"CPU (ms)\",\n    round(r.io_total_mb, 2) AS \"IO (MB)\",\n    r.execution_count AS \"Execs\"\nFROM ranked r\nJOIN totals t ON t.server_id = r.server_id\nJOIN config.config_monitored_servers AS srv ON srv.server_id = r.server_id\nWHERE r.rn <= 5\nORDER BY srv.name, r.cpu_time_ms DESC\n"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Top Databases by Avg CPU / Execution",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 17
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg CPU (ms)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg IO (MB)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total CPU (ms)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total IO (MB)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH \nworkload AS (\n    SELECT server_id, database_name,\n           SUM(delta_worker_time) / 1000.0 AS cpu_time_ms,\n           SUM(delta_execution_count) AS execution_count\n    FROM collect.v_query_stats\n    WHERE server_id IN (${server:csv})\n      AND collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '24 hours'\n      AND delta_worker_time IS NOT NULL\n    GROUP BY server_id, database_name\n),\nio AS (\n    SELECT server_id, database_name,\n           SUM(delta_read_bytes + delta_write_bytes) / 1048576.0 AS io_total_mb\n    FROM collect.v_file_io_stats\n    WHERE server_id IN (${server:csv})\n      AND collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '24 hours'\n      AND delta_read_bytes IS NOT NULL\n    GROUP BY server_id, database_name\n),\nper_exec AS (\n    SELECT w.server_id, w.database_name, w.cpu_time_ms, w.execution_count,\n           COALESCE(i.io_total_mb, 0) AS io_total_mb,\n           w.cpu_time_ms / w.execution_count AS avg_cpu_ms,\n           COALESCE(i.io_total_mb, 0) / w.execution_count AS avg_io_mb\n    FROM workload w\n    LEFT JOIN io i ON i.server_id = w.server_id AND i.database_name = w.database_name\n    WHERE w.execution_count > 0\n),\nranked AS (\n    SELECT p.*,\n           ROW_NUMBER() OVER (PARTITION BY p.server_id ORDER BY p.avg_cpu_ms DESC) AS rn\n    FROM per_exec p\n)\nSELECT\n    srv.name AS \"Server\",\n    r.database_name AS \"Database\",\n    round(r.avg_cpu_ms, 2) AS \"Avg CPU (ms)\",\n    round(r.avg_io_mb, 4) AS \"Avg IO (MB)\",\n    r.execution_count AS \"Execs\",\n    round(r.cpu_time_ms, 0) AS \"Total CPU (ms)\",\n    round(r.io_total_mb, 2) AS \"Total IO (MB)\"\nFROM ranked r\nJOIN config.config_monitored_servers AS srv ON srv.server_id = r.server_id\nWHERE r.rn <= 5\nORDER BY srv.name, r.avg_cpu_ms DESC\n"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "row",
+      "title": "Database Sizes - Allocated vs Used",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 25
+      },
+      "panels": []
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Database Sizes - Allocated vs Used",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 26
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Used MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Allocated MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Used %"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH sizes AS (\n    SELECT server_id, database_name,\n           SUM(total_size_mb) AS total_mb,\n           SUM(used_size_mb) AS used_mb\n    FROM collect.v_database_size_stats\n    WHERE server_id IN (${server:csv}) AND (server_id, collection_time) IN (SELECT server_id, MAX(collection_time) FROM collect.v_database_size_stats WHERE server_id IN (${server:csv}) GROUP BY server_id)\n    GROUP BY server_id, database_name\n),\nranked AS (\n    SELECT s.*,\n           ROW_NUMBER() OVER (PARTITION BY s.server_id ORDER BY s.total_mb DESC) AS rn\n    FROM sizes s\n)\nSELECT\n    srv.name AS \"Server\",\n    r.database_name AS \"Database\",\n    round(r.used_mb, 0) AS \"Used MB\",\n    round(r.total_mb, 0) AS \"Allocated MB\",\n    round(r.used_mb * 100.0 / NULLIF(r.total_mb, 0), 1) AS \"Used %\"\nFROM ranked r\nJOIN config.config_monitored_servers AS srv ON srv.server_id = r.server_id\nWHERE r.rn <= 10\nORDER BY srv.name, r.total_mb DESC\n"
+        }
+      ],
+      "description": "Top 10 databases per server by allocated size."
+    }
+  ]
+}

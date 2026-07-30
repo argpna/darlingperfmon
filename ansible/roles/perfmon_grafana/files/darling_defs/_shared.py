@@ -14,6 +14,7 @@ from panel_kit import (  # noqa: E402
     col_datalink,
     col_datalinks,
     col_gauge_bar,
+    col_hidden,
     col_thresholds,
     col_unit,
     status_colors,
@@ -118,7 +119,12 @@ _CAGG_DIMENSIONS = {
 # collection_time on a raw table; every CAGG's time dimension is the bucket it produced.
 CAGG_TIME_COL = "bucket"
 
-_UTC_NOW = "(now() AT TIME ZONE 'UTC')"
+# Where a CAGG family's raw table is named differently: query_stats_db_* aggregates
+# query_stats, and there is no collect.query_stats_db to measure a raw floor on.
+_CAGG_RAW_BASE = {"query_stats_db": "query_stats"}
+
+# Store timestamps are naive UTC, so "now" is taken in UTC too.
+UTC_NOW = "(now() AT TIME ZONE 'UTC')"
 
 
 def collector(base: str) -> str:
@@ -181,9 +187,9 @@ def tier_guard(tier: str, present: set[str] | None = None) -> str:
     lo, hi = _tier_bands(present)[tier]
     clauses = []
     if lo:
-        clauses.append(f"$__timeFrom() < {_UTC_NOW} - INTERVAL '{lo} days'")
+        clauses.append(f"$__timeFrom() < {UTC_NOW} - INTERVAL '{lo} days'")
     if hi is not None:
-        clauses.append(f"$__timeFrom() >= {_UTC_NOW} - INTERVAL '{hi} days'")
+        clauses.append(f"$__timeFrom() >= {UTC_NOW} - INTERVAL '{hi} days'")
     return " AND ".join(clauses) if clauses else "true"
 
 
@@ -195,7 +201,10 @@ def _floor(base: str, tier: str) -> str:
     an outer-query column and that folding stops.
     """
     if tier == "raw":
-        return f"(SELECT min(collection_time) FROM {collector(base)})"
+        return (
+            "(SELECT min(collection_time) FROM "
+            f"{collector(_CAGG_RAW_BASE.get(base, base))})"
+        )
     return f"(SELECT min({CAGG_TIME_COL}) FROM {rollup(base, tier)})"
 
 
@@ -441,6 +450,18 @@ _DASHBOARDS_DROPDOWN = {
     "url": "",
 }
 
+_FINOPS_DROPDOWN = {
+    "asDropdown": True,
+    "icon": "external link",
+    "includeVars": True,
+    "keepTime": True,
+    "tags": ["finops"],
+    "targetBlank": False,
+    "title": "All FinOps Dashboards",
+    "type": "dashboards",
+    "url": "",
+}
+
 _FLEET_LINK = {
     "title": "Fleet Overview",
     "icon": "dashboard",
@@ -450,6 +471,29 @@ _FLEET_LINK = {
     "includeVars": False,
     "targetBlank": False,
 }
+
+
+def _dashboard_base(
+    dash_uid, title, panels, variables, tags, links, time_from, refresh, graph_tooltip
+):
+    """Assemble the dashboard JSON envelope every Darling dashboard flavour shares."""
+    return {
+        "uid": dash_uid,
+        "title": title,
+        "tags": tags,
+        "timezone": "",
+        "schemaVersion": 39,
+        "editable": True,
+        "graphTooltip": graph_tooltip,
+        "fiscalYearStartMonth": 0,
+        "time": {"from": time_from, "to": "now"},
+        "refresh": refresh,
+        "weekStart": "",
+        "annotations": {"list": []},
+        "links": links,
+        "templating": {"list": variables},
+        "panels": panels,
+    }
 
 
 def dashboard(
@@ -463,23 +507,54 @@ def dashboard(
 ):
     """Build a Darling dashboard envelope."""
     is_fleet = dash_uid == UID_PREFIX + "-fleet"
-    return {
-        "uid": dash_uid,
-        "title": title,
-        "tags": ["perfmon", "begin-here"] if is_fleet else ["perfmon"],
-        "timezone": "",
-        "schemaVersion": 39,
-        "editable": True,
-        "graphTooltip": graph_tooltip,
-        "fiscalYearStartMonth": 0,
-        "time": {"from": time_from, "to": "now"},
-        "refresh": refresh,
-        "weekStart": "",
-        "annotations": {"list": []},
-        "links": [] if is_fleet else [_FLEET_LINK, _DASHBOARDS_DROPDOWN],
-        "templating": {"list": variables},
-        "panels": panels,
-    }
+    links = [] if is_fleet else [_FLEET_LINK, _DASHBOARDS_DROPDOWN, _FINOPS_DROPDOWN]
+    tags = ["perfmon", "begin-here"] if is_fleet else ["perfmon"]
+    return _dashboard_base(
+        dash_uid,
+        title,
+        panels,
+        variables,
+        tags,
+        links,
+        time_from,
+        refresh,
+        graph_tooltip,
+    )
+
+
+def finops_dashboard(
+    dash_uid, title, panels, variables, time_from="now-24h", refresh="5m"
+):
+    """Build a FinOps dashboard, one per upstream FinOps sub-tab."""
+    return _dashboard_base(
+        dash_uid,
+        title,
+        panels,
+        variables,
+        ["finops"],
+        [_FLEET_LINK, _FINOPS_DROPDOWN, _DASHBOARDS_DROPDOWN],
+        time_from,
+        refresh,
+        1,
+    )
+
+
+def detail_dashboard(dash_uid, title, panels, variables, time_from="now-24h"):
+    """Build a drill-down dashboard reached from a data link.
+
+    Tagged out of the nav dropdowns: it only makes sense with the variables the link passes.
+    """
+    return _dashboard_base(
+        dash_uid,
+        title,
+        panels,
+        variables,
+        ["perfmon-detail", "nav-only"],
+        [_FLEET_LINK, _DASHBOARDS_DROPDOWN],
+        time_from,
+        "",
+        1,
+    )
 
 
 __all__ = [
@@ -488,16 +563,20 @@ __all__ = [
     "DURATION_STATUS_COLORS",
     "HEALTH_STATUS_COLORS",
     "OUT",
+    "UTC_NOW",
     "bargauge",
     "col_datalink",
     "col_datalinks",
     "col_gauge_bar",
+    "col_hidden",
     "col_thresholds",
     "col_unit",
     "collector",
     "custom_var",
     "dashboard",
+    "detail_dashboard",
     "duration_ms",
+    "finops_dashboard",
     "fixed",
     "flow",
     "n0",

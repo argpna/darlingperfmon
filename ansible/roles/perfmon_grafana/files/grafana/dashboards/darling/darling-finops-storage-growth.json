@@ -1,0 +1,292 @@
+{
+  "uid": "darling-finops-storage-growth",
+  "title": "FinOps - Storage Growth",
+  "tags": [
+    "finops"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "refresh": "15m",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "finops"
+      ],
+      "targetBlank": false,
+      "title": "All FinOps Dashboards",
+      "type": "dashboards",
+      "url": ""
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Storage Growth",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "server_id"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Database"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Show objects",
+                    "url": "/d/darling-finops-object-sizes?${__url_time_range}&var-server=${__data.fields.server_id}&var-database=${__data.fields.Database}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Current Size MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Size 7d Ago MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Size 30d Ago MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Growth 7d MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Growth 30d MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Daily Rate MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Growth % 30d"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 10
+                    },
+                    {
+                      "color": "red",
+                      "value": 25
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Growth 30d MB",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH latest AS (\n    SELECT server_id, database_name, SUM(total_size_mb) AS size_mb\n    FROM collect.v_database_size_stats\n    WHERE server_id IN (${server:csv}) AND (server_id, collection_time) IN (SELECT server_id, MAX(collection_time) FROM collect.v_database_size_stats WHERE server_id IN (${server:csv}) GROUP BY server_id)\n    GROUP BY server_id, database_name\n),\npast_7d AS (\n    SELECT server_id, database_name, SUM(total_size_mb) AS size_mb\n    FROM collect.v_database_size_stats\n    WHERE server_id IN (${server:csv}) AND (server_id, collection_time) IN (SELECT server_id, MAX(collection_time) FROM collect.v_database_size_stats WHERE server_id IN (${server:csv}) AND collection_time <= (now() AT TIME ZONE 'UTC') - INTERVAL '7 days' GROUP BY server_id)\n    GROUP BY server_id, database_name\n),\npast_30d AS (\n    SELECT server_id, database_name, SUM(total_size_mb) AS size_mb\n    FROM collect.v_database_size_stats\n    WHERE server_id IN (${server:csv}) AND (server_id, collection_time) IN (SELECT server_id, MAX(collection_time) FROM collect.v_database_size_stats WHERE server_id IN (${server:csv}) AND collection_time <= (now() AT TIME ZONE 'UTC') - INTERVAL '30 days' GROUP BY server_id)\n    GROUP BY server_id, database_name\n)\nSELECT\n    l.server_id AS \"server_id\",\n    srv.name AS \"Server\",\n    l.database_name AS \"Database\",\n    round(l.size_mb, 2) AS \"Current Size MB\",\n    round(p7.size_mb, 2) AS \"Size 7d Ago MB\",\n    round(p30.size_mb, 2) AS \"Size 30d Ago MB\",\n    round(l.size_mb - COALESCE(p7.size_mb, l.size_mb), 2) AS \"Growth 7d MB\",\n    round(l.size_mb - COALESCE(p30.size_mb, l.size_mb), 2) AS \"Growth 30d MB\",\n    round(CASE\n        WHEN p30.size_mb IS NOT NULL THEN (l.size_mb - p30.size_mb) / 30.0\n        WHEN p7.size_mb IS NOT NULL THEN (l.size_mb - p7.size_mb) / 7.0\n        ELSE 0\n    END, 2) AS \"Daily Rate MB\",\n    round(CASE\n        WHEN p30.size_mb IS NOT NULL AND p30.size_mb > 0\n        THEN (l.size_mb - p30.size_mb) * 100.0 / p30.size_mb\n        ELSE 0\n    END, 1) AS \"Growth % 30d\"\nFROM latest l\nLEFT JOIN past_7d p7 ON p7.server_id = l.server_id AND p7.database_name = l.database_name\nLEFT JOIN past_30d p30\n       ON p30.server_id = l.server_id AND p30.database_name = l.database_name\nJOIN config.config_monitored_servers AS srv ON srv.server_id = l.server_id\nORDER BY l.size_mb - COALESCE(p30.size_mb, l.size_mb) DESC\n"
+        }
+      ],
+      "description": "Allocated size now versus 7 and 30 days ago; a database with no snapshot that far back shows no growth. Click one to drill in."
+    }
+  ]
+}

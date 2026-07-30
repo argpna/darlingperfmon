@@ -1,0 +1,174 @@
+{
+  "uid": "darling-finops-application-connections",
+  "title": "FinOps - Application Connections",
+  "tags": [
+    "finops"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "refresh": "5m",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "finops"
+      ],
+      "targetBlank": false,
+      "title": "All FinOps Dashboards",
+      "type": "dashboards",
+      "url": ""
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Application Connections (24h)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg CPU (ms)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Max CPU (ms)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Max Connections",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    srv.name AS \"Server\",\n    s.program_name AS \"Application\",\n    AVG(s.connection_count)::int AS \"Avg Connections\",\n    MAX(s.connection_count) AS \"Max Connections\",\n    AVG(s.running_count)::int AS \"Avg Running\",\n    MAX(s.running_count) AS \"Max Running\",\n    AVG(s.sleeping_count)::int AS \"Avg Sleeping\",\n    MAX(s.sleeping_count) AS \"Max Sleeping\",\n    AVG(s.dormant_count)::int AS \"Avg Dormant\",\n    MAX(s.dormant_count) AS \"Max Dormant\",\n    AVG(s.total_cpu_time_ms)::bigint AS \"Avg CPU (ms)\",\n    MAX(s.total_cpu_time_ms) AS \"Max CPU (ms)\",\n    AVG(s.total_reads)::bigint AS \"Avg Reads\",\n    MAX(s.total_reads) AS \"Max Reads\",\n    AVG(s.total_writes)::bigint AS \"Avg Writes\",\n    MAX(s.total_writes) AS \"Max Writes\",\n    AVG(s.total_logical_reads)::bigint AS \"Avg Logical Reads\",\n    MAX(s.total_logical_reads) AS \"Max Logical Reads\",\n    COUNT(*) AS \"Samples\",\n    MIN(s.collection_time) AS \"First Seen\",\n    MAX(s.collection_time) AS \"Last Seen\"\nFROM collect.v_session_stats AS s\nJOIN config.config_monitored_servers AS srv ON srv.server_id = s.server_id\nWHERE s.server_id IN (${server:csv})\n  AND s.collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '24 hours'\nGROUP BY srv.name, s.program_name\nORDER BY MAX(s.connection_count) DESC\n"
+        }
+      ],
+      "description": "Fixed 24h window, as upstream's is - the range picker does not move it."
+    }
+  ]
+}

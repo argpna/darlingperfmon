@@ -44,6 +44,7 @@ class PanelKit:
         max_: float | None = None,
         fill: int = 12,
         axis_label: str | None = None,
+        description: str | None = None,
     ) -> dict:
         """Build a timeseries panel."""
         custom = {
@@ -65,7 +66,7 @@ class PanelKit:
         if max_ is not None:
             defaults["max"] = max_
             defaults["min"] = 0
-        return {
+        panel = {
             "id": self.nid(),
             "type": "timeseries",
             "title": title,
@@ -83,6 +84,9 @@ class PanelKit:
             },
             "targets": targets,
         }
+        if description:
+            panel["description"] = description
+        return panel
 
     def state_timeline(
         self,
@@ -361,17 +365,19 @@ class PanelKit:
 
 
 def col_gauge_bar(col, min_val=0, max_val=100, unit="percent"):
-    """Table override: render a column as an inline bar gauge cell."""
-    return {
-        "matcher": {"id": "byName", "options": col},
-        "properties": [
-            {"id": "min", "value": min_val},
-            {"id": "max", "value": max_val},
-            {"id": "unit", "value": unit},
-            {"id": "color", "value": {"mode": "fixed", "fixedColor": "blue"}},
-            {"id": "custom.cellOptions", "value": {"type": "gauge", "mode": "basic"}},
-        ],
-    }
+    """Table override: render a column as an inline bar gauge cell.
+
+    max_val=None omits the ceiling, so each bar scales against its own column's largest value.
+    """
+    properties = [{"id": "min", "value": min_val}]
+    if max_val is not None:
+        properties.append({"id": "max", "value": max_val})
+    properties += [
+        {"id": "unit", "value": unit},
+        {"id": "color", "value": {"mode": "fixed", "fixedColor": "blue"}},
+        {"id": "custom.cellOptions", "value": {"type": "gauge", "mode": "basic"}},
+    ]
+    return {"matcher": {"id": "byName", "options": col}, "properties": properties}
 
 
 def status_colors(col, mapping):
@@ -416,6 +422,14 @@ def col_thresholds(col, *steps):
             {"id": "color", "value": {"mode": "thresholds"}},
             {"id": "custom.cellOptions", "value": {"type": "color-background"}},
         ],
+    }
+
+
+def col_hidden(col):
+    """Table override hiding a column that only exists to feed a data link."""
+    return {
+        "matcher": {"id": "byName", "options": col},
+        "properties": [{"id": "custom.hidden", "value": True}],
     }
 
 
