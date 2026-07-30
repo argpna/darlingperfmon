@@ -27,6 +27,7 @@ from darling_defs.configuration import configuration  # noqa: E402
 from darling_defs.cpu import cpu  # noqa: E402
 from darling_defs.daily_summary import daily_summary  # noqa: E402
 from darling_defs.file_io import file_io  # noqa: E402
+from darling_defs.fleet import fleet  # noqa: E402
 from darling_defs.latch_spinlock import latch_spinlock  # noqa: E402
 from darling_defs.memory import memory  # noqa: E402
 from darling_defs.perfmon import perfmon  # noqa: E402
@@ -59,6 +60,7 @@ DASHBOARDS = [
     cpu,
     daily_summary,
     file_io,
+    fleet,
     latch_spinlock,
     memory,
     perfmon,
