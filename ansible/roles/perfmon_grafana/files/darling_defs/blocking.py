@@ -1,4 +1,4 @@
-"""Blocking dashboard (Darling line).
+"""Blocking & Deadlocks dashboard (Darling line).
 
 Upstream ref: ViewerServerTab.Blocking.cs, ViewerDataService.Blocking.cs,
 ViewerDataService.BlockingStats.cs, ViewerDataService.BlockingTrends.cs,
@@ -43,7 +43,6 @@ _LOCK_WAIT_TREND_SQL = f"""
 WITH windowed AS (
     SELECT
         ws.server_id,
-        srv.name AS server_label,
         ws.wait_type,
         ws.collection_time,
         ws.delta_wait_time_ms,
@@ -52,14 +51,13 @@ WITH windowed AS (
                 PARTITION BY ws.server_id, ws.wait_type
                 ORDER BY ws.collection_time)))) AS interval_seconds
     FROM {collector('wait_stats')} AS ws
-    {server_join('ws.server_id')}
     WHERE $__timeFilter(ws.collection_time)
       AND {server_filter('ws.server_id')}
       AND ws.wait_type LIKE 'LCK%'
 )
 SELECT
     collection_time AS time,
-    server_label || ' - ' || wait_type AS metric,
+    wait_type AS metric,
     CASE
         WHEN interval_seconds > 0 AND delta_wait_time_ms >= 0
         THEN delta_wait_time_ms::double precision / interval_seconds
@@ -279,10 +277,9 @@ _BLOCKING_STATS_SUMMARY = [
 _CURRENT_WAITS_DURATION_SQL = f"""
 SELECT
     wt.collection_time AS time,
-    srv.name || ' - ' || wt.wait_type AS metric,
+    wt.wait_type AS metric,
     SUM(wt.wait_duration_ms) AS value
 FROM {collector('waiting_tasks')} AS wt
-{server_join('wt.server_id')}
 WHERE $__timeFilter(wt.collection_time)
   AND {server_filter('wt.server_id')}
   AND wt.wait_type IS NOT NULL
@@ -294,10 +291,9 @@ ORDER BY 1
 _CURRENT_WAITS_BLOCKED_SQL = f"""
 SELECT
     wt.collection_time AS time,
-    srv.name || ' - ' || wt.database_name AS metric,
+    wt.database_name AS metric,
     COUNT(*) AS value
 FROM {collector('waiting_tasks')} AS wt
-{server_join('wt.server_id')}
 WHERE $__timeFilter(wt.collection_time)
   AND {server_filter('wt.server_id')}
   AND wt.blocking_session_id > 0
@@ -521,7 +517,7 @@ LIMIT 1
 
 
 def blocking():
-    """Build the Blocking dashboard."""
+    """Build the Blocking & Deadlocks dashboard."""
     reset_id()
     panels: list[dict] = []
 
@@ -632,7 +628,7 @@ def blocking():
                     unit="ms",
                 ),
             ),
-            (24, 6, stat_grid(_BLOCKING_STATS_SUMMARY, cols=4)),
+            (24, 4, stat_grid(_BLOCKING_STATS_SUMMARY, cols=7)),
         ],
     )
 
@@ -744,7 +740,9 @@ def blocking():
         "Databases seen in blocking/deadlock events over the window.",
     )
 
-    return dashboard(uid("blocking"), "Blocking", panels, [server_var(), database_var])
+    return dashboard(
+        uid("blocking-deadlocks"), "Blocking & Deadlocks", panels, [server_var(), database_var]
+    )
 
 
 def deadlock_detail():

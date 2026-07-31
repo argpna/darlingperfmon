@@ -364,8 +364,12 @@ subtab = _kit.subtab
 reflow = _kit.reflow
 
 
-def server_var(multi: bool = True):
+def server_var(multi: bool = False):
     """Build the $server template variable, from Darling's fleet registry.
+
+    Single-select by default: every dashboard in this suite is a per-server investigation
+    tool. Pass multi=True only where cross-server comparison is the dashboard's purpose
+    (Fleet Overview) or a reporter-per-row design depends on it (Availability Groups).
 
     __text/__value so the label is the server name and panels filter on the indexed id.
     """

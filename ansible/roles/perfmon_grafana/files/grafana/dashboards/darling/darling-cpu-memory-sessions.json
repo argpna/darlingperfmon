@@ -1,0 +1,1758 @@
+{
+  "uid": "darling-cpu-memory-sessions",
+  "title": "Perfmon (Darling) - CPU, Memory & Sessions",
+  "tags": [
+    "perfmon-darling"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon-darling"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon (Darling) Dashboards",
+      "type": "dashboards",
+      "url": ""
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "finops-darling"
+      ],
+      "targetBlank": false,
+      "title": "All FinOps (Darling) Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      },
+      {
+        "name": "clerk_type",
+        "label": "Memory clerk",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "\nSELECT mc.clerk_type\nFROM collect.v_memory_clerks AS mc\nWHERE $__timeFilter(mc.collection_time)\n  AND mc.server_id IN (${server:csv})\nGROUP BY mc.clerk_type\nORDER BY SUM(mc.memory_mb) DESC\n",
+        "definition": "\nSELECT mc.clerk_type\nFROM collect.v_memory_clerks AS mc\nWHERE $__timeFilter(mc.collection_time)\n  AND mc.server_id IN (${server:csv})\nGROUP BY mc.clerk_type\nORDER BY SUM(mc.memory_mb) DESC\n",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "refresh": 2,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 0,
+        "description": "Memory clerks collected over the window, heaviest first. All plots the top 5."
+      },
+      {
+        "name": "pack",
+        "label": "Counter pack",
+        "type": "custom",
+        "query": "General Throughput,Memory Pressure,CPU / Compilation,I/O Pressure,TempDB Pressure,Lock / Blocking,All Counters",
+        "current": {
+          "text": "General Throughput",
+          "value": "General Throughput"
+        },
+        "options": [
+          {
+            "text": "General Throughput",
+            "value": "General Throughput",
+            "selected": true
+          },
+          {
+            "text": "Memory Pressure",
+            "value": "Memory Pressure",
+            "selected": false
+          },
+          {
+            "text": "CPU / Compilation",
+            "value": "CPU / Compilation",
+            "selected": false
+          },
+          {
+            "text": "I/O Pressure",
+            "value": "I/O Pressure",
+            "selected": false
+          },
+          {
+            "text": "TempDB Pressure",
+            "value": "TempDB Pressure",
+            "selected": false
+          },
+          {
+            "text": "Lock / Blocking",
+            "value": "Lock / Blocking",
+            "selected": false
+          },
+          {
+            "text": "All Counters",
+            "value": "All Counters",
+            "selected": false
+          }
+        ],
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "description": "Named counter group, narrowing what the counter list offers."
+      },
+      {
+        "name": "counter",
+        "label": "Counter",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "\nSELECT DISTINCT pm.counter_name\nFROM collect.v_perfmon_stats AS pm\nWHERE $__timeFilter(pm.collection_time)\n  AND pm.server_id IN (${server:csv})\n  AND (${pack:sqlstring} = 'All Counters'\n       OR pm.counter_name IN (\n              SELECT p.counter\n              FROM (VALUES\n    ('General Throughput', 'Batch Requests/sec'),\n    ('General Throughput', 'SQL Compilations/sec'),\n    ('General Throughput', 'SQL Re-Compilations/sec'),\n    ('General Throughput', 'Query optimizations/sec'),\n    ('General Throughput', 'Network IO waits'),\n    ('Memory Pressure', 'Memory Grants Pending'),\n    ('Memory Pressure', 'Granted Workspace Memory (KB)'),\n    ('Memory Pressure', 'Target Server Memory (KB)'),\n    ('Memory Pressure', 'Total Server Memory (KB)'),\n    ('Memory Pressure', 'Stolen Server Memory (KB)'),\n    ('Memory Pressure', 'Lock Memory (KB)'),\n    ('Memory Pressure', 'SQL Cache Memory (KB)'),\n    ('Memory Pressure', 'Lazy writes/sec'),\n    ('Memory Pressure', 'Free list stalls/sec'),\n    ('Memory Pressure', 'Reduced memory grants/sec'),\n    ('Memory Pressure', 'Memory grant queue waits'),\n    ('Memory Pressure', 'Thread-safe memory objects waits'),\n    ('Memory Pressure', 'Page reads/sec'),\n    ('Memory Pressure', 'Readahead pages/sec'),\n    ('CPU / Compilation', 'Batch Requests/sec'),\n    ('CPU / Compilation', 'SQL Compilations/sec'),\n    ('CPU / Compilation', 'SQL Re-Compilations/sec'),\n    ('CPU / Compilation', 'Query optimizations/sec'),\n    ('CPU / Compilation', 'Active parallel threads'),\n    ('CPU / Compilation', 'Active requests'),\n    ('CPU / Compilation', 'Queued requests'),\n    ('CPU / Compilation', 'Wait for the worker'),\n    ('I/O Pressure', 'Page reads/sec'),\n    ('I/O Pressure', 'Page writes/sec'),\n    ('I/O Pressure', 'Checkpoint pages/sec'),\n    ('I/O Pressure', 'Page lookups/sec'),\n    ('I/O Pressure', 'Readahead pages/sec'),\n    ('I/O Pressure', 'Background writer pages/sec'),\n    ('I/O Pressure', 'Log Flushes/sec'),\n    ('I/O Pressure', 'Log Bytes Flushed/sec'),\n    ('I/O Pressure', 'Log Flush Write Time (ms)'),\n    ('I/O Pressure', 'Page IO latch waits'),\n    ('I/O Pressure', 'Log buffer waits'),\n    ('I/O Pressure', 'Log write waits'),\n    ('I/O Pressure', 'Full Scans/sec'),\n    ('I/O Pressure', 'Index Searches/sec'),\n    ('I/O Pressure', 'Page Splits/sec'),\n    ('TempDB Pressure', 'Version Store Size (KB)'),\n    ('TempDB Pressure', 'Free Space in tempdb (KB)'),\n    ('TempDB Pressure', 'Active Temp Tables'),\n    ('TempDB Pressure', 'Version Generation rate (KB/s)'),\n    ('TempDB Pressure', 'Version Cleanup rate (KB/s)'),\n    ('TempDB Pressure', 'Temp Tables Creation Rate'),\n    ('TempDB Pressure', 'Workfiles Created/sec'),\n    ('TempDB Pressure', 'Worktables Created/sec'),\n    ('Lock / Blocking', 'Lock Requests/sec'),\n    ('Lock / Blocking', 'Lock Wait Time (ms)'),\n    ('Lock / Blocking', 'Lock Waits/sec'),\n    ('Lock / Blocking', 'Number of Deadlocks/sec'),\n    ('Lock / Blocking', 'Table Lock Escalations/sec'),\n    ('Lock / Blocking', 'Blocked tasks'),\n    ('Lock / Blocking', 'Lock waits'),\n    ('Lock / Blocking', 'Non-Page latch waits'),\n    ('Lock / Blocking', 'Page latch waits'),\n    ('Lock / Blocking', 'Processes blocked'),\n    ('Lock / Blocking', 'Lock Timeouts/sec')\n              ) AS p(pack, counter)\n              WHERE p.pack = ${pack:sqlstring}\n          ))\nORDER BY pm.counter_name\n",
+        "definition": "\nSELECT DISTINCT pm.counter_name\nFROM collect.v_perfmon_stats AS pm\nWHERE $__timeFilter(pm.collection_time)\n  AND pm.server_id IN (${server:csv})\n  AND (${pack:sqlstring} = 'All Counters'\n       OR pm.counter_name IN (\n              SELECT p.counter\n              FROM (VALUES\n    ('General Throughput', 'Batch Requests/sec'),\n    ('General Throughput', 'SQL Compilations/sec'),\n    ('General Throughput', 'SQL Re-Compilations/sec'),\n    ('General Throughput', 'Query optimizations/sec'),\n    ('General Throughput', 'Network IO waits'),\n    ('Memory Pressure', 'Memory Grants Pending'),\n    ('Memory Pressure', 'Granted Workspace Memory (KB)'),\n    ('Memory Pressure', 'Target Server Memory (KB)'),\n    ('Memory Pressure', 'Total Server Memory (KB)'),\n    ('Memory Pressure', 'Stolen Server Memory (KB)'),\n    ('Memory Pressure', 'Lock Memory (KB)'),\n    ('Memory Pressure', 'SQL Cache Memory (KB)'),\n    ('Memory Pressure', 'Lazy writes/sec'),\n    ('Memory Pressure', 'Free list stalls/sec'),\n    ('Memory Pressure', 'Reduced memory grants/sec'),\n    ('Memory Pressure', 'Memory grant queue waits'),\n    ('Memory Pressure', 'Thread-safe memory objects waits'),\n    ('Memory Pressure', 'Page reads/sec'),\n    ('Memory Pressure', 'Readahead pages/sec'),\n    ('CPU / Compilation', 'Batch Requests/sec'),\n    ('CPU / Compilation', 'SQL Compilations/sec'),\n    ('CPU / Compilation', 'SQL Re-Compilations/sec'),\n    ('CPU / Compilation', 'Query optimizations/sec'),\n    ('CPU / Compilation', 'Active parallel threads'),\n    ('CPU / Compilation', 'Active requests'),\n    ('CPU / Compilation', 'Queued requests'),\n    ('CPU / Compilation', 'Wait for the worker'),\n    ('I/O Pressure', 'Page reads/sec'),\n    ('I/O Pressure', 'Page writes/sec'),\n    ('I/O Pressure', 'Checkpoint pages/sec'),\n    ('I/O Pressure', 'Page lookups/sec'),\n    ('I/O Pressure', 'Readahead pages/sec'),\n    ('I/O Pressure', 'Background writer pages/sec'),\n    ('I/O Pressure', 'Log Flushes/sec'),\n    ('I/O Pressure', 'Log Bytes Flushed/sec'),\n    ('I/O Pressure', 'Log Flush Write Time (ms)'),\n    ('I/O Pressure', 'Page IO latch waits'),\n    ('I/O Pressure', 'Log buffer waits'),\n    ('I/O Pressure', 'Log write waits'),\n    ('I/O Pressure', 'Full Scans/sec'),\n    ('I/O Pressure', 'Index Searches/sec'),\n    ('I/O Pressure', 'Page Splits/sec'),\n    ('TempDB Pressure', 'Version Store Size (KB)'),\n    ('TempDB Pressure', 'Free Space in tempdb (KB)'),\n    ('TempDB Pressure', 'Active Temp Tables'),\n    ('TempDB Pressure', 'Version Generation rate (KB/s)'),\n    ('TempDB Pressure', 'Version Cleanup rate (KB/s)'),\n    ('TempDB Pressure', 'Temp Tables Creation Rate'),\n    ('TempDB Pressure', 'Workfiles Created/sec'),\n    ('TempDB Pressure', 'Worktables Created/sec'),\n    ('Lock / Blocking', 'Lock Requests/sec'),\n    ('Lock / Blocking', 'Lock Wait Time (ms)'),\n    ('Lock / Blocking', 'Lock Waits/sec'),\n    ('Lock / Blocking', 'Number of Deadlocks/sec'),\n    ('Lock / Blocking', 'Table Lock Escalations/sec'),\n    ('Lock / Blocking', 'Blocked tasks'),\n    ('Lock / Blocking', 'Lock waits'),\n    ('Lock / Blocking', 'Non-Page latch waits'),\n    ('Lock / Blocking', 'Page latch waits'),\n    ('Lock / Blocking', 'Processes blocked'),\n    ('Lock / Blocking', 'Lock Timeouts/sec')\n              ) AS p(pack, counter)\n              WHERE p.pack = ${pack:sqlstring}\n          ))\nORDER BY pm.counter_name\n",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "refresh": 2,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 0,
+        "description": "Counters in the selected pack that were collected over the window. All plots the 12 busiest."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "CPU %",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 95
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT sqlserver_cpu_utilization + COALESCE(other_process_cpu_utilization, 0) AS v\nFROM collect.v_cpu_utilization_stats\nWHERE server_id IN (${server:csv})\nORDER BY collection_time DESC\nLIMIT 1\n"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Worker Utilization %",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT CASE WHEN max_workers_count > 0\n    THEN total_current_workers_count::double precision / max_workers_count * 100.0\n    ELSE 0 END AS v\nFROM collect.v_cpu_scheduler_stats\nWHERE server_id IN (${server:csv})\nORDER BY collection_time DESC\nLIMIT 1\n"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Runnable Tasks",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 11
+              },
+              {
+                "color": "red",
+                "value": 21
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT total_runnable_tasks_count AS v\nFROM collect.v_cpu_scheduler_stats\nWHERE server_id IN (${server:csv})\nORDER BY collection_time DESC\nLIMIT 1\n"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Buffer Pool MB",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "decmbytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT buffer_pool_mb AS v\nFROM collect.v_memory_stats\nWHERE server_id IN (${server:csv})\nORDER BY collection_time DESC\nLIMIT 1\n"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Active Sessions",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT total_sessions AS v\nFROM collect.v_session_summary_stats\nWHERE server_id IN (${server:csv})\nORDER BY collection_time DESC\nLIMIT 1\n"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Memory Pressure State",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT COALESCE(NULLIF(system_memory_state, ''), 'N/A') AS v\nFROM collect.v_memory_stats\nWHERE server_id IN (${server:csv})\nORDER BY collection_time DESC\nLIMIT 1\n"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "row",
+      "title": "CPU",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "panels": []
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "CPU Utilization",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "CPU %"
+          },
+          "unit": "percent",
+          "max": 105,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    cpu.sample_time\n        - INTERVAL '15 minutes'\n          * ROUND(EXTRACT(EPOCH FROM (\n                MAX(cpu.sample_time) OVER (PARTITION BY cpu.server_id, cpu.collection_time)\n                - cpu.collection_time\n            )) / 900.0)::double precision AS time,\n    s.series AS metric,\n    s.value\nFROM collect.v_cpu_utilization_stats AS cpu\nCROSS JOIN LATERAL (VALUES\n    ('SQL Server', cpu.sqlserver_cpu_utilization),\n    ('Other', COALESCE(cpu.other_process_cpu_utilization, 0))\n) AS s(series, value)\nWHERE $__timeFilter(cpu.collection_time)\n  AND cpu.server_id IN (${server:csv})\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Scheduler Pressure",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Task Count"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    cs.collection_time AS time,\n    s.series AS metric,\n    s.value\nFROM collect.v_cpu_scheduler_stats AS cs\nCROSS JOIN LATERAL (VALUES\n    ('Runnable Tasks', cs.total_runnable_tasks_count),\n    ('Blocked Tasks', cs.total_blocked_task_count),\n    ('Queued Requests', cs.total_queued_request_count)\n) AS s(series, value)\nWHERE $__timeFilter(cs.collection_time)\n  AND cs.server_id IN (${server:csv})\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "Latest Snapshot",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 14
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Warning": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "OK": {
+                        "color": "green",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH snapshot AS (\n    SELECT DISTINCT ON (cs.server_id)\n        cs.*,\n        srv.name AS server_label,\n        CASE\n            WHEN cs.max_workers_count > 0\n            THEN cs.total_current_workers_count::double precision\n                 / cs.max_workers_count * 100.0\n            ELSE 0\n        END AS worker_util\n    FROM collect.v_cpu_scheduler_stats AS cs\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = cs.server_id\n    WHERE $__timeFilter(cs.collection_time)\n      AND cs.server_id IN (${server:csv})\n    ORDER BY cs.server_id, cs.collection_time DESC\n),\nlatest AS (\n    SELECT\n        l.*,\n        CASE\n        WHEN l.total_runnable_tasks_count > 50 THEN 'CRITICAL - High runnable task queue'\n        WHEN l.total_runnable_tasks_count > 20 THEN 'HIGH - Moderate runnable task queue'\n        WHEN l.total_runnable_tasks_count > 10 THEN 'MEDIUM - Some runnable tasks queued'\n        WHEN l.worker_util > 90 THEN 'HIGH - Worker thread exhaustion'\n        WHEN l.worker_thread_exhaustion_warning THEN 'CRITICAL - Worker thread exhaustion warning'\n        WHEN l.runnable_tasks_warning THEN 'HIGH - Runnable tasks warning'\n        WHEN l.queued_requests_warning THEN 'MEDIUM - Queued requests warning'\n        ELSE 'NORMAL'\n    END AS pressure_level,\n        CASE\n        WHEN l.total_runnable_tasks_count > 20\n        THEN 'CPU pressure detected - check for CPU-intensive queries, consider adding CPU cores'\n        WHEN l.worker_thread_exhaustion_warning\n        THEN 'Worker thread exhaustion - check max worker threads setting'\n        WHEN l.total_queued_request_count > 0\n        THEN 'Requests queued for execution - CPU or worker thread pressure'\n        ELSE 'No CPU scheduler pressure detected'\n    END AS recommendation\n    FROM snapshot AS l\n)\nSELECT\n    l.server_label AS \"Server\",\n    m.metric AS \"Metric\",\n    m.value AS \"Value\",\n    CASE WHEN m.warn THEN 'Warning' ELSE 'OK' END AS \"Status\"\nFROM latest AS l\nCROSS JOIN LATERAL (VALUES\n    (0, 'Pressure Level', l.pressure_level, l.pressure_level NOT LIKE 'NORMAL%'),\n    (1, 'Recommendation', l.recommendation, false),\n    (2, 'Schedulers', to_char(l.scheduler_count, 'FM999,999,999,990'), false),\n    (3, 'Logical CPUs', to_char(l.cpu_count, 'FM999,999,999,990'), false),\n    (4, 'NUMA Nodes (online / total)', l.nodes_online_count || ' / ' || l.total_node_count, false),\n    (5, 'Offline CPUs', to_char(l.offline_cpu_count, 'FM999,999,999,990'), l.offline_cpu_warning),\n    (6, 'Max Worker Threads', to_char(l.max_workers_count, 'FM999,999,999,990'), false),\n    (7, 'Current Workers', to_char(l.total_current_workers_count, 'FM999,999,999,990'), l.worker_thread_exhaustion_warning),\n    (8, 'Worker Utilization %', to_char(round((l.worker_util)::numeric, 1), 'FM999999990.0'), l.worker_thread_exhaustion_warning),\n    (9, 'Runnable Tasks', to_char(l.total_runnable_tasks_count, 'FM999,999,999,990'), l.runnable_tasks_warning),\n    (10, 'Avg Runnable / Scheduler', to_char(round((l.avg_runnable_tasks_count)::numeric, 2), 'FM999999990.00'), l.runnable_tasks_warning),\n    (11, 'Work Queue Length', to_char(l.total_work_queue_count, 'FM999,999,999,990'), false),\n    (12, 'Active Requests', to_char(l.total_active_request_count, 'FM999,999,999,990'), false),\n    (13, 'Queued Requests', to_char(l.total_queued_request_count, 'FM999,999,999,990'), l.queued_requests_warning),\n    (14, 'Blocked Tasks', to_char(l.total_blocked_task_count, 'FM999,999,999,990'), l.blocked_tasks_warning),\n    (15, 'Active Parallel Threads', to_char(l.total_active_parallel_thread_count, 'FM999,999,999,990'), false),\n    (16, 'Runnable Requests', CASE WHEN l.runnable_request_count IS NULL THEN 'N/A' ELSE to_char(l.runnable_request_count, 'FM999,999,999,990') END, false),\n    (17, 'Total Requests', CASE WHEN l.total_request_count IS NULL THEN 'N/A' ELSE to_char(l.total_request_count, 'FM999,999,999,990') END, false),\n    (18, 'Runnable %', CASE WHEN l.runnable_percent IS NULL THEN 'N/A' ELSE to_char(round((l.runnable_percent)::numeric, 2), 'FM999999990.00') END, false),\n    (19, 'Total Physical Memory', CASE\n            WHEN l.total_physical_memory_kb / 1048576.0 >= 1\n            THEN to_char(round((l.total_physical_memory_kb / 1048576.0)::numeric, 1), 'FM999999990.0') || ' GB'\n            ELSE to_char(round((l.total_physical_memory_kb / 1024.0)::numeric, 0), 'FM999999990') || ' MB'\n        END, false),\n    (20, 'Available Physical Memory', CASE\n            WHEN l.available_physical_memory_kb / 1048576.0 >= 1\n            THEN to_char(round((l.available_physical_memory_kb / 1048576.0)::numeric, 1), 'FM999999990.0') || ' GB'\n            ELSE to_char(round((l.available_physical_memory_kb / 1024.0)::numeric, 0), 'FM999999990') || ' MB'\n        END, l.physical_memory_pressure_warning),\n    (21, 'System Memory State', COALESCE(NULLIF(l.system_memory_state_desc, ''), 'N/A'), l.physical_memory_pressure_warning),\n    (22, 'Physical Memory Pressure', CASE WHEN l.physical_memory_pressure_warning THEN 'Yes' ELSE 'No' END, l.physical_memory_pressure_warning)\n) AS m(ord, metric, value, warn)\nORDER BY l.server_label, m.ord\n"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "row",
+      "title": "Memory Overview",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 26
+      },
+      "panels": []
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Memory Summary",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 27
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Physical Memory"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decmbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "SQL Server Memory"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decmbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Target Memory"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decmbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Buffer Pool"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decmbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Plan Cache"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decmbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Available Physical"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decmbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total Page File"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decmbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Available Page File"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decmbytes"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT DISTINCT ON (ms.server_id)\n    srv.name AS \"Server\",\n    ms.collection_time AS \"Collected\",\n    ms.total_physical_memory_mb AS \"Physical Memory\",\n    ms.total_server_memory_mb AS \"SQL Server Memory\",\n    ms.target_server_memory_mb AS \"Target Memory\",\n    ms.buffer_pool_mb AS \"Buffer Pool\",\n    ms.plan_cache_mb AS \"Plan Cache\",\n    ms.available_physical_memory_mb AS \"Available Physical\",\n    ms.total_page_file_mb AS \"Total Page File\",\n    ms.available_page_file_mb AS \"Available Page File\",\n    ms.system_memory_state AS \"System Memory State\",\n    ms.sql_memory_model AS \"Memory Model\"\nFROM collect.v_memory_stats AS ms\nJOIN config.config_monitored_servers AS srv ON srv.server_id = ms.server_id\nWHERE ms.server_id IN (${server:csv})\nORDER BY ms.server_id, ms.collection_time DESC\n"
+        }
+      ],
+      "description": "Latest collected memory state, independent of the time range."
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Memory Trend",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 33
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Memory (GB)"
+          },
+          "unit": "decgbytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    ms.collection_time AS time,\n    s.series AS metric,\n    s.value / 1024.0 AS value\nFROM collect.v_memory_stats AS ms\nCROSS JOIN LATERAL (VALUES\n    ('Total Server Memory', ms.total_server_memory_mb),\n    ('Target Memory', ms.target_server_memory_mb),\n    ('Buffer Pool', ms.buffer_pool_mb)\n) AS s(series, value)\nWHERE $__timeFilter(ms.collection_time)\n  AND ms.server_id IN (${server:csv})\nUNION ALL\nSELECT\n    mg.collection_time AS time,\n    'Memory Grants' AS metric,\n    SUM(mg.granted_memory_mb) / 1024.0 AS value\nFROM collect.v_memory_grant_stats AS mg\nWHERE $__timeFilter(mg.collection_time)\n  AND mg.server_id IN (${server:csv})\nGROUP BY mg.collection_time\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "row",
+      "title": "Memory Clerks",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 43
+      },
+      "panels": []
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Memory Clerks",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 44
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Memory (MB)"
+          },
+          "unit": "decmbytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH ranked AS (\n\n    SELECT\n        mc.server_id,\n        srv.name AS server_label,\n        mc.clerk_type\n    FROM collect.v_memory_clerks AS mc\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = mc.server_id\n    WHERE $__timeFilter(mc.collection_time)\n      AND mc.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${clerk_type:sqlstring}]::text[]) = 0 OR mc.clerk_type = ANY(ARRAY[${clerk_type:sqlstring}]::text[]))\n    GROUP BY mc.server_id, srv.name, mc.clerk_type\n    ORDER BY SUM(mc.memory_mb) DESC\n    LIMIT 5\n\n)\nSELECT\n    mc.collection_time AS time,\n    mc.clerk_type AS metric,\n    mc.memory_mb AS value\nFROM collect.v_memory_clerks AS mc\nJOIN ranked AS r\n  ON r.server_id = mc.server_id\n AND r.clerk_type = mc.clerk_type\nWHERE $__timeFilter(mc.collection_time)\n  AND mc.server_id IN (${server:csv})\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "table",
+      "title": "Clerk Summary",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 54
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Non-BP Total (MB)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decmbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Top Non-BP Clerk (MB)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decmbytes"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH ranked AS (\n\n    SELECT\n        mc.server_id,\n        srv.name AS server_label,\n        mc.clerk_type\n    FROM collect.v_memory_clerks AS mc\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = mc.server_id\n    WHERE $__timeFilter(mc.collection_time)\n      AND mc.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${clerk_type:sqlstring}]::text[]) = 0 OR mc.clerk_type = ANY(ARRAY[${clerk_type:sqlstring}]::text[]))\n    GROUP BY mc.server_id, srv.name, mc.clerk_type\n    ORDER BY SUM(mc.memory_mb) DESC\n    LIMIT 5\n\n),\nlatest AS (\n    SELECT DISTINCT ON (mc.server_id, mc.clerk_type)\n        r.server_label,\n        mc.clerk_type,\n        mc.memory_mb\n    FROM collect.v_memory_clerks AS mc\n    JOIN ranked AS r\n      ON r.server_id = mc.server_id\n     AND r.clerk_type = mc.clerk_type\n    WHERE $__timeFilter(mc.collection_time)\n      AND mc.server_id IN (${server:csv})\n    ORDER BY mc.server_id, mc.clerk_type, mc.collection_time DESC\n),\nnon_bp AS (\n    SELECT *\n    FROM latest\n    WHERE clerk_type NOT ILIKE '%BUFFERPOOL%'\n)\nSELECT DISTINCT ON (n.server_label)\n    n.server_label AS \"Server\",\n    SUM(n.memory_mb) OVER (PARTITION BY n.server_label) AS \"Non-BP Total (MB)\",\n    regexp_replace(n.clerk_type, '^MEMORYCLERK_', '') AS \"Top Non-BP Clerk\",\n    n.memory_mb AS \"Top Non-BP Clerk (MB)\"\nFROM non_bp AS n\nORDER BY n.server_label, n.memory_mb DESC\n"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "row",
+      "title": "Memory Grants",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 59
+      },
+      "panels": []
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Memory Grant Sizing",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 60
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Memory (MB)"
+          },
+          "unit": "decmbytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    mg.collection_time AS time,\n    'Pool ' || mg.pool_id || ': ' || s.series AS metric,\n    SUM(s.value) AS value\nFROM collect.v_memory_grant_stats AS mg\nCROSS JOIN LATERAL (VALUES\n    ('Available MB', mg.available_memory_mb),\n    ('Granted MB', mg.granted_memory_mb),\n    ('Used MB', mg.used_memory_mb),\n    ('Target MB', mg.target_memory_mb),\n    ('Max Target MB', mg.max_target_memory_mb)\n) AS s(series, value)\nWHERE $__timeFilter(mg.collection_time)\n  AND mg.server_id IN (${server:csv})\nGROUP BY mg.collection_time, mg.pool_id, s.series\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "Memory Grant Activity",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 60
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Count"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    mg.collection_time AS time,\n    'Pool ' || mg.pool_id || ': ' || s.series AS metric,\n    SUM(s.value) AS value\nFROM collect.v_memory_grant_stats AS mg\nCROSS JOIN LATERAL (VALUES\n    ('Grantees', mg.grantee_count),\n    ('Waiters', mg.waiter_count),\n    ('Timeouts', mg.timeout_error_count_delta),\n    ('Forced Grants', mg.forced_grant_count_delta)\n) AS s(series, value)\nWHERE $__timeFilter(mg.collection_time)\n  AND mg.server_id IN (${server:csv})\nGROUP BY mg.collection_time, mg.pool_id, s.series\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Plan Cache",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 69
+      },
+      "panels": []
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Plan Cache Size",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 70
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Plan Cache Size (MB)"
+          },
+          "unit": "decmbytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    pc.collection_time AS time,\n    s.series AS metric,\n    SUM(s.value) AS value\nFROM collect.v_plan_cache_stats AS pc\nCROSS JOIN LATERAL (VALUES\n    ('Single-Use', pc.single_use_size_mb),\n    ('Multi-Use', pc.multi_use_size_mb)\n) AS s(series, value)\nWHERE $__timeFilter(pc.collection_time)\n  AND pc.server_id IN (${server:csv})\nGROUP BY pc.collection_time, s.series\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "table",
+      "title": "Plan Cache Summary",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 70
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH latest AS (\n    SELECT\n        pc.server_id,\n        srv.name AS server_label,\n        MAX(pc.collection_time) AS mx\n    FROM collect.v_plan_cache_stats AS pc\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = pc.server_id\n    WHERE $__timeFilter(pc.collection_time)\n      AND pc.server_id IN (${server:csv})\n    GROUP BY pc.server_id, srv.name\n),\ntotals AS (\n    SELECT\n        l.server_label,\n        COALESCE(SUM(pc.total_plans), 0) AS total_plans,\n        COALESCE(SUM(pc.single_use_plans), 0) AS single_use_plans,\n        MIN(pc.oldest_plan_create_time) AS oldest_plan_create_time\n    FROM latest AS l\n    JOIN collect.v_plan_cache_stats AS pc\n      ON pc.server_id = l.server_id\n     AND pc.collection_time = l.mx\n    GROUP BY l.server_label\n),\nclassified AS (\n    SELECT\n        t.*,\n        CASE\n            WHEN t.total_plans > 0\n            THEN t.single_use_plans * 100.0 / t.total_plans\n            ELSE 0\n        END AS single_use_percent\n    FROM totals AS t\n)\nSELECT\n    c.server_label AS \"Server\",\n    c.total_plans AS \"Total Plans\",\n    c.oldest_plan_create_time AS \"Oldest Plan\",\n    CASE\n        WHEN c.single_use_percent > 50 THEN 'CRITICAL'\n        WHEN c.single_use_percent > 30 THEN 'HIGH'\n        WHEN c.single_use_percent > 20 THEN 'MEDIUM'\n        ELSE 'NORMAL'\n    END AS \"Bloat Level\",\n    CASE\n        WHEN c.single_use_percent > 20\n        THEN 'Check for unparameterized queries / Consider Forced Parameterization'\n        ELSE 'Plan cache composition is healthy'\n    END AS \"Recommendation\"\nFROM classified AS c\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "type": "row",
+      "title": "Memory Pressure Events",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 79
+      },
+      "panels": []
+    },
+    {
+      "id": 24,
+      "type": "timeseries",
+      "title": "Memory Pressure Events",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 80
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "axisLabel": "Pressure Events per Hour"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    date_trunc('hour', mpe.sample_time) AS time,\n    s.series AS metric,\n    COUNT(*) AS value\nFROM collect.v_memory_pressure_events AS mpe\nCROSS JOIN LATERAL (VALUES\n    ('SQL Server (medium)', mpe.memory_indicators_process = 2),\n    ('SQL Server (severe)', mpe.memory_indicators_process >= 3),\n    ('Operating System (medium)', mpe.memory_indicators_system = 2),\n    ('Operating System (severe)', mpe.memory_indicators_system >= 3)\n) AS s(series, hit)\nWHERE $__timeFilter(mpe.sample_time)\n  AND mpe.server_id IN (${server:csv})\n  AND (mpe.memory_indicators_process >= 2 OR mpe.memory_indicators_system >= 2)\n  AND s.hit\nGROUP BY 1, 2\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "type": "row",
+      "title": "Session Stats",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 89
+      },
+      "panels": []
+    },
+    {
+      "id": 26,
+      "type": "timeseries",
+      "title": "Session Counts Over Time",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 90
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Session Count"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH expanded AS (\n    SELECT\n        ss.collection_time,\n        s.series,\n        s.value,\n        MAX(s.value) OVER (PARTITION BY s.series) AS series_max\n    FROM collect.v_session_summary_stats AS ss\n    CROSS JOIN LATERAL (VALUES\n        ('Total', ss.total_sessions),\n        ('Running', ss.running_sessions),\n        ('Sleeping', ss.sleeping_sessions),\n        ('Background', ss.background_sessions),\n        ('Dormant', ss.dormant_sessions),\n        ('Idle >30m', ss.idle_sessions_over_30min),\n        ('Waiting for Memory', ss.sessions_waiting_for_memory)\n    ) AS s(series, value)\n    WHERE $__timeFilter(ss.collection_time)\n      AND ss.server_id IN (${server:csv})\n)\nSELECT\n    collection_time AS time,\n    series AS metric,\n    value\nFROM expanded\nWHERE series_max > 0\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "type": "table",
+      "title": "Session Attribution",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 102
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT DISTINCT ON (ss.server_id)\n    srv.name AS \"Server\",\n    ss.collection_time AS \"Collected\",\n    CASE\n        WHEN COALESCE(ss.top_application_name, '') <> ''\n        THEN ss.top_application_name\n             || ' (' || COALESCE(ss.top_application_connections, 0) || ')'\n        ELSE 'N/A'\n    END AS \"Top Application\",\n    CASE\n        WHEN COALESCE(ss.top_host_name, '') <> ''\n        THEN ss.top_host_name || ' (' || COALESCE(ss.top_host_connections, 0) || ')'\n        ELSE 'N/A'\n    END AS \"Top Host\",\n    ss.databases_with_connections AS \"Databases\"\nFROM collect.v_session_summary_stats AS ss\nJOIN config.config_monitored_servers AS srv ON srv.server_id = ss.server_id\nWHERE $__timeFilter(ss.collection_time)\n  AND ss.server_id IN (${server:csv})\nORDER BY ss.server_id, ss.collection_time DESC\n"
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "type": "row",
+      "title": "Perfmon Counters",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 107
+      },
+      "panels": []
+    },
+    {
+      "id": 29,
+      "type": "timeseries",
+      "title": "Perfmon Counters",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 108
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Value"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH ranked AS (\n    SELECT pm.server_id, pm.counter_name\n    FROM collect.v_perfmon_stats AS pm\n    WHERE $__timeFilter(pm.collection_time)\n      AND pm.server_id IN (${server:csv})\n      AND (${pack:sqlstring} = 'All Counters'\n       OR pm.counter_name IN (\n              SELECT p.counter\n              FROM (VALUES\n    ('General Throughput', 'Batch Requests/sec'),\n    ('General Throughput', 'SQL Compilations/sec'),\n    ('General Throughput', 'SQL Re-Compilations/sec'),\n    ('General Throughput', 'Query optimizations/sec'),\n    ('General Throughput', 'Network IO waits'),\n    ('Memory Pressure', 'Memory Grants Pending'),\n    ('Memory Pressure', 'Granted Workspace Memory (KB)'),\n    ('Memory Pressure', 'Target Server Memory (KB)'),\n    ('Memory Pressure', 'Total Server Memory (KB)'),\n    ('Memory Pressure', 'Stolen Server Memory (KB)'),\n    ('Memory Pressure', 'Lock Memory (KB)'),\n    ('Memory Pressure', 'SQL Cache Memory (KB)'),\n    ('Memory Pressure', 'Lazy writes/sec'),\n    ('Memory Pressure', 'Free list stalls/sec'),\n    ('Memory Pressure', 'Reduced memory grants/sec'),\n    ('Memory Pressure', 'Memory grant queue waits'),\n    ('Memory Pressure', 'Thread-safe memory objects waits'),\n    ('Memory Pressure', 'Page reads/sec'),\n    ('Memory Pressure', 'Readahead pages/sec'),\n    ('CPU / Compilation', 'Batch Requests/sec'),\n    ('CPU / Compilation', 'SQL Compilations/sec'),\n    ('CPU / Compilation', 'SQL Re-Compilations/sec'),\n    ('CPU / Compilation', 'Query optimizations/sec'),\n    ('CPU / Compilation', 'Active parallel threads'),\n    ('CPU / Compilation', 'Active requests'),\n    ('CPU / Compilation', 'Queued requests'),\n    ('CPU / Compilation', 'Wait for the worker'),\n    ('I/O Pressure', 'Page reads/sec'),\n    ('I/O Pressure', 'Page writes/sec'),\n    ('I/O Pressure', 'Checkpoint pages/sec'),\n    ('I/O Pressure', 'Page lookups/sec'),\n    ('I/O Pressure', 'Readahead pages/sec'),\n    ('I/O Pressure', 'Background writer pages/sec'),\n    ('I/O Pressure', 'Log Flushes/sec'),\n    ('I/O Pressure', 'Log Bytes Flushed/sec'),\n    ('I/O Pressure', 'Log Flush Write Time (ms)'),\n    ('I/O Pressure', 'Page IO latch waits'),\n    ('I/O Pressure', 'Log buffer waits'),\n    ('I/O Pressure', 'Log write waits'),\n    ('I/O Pressure', 'Full Scans/sec'),\n    ('I/O Pressure', 'Index Searches/sec'),\n    ('I/O Pressure', 'Page Splits/sec'),\n    ('TempDB Pressure', 'Version Store Size (KB)'),\n    ('TempDB Pressure', 'Free Space in tempdb (KB)'),\n    ('TempDB Pressure', 'Active Temp Tables'),\n    ('TempDB Pressure', 'Version Generation rate (KB/s)'),\n    ('TempDB Pressure', 'Version Cleanup rate (KB/s)'),\n    ('TempDB Pressure', 'Temp Tables Creation Rate'),\n    ('TempDB Pressure', 'Workfiles Created/sec'),\n    ('TempDB Pressure', 'Worktables Created/sec'),\n    ('Lock / Blocking', 'Lock Requests/sec'),\n    ('Lock / Blocking', 'Lock Wait Time (ms)'),\n    ('Lock / Blocking', 'Lock Waits/sec'),\n    ('Lock / Blocking', 'Number of Deadlocks/sec'),\n    ('Lock / Blocking', 'Table Lock Escalations/sec'),\n    ('Lock / Blocking', 'Blocked tasks'),\n    ('Lock / Blocking', 'Lock waits'),\n    ('Lock / Blocking', 'Non-Page latch waits'),\n    ('Lock / Blocking', 'Page latch waits'),\n    ('Lock / Blocking', 'Processes blocked'),\n    ('Lock / Blocking', 'Lock Timeouts/sec')\n              ) AS p(pack, counter)\n              WHERE p.pack = ${pack:sqlstring}\n          ))\n      AND (cardinality(ARRAY[${counter:sqlstring}]::text[]) = 0 OR pm.counter_name = ANY(ARRAY[${counter:sqlstring}]::text[]))\n    GROUP BY pm.server_id, pm.counter_name\n    ORDER BY SUM(pm.delta_cntr_value) DESC\n    LIMIT 12\n)\nSELECT\n    pm.collection_time AS time,\n    pm.counter_name AS metric,\n    SUM(pm.delta_cntr_value) AS value\nFROM collect.v_perfmon_stats AS pm\nJOIN ranked AS r\n  ON r.server_id = pm.server_id\n AND r.counter_name = pm.counter_name\nWHERE $__timeFilter(pm.collection_time)\n  AND pm.server_id IN (${server:csv})\nGROUP BY pm.collection_time, pm.counter_name\nORDER BY 1\n"
+        }
+      ]
+    }
+  ]
+}

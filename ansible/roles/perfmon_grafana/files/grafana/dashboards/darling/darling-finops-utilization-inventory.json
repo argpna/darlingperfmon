@@ -1,6 +1,6 @@
 {
-  "uid": "darling-finops-utilization",
-  "title": "FinOps (Darling) - Utilization",
+  "uid": "darling-finops-utilization-inventory",
+  "title": "FinOps (Darling) - Utilization & Inventory",
   "tags": [
     "finops-darling"
   ],
@@ -70,8 +70,8 @@
         "options": [],
         "refresh": 1,
         "hide": 0,
-        "multi": true,
-        "includeAll": true,
+        "multi": false,
+        "includeAll": false,
         "sort": 1,
         "description": "Monitored SQL Server instance, from Darling's fleet registry."
       }
@@ -80,6 +80,19 @@
   "panels": [
     {
       "id": 1,
+      "type": "row",
+      "title": "Utilization Efficiency",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
       "type": "table",
       "title": "Utilization Efficiency",
       "datasource": {
@@ -90,7 +103,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 1
       },
       "fieldConfig": {
         "defaults": {
@@ -494,7 +507,7 @@
       "description": "Fixed 24h window, as upstream's is. Health weights CPU 40 %, memory 30 %, storage 30 %. Budget columns read 0 until one is configured for the server."
     },
     {
-      "id": 2,
+      "id": 3,
       "type": "table",
       "title": "7-Day Provisioning Trend",
       "datasource": {
@@ -505,7 +518,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 8
+        "y": 9
       },
       "fieldConfig": {
         "defaults": {
@@ -699,20 +712,20 @@
       ]
     },
     {
-      "id": 3,
+      "id": 4,
       "type": "row",
-      "title": "Top Databases",
+      "title": "Top Databases by Workload",
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 16
+        "y": 17
       },
       "panels": []
     },
     {
-      "id": 4,
+      "id": 5,
       "type": "table",
       "title": "Top Databases by Total CPU",
       "datasource": {
@@ -723,7 +736,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 17
+        "y": 18
       },
       "fieldConfig": {
         "defaults": {
@@ -866,7 +879,7 @@
       ]
     },
     {
-      "id": 5,
+      "id": 6,
       "type": "table",
       "title": "Top Databases by Avg CPU / Execution",
       "datasource": {
@@ -877,7 +890,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 17
+        "y": 18
       },
       "fieldConfig": {
         "defaults": {
@@ -976,7 +989,7 @@
       ]
     },
     {
-      "id": 6,
+      "id": 7,
       "type": "row",
       "title": "Database Sizes - Allocated vs Used",
       "collapsed": false,
@@ -984,12 +997,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 25
+        "y": 26
       },
       "panels": []
     },
     {
-      "id": 7,
+      "id": 8,
       "type": "table",
       "title": "Database Sizes - Allocated vs Used",
       "datasource": {
@@ -1000,7 +1013,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 26
+        "y": 27
       },
       "fieldConfig": {
         "defaults": {
@@ -1108,6 +1121,473 @@
         }
       ],
       "description": "Top 10 databases per server by allocated size."
+    },
+    {
+      "id": 9,
+      "type": "row",
+      "title": "Database Resource Usage",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 36
+      },
+      "panels": []
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "Database Resource Usage",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 37
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU Time (ms)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU %"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "IO %"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "IO Read MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "IO Write MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "IO Stall (ms)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "CPU Time (ms)",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH u AS (SELECT * FROM (\nWITH workload AS (\n    SELECT server_id, database_name,\n           SUM(worker_time_sum) / 1000.0 AS cpu_time_ms,\n           SUM(logical_reads_sum) AS logical_reads,\n           SUM(physical_reads_sum) AS physical_reads,\n           SUM(logical_writes_sum) AS logical_writes,\n           SUM(execution_count_sum) AS execution_count\n    FROM collect.query_stats_db_daily\n    WHERE server_id IN (${server:csv}) AND $__timeFilter(bucket)\n    GROUP BY server_id, database_name\n),\nio AS (\n    SELECT server_id, database_name,\n           SUM(delta_read_bytes) / 1048576.0 AS io_read_mb,\n           SUM(delta_write_bytes) / 1048576.0 AS io_write_mb,\n           SUM(delta_stall_read_ms + delta_stall_write_ms) AS io_stall_ms\n    FROM collect.v_file_io_stats\n    WHERE server_id IN (${server:csv})\n      AND $__timeFilter(collection_time)\n      AND delta_read_bytes IS NOT NULL\n    GROUP BY server_id, database_name\n),\ncombined AS (\n    SELECT COALESCE(w.server_id, i.server_id) AS server_id,\n           COALESCE(w.database_name, i.database_name) AS database_name,\n           COALESCE(w.cpu_time_ms, 0) AS cpu_time_ms,\n           COALESCE(w.logical_reads, 0) AS logical_reads,\n           COALESCE(w.physical_reads, 0) AS physical_reads,\n           COALESCE(w.logical_writes, 0) AS logical_writes,\n           COALESCE(w.execution_count, 0) AS execution_count,\n           COALESCE(i.io_read_mb, 0) AS io_read_mb,\n           COALESCE(i.io_write_mb, 0) AS io_write_mb,\n           COALESCE(i.io_stall_ms, 0) AS io_stall_ms\n    FROM workload w\n    FULL JOIN io i ON i.server_id = w.server_id AND i.database_name = w.database_name\n),\ntotals AS (\n    SELECT server_id,\n           NULLIF(SUM(cpu_time_ms), 0) AS total_cpu,\n           NULLIF(SUM(io_read_mb + io_write_mb), 0) AS total_io\n    FROM combined\n    GROUP BY server_id\n)\nSELECT\n    c.server_id,\n    c.database_name,\n    c.cpu_time_ms,\n    c.logical_reads,\n    c.physical_reads,\n    c.logical_writes,\n    c.execution_count,\n    c.io_read_mb,\n    c.io_write_mb,\n    c.io_stall_ms,\n    c.cpu_time_ms * 100.0 / t.total_cpu AS pct_cpu_share,\n    (c.io_read_mb + c.io_write_mb) * 100.0 / t.total_io AS pct_io_share\nFROM combined c\nJOIN totals t ON t.server_id = c.server_id\nWHERE c.database_name IS NOT NULL\n) AS daily_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_db_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_db_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_db_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_db_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_db_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_db_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_db_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_db_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_db_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_db_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_db_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_db_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'daily'\nUNION ALL\nSELECT * FROM (\nWITH workload AS (\n    SELECT server_id, database_name,\n           SUM(worker_time_sum) / 1000.0 AS cpu_time_ms,\n           SUM(logical_reads_sum) AS logical_reads,\n           SUM(physical_reads_sum) AS physical_reads,\n           SUM(logical_writes_sum) AS logical_writes,\n           SUM(execution_count_sum) AS execution_count\n    FROM collect.query_stats_db_hourly\n    WHERE server_id IN (${server:csv}) AND $__timeFilter(bucket)\n    GROUP BY server_id, database_name\n),\nio AS (\n    SELECT server_id, database_name,\n           SUM(delta_read_bytes) / 1048576.0 AS io_read_mb,\n           SUM(delta_write_bytes) / 1048576.0 AS io_write_mb,\n           SUM(delta_stall_read_ms + delta_stall_write_ms) AS io_stall_ms\n    FROM collect.v_file_io_stats\n    WHERE server_id IN (${server:csv})\n      AND $__timeFilter(collection_time)\n      AND delta_read_bytes IS NOT NULL\n    GROUP BY server_id, database_name\n),\ncombined AS (\n    SELECT COALESCE(w.server_id, i.server_id) AS server_id,\n           COALESCE(w.database_name, i.database_name) AS database_name,\n           COALESCE(w.cpu_time_ms, 0) AS cpu_time_ms,\n           COALESCE(w.logical_reads, 0) AS logical_reads,\n           COALESCE(w.physical_reads, 0) AS physical_reads,\n           COALESCE(w.logical_writes, 0) AS logical_writes,\n           COALESCE(w.execution_count, 0) AS execution_count,\n           COALESCE(i.io_read_mb, 0) AS io_read_mb,\n           COALESCE(i.io_write_mb, 0) AS io_write_mb,\n           COALESCE(i.io_stall_ms, 0) AS io_stall_ms\n    FROM workload w\n    FULL JOIN io i ON i.server_id = w.server_id AND i.database_name = w.database_name\n),\ntotals AS (\n    SELECT server_id,\n           NULLIF(SUM(cpu_time_ms), 0) AS total_cpu,\n           NULLIF(SUM(io_read_mb + io_write_mb), 0) AS total_io\n    FROM combined\n    GROUP BY server_id\n)\nSELECT\n    c.server_id,\n    c.database_name,\n    c.cpu_time_ms,\n    c.logical_reads,\n    c.physical_reads,\n    c.logical_writes,\n    c.execution_count,\n    c.io_read_mb,\n    c.io_write_mb,\n    c.io_stall_ms,\n    c.cpu_time_ms * 100.0 / t.total_cpu AS pct_cpu_share,\n    (c.io_read_mb + c.io_write_mb) * 100.0 / t.total_io AS pct_io_share\nFROM combined c\nJOIN totals t ON t.server_id = c.server_id\nWHERE c.database_name IS NOT NULL\n) AS hourly_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_db_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_db_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_db_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_db_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_db_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_db_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_db_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_db_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_db_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_db_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_db_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_db_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'hourly'\nUNION ALL\nSELECT * FROM (\nWITH workload AS (\n    SELECT server_id, database_name,\n           SUM(delta_worker_time) / 1000.0 AS cpu_time_ms,\n           SUM(delta_logical_reads) AS logical_reads,\n           SUM(delta_physical_reads) AS physical_reads,\n           SUM(delta_logical_writes) AS logical_writes,\n           SUM(delta_execution_count) AS execution_count\n    FROM collect.v_query_stats\n    WHERE server_id IN (${server:csv})\n      AND $__timeFilter(collection_time)\n      AND delta_worker_time IS NOT NULL\n    GROUP BY server_id, database_name\n),\nio AS (\n    SELECT server_id, database_name,\n           SUM(delta_read_bytes) / 1048576.0 AS io_read_mb,\n           SUM(delta_write_bytes) / 1048576.0 AS io_write_mb,\n           SUM(delta_stall_read_ms + delta_stall_write_ms) AS io_stall_ms\n    FROM collect.v_file_io_stats\n    WHERE server_id IN (${server:csv})\n      AND $__timeFilter(collection_time)\n      AND delta_read_bytes IS NOT NULL\n    GROUP BY server_id, database_name\n),\ncombined AS (\n    SELECT COALESCE(w.server_id, i.server_id) AS server_id,\n           COALESCE(w.database_name, i.database_name) AS database_name,\n           COALESCE(w.cpu_time_ms, 0) AS cpu_time_ms,\n           COALESCE(w.logical_reads, 0) AS logical_reads,\n           COALESCE(w.physical_reads, 0) AS physical_reads,\n           COALESCE(w.logical_writes, 0) AS logical_writes,\n           COALESCE(w.execution_count, 0) AS execution_count,\n           COALESCE(i.io_read_mb, 0) AS io_read_mb,\n           COALESCE(i.io_write_mb, 0) AS io_write_mb,\n           COALESCE(i.io_stall_ms, 0) AS io_stall_ms\n    FROM workload w\n    FULL JOIN io i ON i.server_id = w.server_id AND i.database_name = w.database_name\n),\ntotals AS (\n    SELECT server_id,\n           NULLIF(SUM(cpu_time_ms), 0) AS total_cpu,\n           NULLIF(SUM(io_read_mb + io_write_mb), 0) AS total_io\n    FROM combined\n    GROUP BY server_id\n)\nSELECT\n    c.server_id,\n    c.database_name,\n    c.cpu_time_ms,\n    c.logical_reads,\n    c.physical_reads,\n    c.logical_writes,\n    c.execution_count,\n    c.io_read_mb,\n    c.io_write_mb,\n    c.io_stall_ms,\n    c.cpu_time_ms * 100.0 / t.total_cpu AS pct_cpu_share,\n    (c.io_read_mb + c.io_write_mb) * 100.0 / t.total_io AS pct_io_share\nFROM combined c\nJOIN totals t ON t.server_id = c.server_id\nWHERE c.database_name IS NOT NULL\n) AS raw_tier WHERE (CASE WHEN $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' THEN 'raw' WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '3 days' AND $__timeFrom() >= (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_db_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_db_hourly), 'infinity'::timestamp) THEN 'raw' ELSE 'hourly' END WHEN $__timeFrom() < (now() AT TIME ZONE 'UTC') - INTERVAL '20 days' THEN CASE WHEN (SELECT min(bucket) FROM collect.query_stats_db_daily) <= $__timeFrom() THEN 'daily' WHEN (SELECT min(bucket) FROM collect.query_stats_db_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_db_daily), 'infinity'::timestamp) AND (SELECT min(bucket) FROM collect.query_stats_db_hourly) <= $__timeFrom() THEN 'hourly' WHEN (SELECT min(bucket) FROM collect.query_stats_db_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_db_daily), 'infinity'::timestamp) AND (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_db_hourly), 'infinity'::timestamp) THEN 'raw' WHEN (SELECT min(bucket) FROM collect.query_stats_db_hourly) < COALESCE((SELECT min(bucket) FROM collect.query_stats_db_daily), 'infinity'::timestamp) THEN 'hourly' WHEN (SELECT min(collection_time) FROM collect.v_query_stats) < COALESCE((SELECT min(bucket) FROM collect.query_stats_db_daily), 'infinity'::timestamp) THEN 'raw' ELSE 'daily' END END) = 'raw')\nSELECT\n    srv.name AS \"Server\",\n    u.database_name AS \"Database\",\n    round(u.cpu_time_ms, 0) AS \"CPU Time (ms)\",\n    round(u.pct_cpu_share, 1) AS \"CPU %\",\n    u.logical_reads AS \"Logical Reads\",\n    u.physical_reads AS \"Physical Reads\",\n    u.logical_writes AS \"Logical Writes\",\n    u.execution_count AS \"Executions\",\n    round(u.io_read_mb, 2) AS \"IO Read MB\",\n    round(u.io_write_mb, 2) AS \"IO Write MB\",\n    round(u.pct_io_share, 1) AS \"IO %\",\n    u.io_stall_ms AS \"IO Stall (ms)\"\nFROM u\nJOIN config.config_monitored_servers AS srv ON srv.server_id = u.server_id\nORDER BY u.cpu_time_ms DESC\n"
+        }
+      ],
+      "description": "Over the dashboard range. CPU % and IO % are shares of that server's own total."
+    },
+    {
+      "id": 11,
+      "type": "row",
+      "title": "Server Inventory",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 57
+      },
+      "panels": []
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Server Inventory (All Servers)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 58
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "RIGHT SIZED": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "OVER PROVISIONED": {
+                        "color": "yellow",
+                        "index": 1
+                      },
+                      "UNDER PROVISIONED": {
+                        "color": "red",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Health"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 60
+                    },
+                    {
+                      "color": "green",
+                      "value": 80
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg CPU %"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Memory MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Storage GB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "gbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Monthly ($)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Annual ($)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Idle DBs"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH props AS (\n    SELECT DISTINCT ON (server_id) *\n    FROM collect.server_properties\n    ORDER BY server_id, collection_time DESC\n),\ncpu_24h AS (\n    SELECT server_id,\n           AVG(sqlserver_cpu_utilization::numeric) AS avg_cpu_pct,\n           MAX(sqlserver_cpu_utilization) AS max_cpu_pct,\n           PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY sqlserver_cpu_utilization)::numeric\n               AS p95_cpu_pct\n    FROM collect.v_cpu_utilization_stats\n    WHERE collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '24 hours'\n    GROUP BY server_id\n),\nmem_latest AS (\n    SELECT server_id,\n           total_server_memory_mb::numeric / NULLIF(target_server_memory_mb, 0)\n               AS memory_ratio\n    FROM collect.v_memory_stats\n    WHERE (server_id, collection_time) IN (SELECT server_id, MAX(collection_time) FROM collect.v_memory_stats GROUP BY server_id)\n),\nstorage_totals AS (\n    SELECT server_id, SUM(total_size_mb) / 1024.0 AS total_storage_gb\n    FROM collect.v_database_size_stats\n    WHERE (server_id, collection_time) IN (SELECT server_id, MAX(collection_time) FROM collect.v_database_size_stats GROUP BY server_id)\n    GROUP BY server_id\n),\nsized_dbs AS (\n    SELECT DISTINCT server_id, database_name\n    FROM collect.v_database_size_stats\n    WHERE (server_id, collection_time) IN (SELECT server_id, MAX(collection_time) FROM collect.v_database_size_stats GROUP BY server_id)\n      AND database_name NOT IN ('master', 'model', 'msdb', 'tempdb', 'PerformanceMonitor')\n),\nactive_dbs AS (\n    SELECT DISTINCT server_id, database_name\n    FROM collect.v_query_stats\n    WHERE collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '7 days'\n      AND delta_execution_count > 0\n),\nidle_dbs AS (\n    SELECT server_id, COUNT(*) AS idle_db_count\n    FROM (SELECT * FROM sized_dbs EXCEPT SELECT * FROM active_dbs) AS idle\n    GROUP BY server_id\n)\nSELECT\n    COALESCE(reg.name, sp.server_name) AS \"Server\",\n    sp.edition AS \"Edition\",\n    CASE\n        WHEN COALESCE(sp.product_update_level, '') <> ''\n        THEN sp.product_version || ' - ' || sp.product_update_level\n        ELSE sp.product_version || ' - ' || COALESCE(sp.product_level, '')\n    END AS \"Version\",\n    COALESCE(sp.host_os_version, '') AS \"Host OS\",\n    sp.engine_edition AS \"Engine Edition\",\n    sp.cpu_count AS \"Logical CPUs\",\n    sp.physical_memory_mb AS \"Memory MB\",\n    sp.socket_count AS \"Sockets\",\n    sp.cores_per_socket AS \"Cores/Socket\",\n    CASE\n        WHEN sp.cpu_count IS NULL AND sp.physical_memory_mb IS NULL\n        THEN 'Hardware inventory (CPU, memory, sockets) unavailable - the monitoring login '\n             || 'likely lacks VIEW SERVER STATE (VIEW DATABASE STATE on Azure SQL DB) on '\n             || 'this server.'\n        ELSE ''\n    END AS \"Hardware Note\",\n    replace(CASE\n        WHEN c.avg_cpu_pct < 15 AND c.max_cpu_pct < 40 AND COALESCE(m.memory_ratio, 0) < 0.5\n        THEN 'OVER_PROVISIONED'\n        WHEN c.p95_cpu_pct > 85 OR COALESCE(m.memory_ratio, 0) > 0.95\n        THEN 'UNDER_PROVISIONED'\n        ELSE 'RIGHT_SIZED'\n    END, '_', ' ') AS \"Status\",\n    round(c.avg_cpu_pct, 1) AS \"Avg CPU %\",\n    round(st.total_storage_gb, 1) AS \"Storage GB\",\n    COALESCE(id.idle_db_count, 0) AS \"Idle DBs\",\n    CASE WHEN sp.sqlserver_start_time IS NULL THEN ''\n        ELSE (EXTRACT(EPOCH FROM (LOCALTIMESTAMP - sp.sqlserver_start_time))\n              / 86400)::int || 'd '\n             || ((EXTRACT(EPOCH FROM (LOCALTIMESTAMP - sp.sqlserver_start_time))::bigint\n                  % 86400) / 3600) || 'h'\n    END AS \"Uptime\",\n    sp.sqlserver_start_time AS \"Start Time\",\n    sp.collection_time AS \"Last Updated\",\n    COALESCE(reg.monthly_cost_usd, 0) AS \"Monthly ($)\",\n    COALESCE(reg.monthly_cost_usd, 0) * 12 AS \"Annual ($)\",\n    /* LoadFinOpsServerInventoryAsync fixes the memory and storage terms at 80 and\n       StorageScore(50) - the inventory read carries neither input. */\n    trunc((CASE\n        WHEN COALESCE(c.avg_cpu_pct, 0) <= 70 THEN trunc(100 - COALESCE(c.avg_cpu_pct, 0) * 50 / 70.0)\n        ELSE trunc(GREATEST(0, 50 - (COALESCE(c.avg_cpu_pct, 0) - 70) * 50 / 30.0))\n    END) * 0.40 + (80) * 0.30 + (CASE\n        WHEN 50 >= 30 THEN 100\n        WHEN 50 >= 10 THEN trunc(50 + (50 - 10) * 2.5)\n        ELSE trunc(50 * 5)\n    END) * 0.30)\n        AS \"Health\",\n    CASE\n        WHEN sp.edition NOT ILIKE '%Standard%' THEN ''\n        ELSE COALESCE(NULLIF(concat_ws('; ',\n            CASE WHEN sp.cpu_count > 24\n                 THEN 'CPU: ' || sp.cpu_count || ' cores (Standard limited to 24)' END,\n            CASE WHEN sp.physical_memory_mb > 131072\n                 THEN 'RAM: ' || (sp.physical_memory_mb / 1024) || 'GB '\n                      || '(Standard limited to 128GB)' END\n        ), ''), '')\n    END AS \"License Warning\",\n    CASE WHEN sp.is_hadr_enabled IS NULL THEN '' WHEN sp.is_hadr_enabled THEN 'Yes' ELSE 'No' END AS \"HADR\",\n    CASE WHEN COALESCE(sp.ag_replica_role, 'Standalone') = 'Standalone'\n         THEN '-' ELSE sp.ag_replica_role END AS \"AG Role\",\n    CASE WHEN sp.is_clustered IS NULL THEN '' WHEN sp.is_clustered THEN 'Yes' ELSE 'No' END AS \"Clustered\"\nFROM props sp\nLEFT JOIN config.config_monitored_servers reg ON reg.server_id = sp.server_id\nLEFT JOIN cpu_24h c ON c.server_id = sp.server_id\nLEFT JOIN mem_latest m ON m.server_id = sp.server_id\nLEFT JOIN storage_totals st ON st.server_id = sp.server_id\nLEFT JOIN idle_dbs id ON id.server_id = sp.server_id\nORDER BY 1\n"
+        }
+      ],
+      "description": "Every registered server, not filtered by $server. Health varies only with CPU: upstream fixes the memory and storage terms here."
     }
   ]
 }

@@ -1,6 +1,6 @@
 {
-  "uid": "darling-blocking",
-  "title": "Perfmon (Darling) - Blocking",
+  "uid": "darling-blocking-deadlocks",
+  "title": "Perfmon (Darling) - Blocking & Deadlocks",
   "tags": [
     "perfmon-darling"
   ],
@@ -70,8 +70,8 @@
         "options": [],
         "refresh": 1,
         "hide": 0,
-        "multi": true,
-        "includeAll": true,
+        "multi": false,
+        "includeAll": false,
         "sort": 1,
         "description": "Monitored SQL Server instance, from Darling's fleet registry."
       },
@@ -175,7 +175,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nWITH windowed AS (\n    SELECT\n        ws.server_id,\n        srv.name AS server_label,\n        ws.wait_type,\n        ws.collection_time,\n        ws.delta_wait_time_ms,\n        EXTRACT(EPOCH FROM (date_trunc('second', ws.collection_time)\n            - date_trunc('second', LAG(ws.collection_time) OVER (\n                PARTITION BY ws.server_id, ws.wait_type\n                ORDER BY ws.collection_time)))) AS interval_seconds\n    FROM collect.v_wait_stats AS ws\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = ws.server_id\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n      AND ws.wait_type LIKE 'LCK%'\n)\nSELECT\n    collection_time AS time,\n    server_label || ' - ' || wait_type AS metric,\n    CASE\n        WHEN interval_seconds > 0 AND delta_wait_time_ms >= 0\n        THEN delta_wait_time_ms::double precision / interval_seconds\n        ELSE 0\n    END AS value\nFROM windowed\nORDER BY 1\n"
+          "rawSql": "\nWITH windowed AS (\n    SELECT\n        ws.server_id,\n        ws.wait_type,\n        ws.collection_time,\n        ws.delta_wait_time_ms,\n        EXTRACT(EPOCH FROM (date_trunc('second', ws.collection_time)\n            - date_trunc('second', LAG(ws.collection_time) OVER (\n                PARTITION BY ws.server_id, ws.wait_type\n                ORDER BY ws.collection_time)))) AS interval_seconds\n    FROM collect.v_wait_stats AS ws\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n      AND ws.wait_type LIKE 'LCK%'\n)\nSELECT\n    collection_time AS time,\n    wait_type AS metric,\n    CASE\n        WHEN interval_seconds > 0 AND delta_wait_time_ms >= 0\n        THEN delta_wait_time_ms::double precision / interval_seconds\n        ELSE 0\n    END AS value\nFROM windowed\nORDER BY 1\n"
         }
       ]
     },
@@ -569,8 +569,8 @@
         "uid": "darling"
       },
       "gridPos": {
-        "h": 3,
-        "w": 6,
+        "h": 4,
+        "w": 3,
         "x": 0,
         "y": 27
       },
@@ -638,9 +638,9 @@
         "uid": "darling"
       },
       "gridPos": {
-        "h": 3,
-        "w": 6,
-        "x": 6,
+        "h": 4,
+        "w": 3,
+        "x": 3,
         "y": 27
       },
       "fieldConfig": {
@@ -699,9 +699,9 @@
         "uid": "darling"
       },
       "gridPos": {
-        "h": 3,
-        "w": 6,
-        "x": 12,
+        "h": 4,
+        "w": 3,
+        "x": 6,
         "y": 27
       },
       "fieldConfig": {
@@ -764,9 +764,9 @@
         "uid": "darling"
       },
       "gridPos": {
-        "h": 3,
-        "w": 6,
-        "x": 18,
+        "h": 4,
+        "w": 3,
+        "x": 9,
         "y": 27
       },
       "fieldConfig": {
@@ -829,10 +829,10 @@
         "uid": "darling"
       },
       "gridPos": {
-        "h": 3,
-        "w": 6,
-        "x": 0,
-        "y": 30
+        "h": 4,
+        "w": 3,
+        "x": 12,
+        "y": 27
       },
       "fieldConfig": {
         "defaults": {
@@ -898,10 +898,10 @@
         "uid": "darling"
       },
       "gridPos": {
-        "h": 3,
-        "w": 6,
-        "x": 6,
-        "y": 30
+        "h": 4,
+        "w": 3,
+        "x": 15,
+        "y": 27
       },
       "fieldConfig": {
         "defaults": {
@@ -967,10 +967,10 @@
         "uid": "darling"
       },
       "gridPos": {
-        "h": 3,
-        "w": 6,
-        "x": 12,
-        "y": 30
+        "h": 4,
+        "w": 3,
+        "x": 18,
+        "y": 27
       },
       "fieldConfig": {
         "defaults": {
@@ -1028,7 +1028,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 33
+        "y": 31
       },
       "panels": []
     },
@@ -1044,7 +1044,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 34
+        "y": 32
       },
       "fieldConfig": {
         "defaults": {
@@ -1090,7 +1090,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nSELECT\n    wt.collection_time AS time,\n    srv.name || ' - ' || wt.wait_type AS metric,\n    SUM(wt.wait_duration_ms) AS value\nFROM collect.waiting_tasks AS wt\nJOIN config.config_monitored_servers AS srv ON srv.server_id = wt.server_id\nWHERE $__timeFilter(wt.collection_time)\n  AND wt.server_id IN (${server:csv})\n  AND wt.wait_type IS NOT NULL\nGROUP BY 1, 2\nORDER BY 1\n"
+          "rawSql": "\nSELECT\n    wt.collection_time AS time,\n    wt.wait_type AS metric,\n    SUM(wt.wait_duration_ms) AS value\nFROM collect.waiting_tasks AS wt\nWHERE $__timeFilter(wt.collection_time)\n  AND wt.server_id IN (${server:csv})\n  AND wt.wait_type IS NOT NULL\nGROUP BY 1, 2\nORDER BY 1\n"
         }
       ]
     },
@@ -1106,7 +1106,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 34
+        "y": 32
       },
       "fieldConfig": {
         "defaults": {
@@ -1152,7 +1152,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nSELECT\n    wt.collection_time AS time,\n    srv.name || ' - ' || wt.database_name AS metric,\n    COUNT(*) AS value\nFROM collect.waiting_tasks AS wt\nJOIN config.config_monitored_servers AS srv ON srv.server_id = wt.server_id\nWHERE $__timeFilter(wt.collection_time)\n  AND wt.server_id IN (${server:csv})\n  AND wt.blocking_session_id > 0\nGROUP BY 1, 2\nORDER BY 1\n"
+          "rawSql": "\nSELECT\n    wt.collection_time AS time,\n    wt.database_name AS metric,\n    COUNT(*) AS value\nFROM collect.waiting_tasks AS wt\nWHERE $__timeFilter(wt.collection_time)\n  AND wt.server_id IN (${server:csv})\n  AND wt.blocking_session_id > 0\nGROUP BY 1, 2\nORDER BY 1\n"
         }
       ]
     },
@@ -1165,7 +1165,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 43
+        "y": 41
       },
       "panels": []
     },
@@ -1181,7 +1181,7 @@
         "h": 14,
         "w": 24,
         "x": 0,
-        "y": 44
+        "y": 42
       },
       "fieldConfig": {
         "defaults": {
@@ -1282,7 +1282,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 58
+        "y": 56
       },
       "panels": []
     },
@@ -1298,7 +1298,7 @@
         "h": 14,
         "w": 24,
         "x": 0,
-        "y": 59
+        "y": 57
       },
       "fieldConfig": {
         "defaults": {

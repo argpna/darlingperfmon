@@ -109,7 +109,7 @@ def index_usage():
         "Index Detail",
         panels,
         [
-            server_var(multi=False),
+            server_var(),
             text_var("database", "Database", "*"),
             text_var("schema", "Schema", "*"),
             text_var("table", "Table", "*"),

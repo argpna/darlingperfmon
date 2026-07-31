@@ -70,8 +70,8 @@
         "options": [],
         "refresh": 1,
         "hide": 0,
-        "multi": true,
-        "includeAll": true,
+        "multi": false,
+        "includeAll": false,
         "sort": 1,
         "description": "Monitored SQL Server instance, from Darling's fleet registry."
       }

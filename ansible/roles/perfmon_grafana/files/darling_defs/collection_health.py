@@ -24,6 +24,7 @@ from ._shared import (
     server_var,
     status_colors,
     stat,
+    stat_grid,
     subtab,
     table,
     target,
@@ -204,15 +205,43 @@ FROM a
 ORDER BY srv.name, a.collector_name
 """
 
-# Upstream ref: PermissionDeniedCollectorCountSql (#1591) - the tab header's badge. Counts
-# collectors, not rows, so one collector failing every cycle for a week reads as 1.
-_DENIED_SQL = f"""
-SELECT COUNT(DISTINCT cl.collector_name) AS "Permission-Denied Collectors"
-FROM {collector('collection_log')} AS cl
-WHERE cl.collection_time >= {_HEALTH_WINDOW}
-  AND {server_filter('cl.server_id')}
-  AND cl.status = 'PERMISSIONS'
+# Health Summary stat row: same classification the Collector Health grid's Status column
+# uses, aggregated to a count per bucket instead of read per row.
+def _health_count_sql(status_filter: str | None) -> str:
+    where = f'WHERE h."Status" {status_filter}' if status_filter else ""
+    return f"""
+WITH h AS ({_HEALTH_SQL})
+SELECT COUNT(*) AS v FROM h {where}
 """
+
+
+_HEALTH_SUMMARY_STATS = [
+    {
+        "title": "Total Collectors",
+        "sql": _health_count_sql(None),
+        "th": thresholds(("text", None)),
+    },
+    {
+        "title": "Healthy",
+        "sql": _health_count_sql("= 'HEALTHY'"),
+        "th": thresholds(("green", None)),
+    },
+    {
+        "title": "Warning / Stale",
+        "sql": _health_count_sql("IN ('WARNING', 'STALE')"),
+        "th": thresholds(("green", None), ("yellow", 1)),
+    },
+    {
+        "title": "Failing",
+        "sql": _health_count_sql("= 'FAILING'"),
+        "th": thresholds(("green", None), ("red", 1)),
+    },
+    {
+        "title": "Permission-Denied",
+        "sql": _health_count_sql("= 'NO_PERMISSIONS'"),
+        "th": thresholds(("green", None), ("red", 1)),
+    },
+]
 
 # duckdb_duration_ms is the legacy column name; in the Darling store it records the Postgres
 # write phase, which is why upstream labels it "Store (ms)".
@@ -240,10 +269,9 @@ LIMIT 500
 _DURATION_SQL = f"""
 SELECT
     cl.collection_time AS time,
-    srv.name || ' - ' || cl.collector_name AS metric,
+    cl.collector_name AS metric,
     cl.duration_ms AS value
 FROM {collector('collection_log')} AS cl
-{server_join('cl.server_id')}
 WHERE $__timeFilter(cl.collection_time)
   AND {server_filter('cl.server_id')}
   AND cl.status = 'SUCCESS'
@@ -306,20 +334,7 @@ def collection_health():
         "Health Summary",
         0,
         [
-            (
-                6,
-                4,
-                lambda x, y, w, h: stat(
-                    "Permission-Denied Collectors",
-                    x,
-                    y,
-                    w,
-                    h,
-                    _DENIED_SQL,
-                    "short",
-                    thresholds(("green", None), ("red", 1)),
-                ),
-            ),
+            (24, 4, stat_grid(_HEALTH_SUMMARY_STATS, cols=5)),
             (
                 24,
                 13,

@@ -2,14 +2,25 @@
 
 Upstream ref: ViewerServerTab.Queries.cs, ViewerDataService.QueryStats.cs, .ProcedureStats.cs,
 .QueryStore.cs, .QueryStoreRegressions.cs, .QuerySnapshots.cs, .QueryTrends.cs,
-.QueryHeatmap.cs (Darling.Viewer). Seven sub-tabs, matching upstream order. Current Active
-Queries (LIVE) is not ported: it needs a live DMV connection to the monitored server via
+.QueryHeatmap.cs (Darling.Viewer), ViewerServerTab.LongQueries.cs,
+ViewerDataService.LongQueries.cs. Eight sub-tabs (seven upstream Queries sub-tabs plus Long
+Queries, thin enough on its own to read as a trailing section here). Current Active Queries
+(LIVE) is not ported: it needs a live DMV connection to the monitored server via
 config_command, and Grafana here talks only to Postgres.
 
 The Top Queries/Procedures/Query Store grids and their comparison panels stay raw-table-only,
 not tiered() - the hourly/daily CAGGs carry only cpu/duration/execution-count sums, not the
 other columns these grids show. Only the four Performance Trends charts and each grid's
 fixed-metric CPU trend use tiered().
+
+Long Queries: completed long-running queries plus attentions (cancels/timeouts) from the
+opt-in PerformanceMonitor_LongQueryCompletions XE session, reading the base
+long_query_completions table (no collect.v_* view for this collector). The collector
+defaults OFF, so a Trace Status panel surfaces the resolved per-server enabled state in
+place of the WPF tab's hide/show banner. Duration/CPU are shown in milliseconds (divided
+down from stored microseconds) for numeric sortability. Its database filter is a separate
+$long_query_database variable, not the page's shared $database - long_query_completions and
+query_stats can list different database sets and the two must not collide.
 """
 
 from ._shared import (
@@ -17,10 +28,12 @@ from ._shared import (
     col_datalink,
     col_gauge_bar,
     col_hidden,
+    col_unit,
     collector,
     custom_var,
     dashboard,
     detail_dashboard,
+    fixed,
     flow,
     heatmap,
     multi_filter,
@@ -30,11 +43,15 @@ from ._shared import (
     server_filter,
     server_join,
     server_var,
+    SERVER_REGISTRY,
+    stat,
+    stat_grid,
     status_colors,
     subtab,
     table,
     target,
     text_var,
+    thresholds,
     tiered,
     timeseries,
     uid,
@@ -90,6 +107,142 @@ SELECT DISTINCT database_name
 FROM {collector('query_stats')}
 WHERE {server_filter()}
 ORDER BY 1
+"""
+
+# Stat row: active query count, top CPU consumer this window, regressions detected.
+_ACTIVE_QUERY_COUNT_SQL = f"""
+SELECT COUNT(*) AS v
+FROM {collector('query_snapshots')} AS qs
+WHERE {server_filter('qs.server_id')}
+  AND $__timeFilter(qs.collection_time)
+  AND {multi_filter('qs.database_name', 'database')}
+  AND qs.query_text NOT LIKE 'WAITFOR%'
+"""
+
+# Same module-attribution shape as _TOP_QUERIES_SQL below, collapsed to a single scalar.
+_TOP_CPU_CONSUMER_SQL = f"""
+WITH ranked AS (
+    SELECT sql_handle, database_name, SUM(delta_worker_time) AS total_cpu_us
+    FROM {collector('query_stats')}
+    WHERE {server_filter()}
+      AND $__timeFilter(collection_time)
+      AND {multi_filter('database_name', 'database')}
+    GROUP BY sql_handle, database_name
+    ORDER BY total_cpu_us DESC
+    LIMIT 1
+),
+module AS (
+    SELECT DISTINCT ON (sql_handle) sql_handle, object_name, schema_name, database_name
+    FROM {collector('procedure_stats')}
+    WHERE {server_filter()} AND sql_handle IS NOT NULL AND sql_handle <> ''
+    ORDER BY sql_handle, collection_time DESC
+)
+SELECT COALESCE(m.database_name || '.' || m.schema_name || '.' || m.object_name,
+                 r.database_name || ' (ad hoc)')
+       || ' - ' || {fixed('r.total_cpu_us / 1000.0', 0)} || ' ms' AS v
+FROM ranked r
+LEFT JOIN module m ON m.sql_handle = r.sql_handle
+"""
+
+# Same >25% CPU regression gate as _QUERY_STORE_REGRESSIONS_SQL below, collapsed to a count.
+_REGRESSIONS_COUNT_SQL = f"""
+WITH baseline_performance AS (
+    SELECT server_id, database_name, query_id,
+        AVG(avg_cpu_time_us::double precision) / 1000.0 AS avg_cpu_time_ms
+    FROM {collector('query_store_stats')}
+    WHERE {server_filter()}
+      AND collection_time < $__timeFrom()
+      AND {multi_filter('database_name', 'database')}
+    GROUP BY server_id, database_name, query_id
+),
+recent_performance AS (
+    SELECT server_id, database_name, query_id,
+        AVG(avg_cpu_time_us::double precision) / 1000.0 AS avg_cpu_time_ms
+    FROM {collector('query_store_stats')}
+    WHERE {server_filter()}
+      AND $__timeFilter(collection_time)
+      AND {multi_filter('database_name', 'database')}
+    GROUP BY server_id, database_name, query_id
+)
+SELECT COUNT(*) AS v
+FROM recent_performance AS r
+JOIN baseline_performance AS b
+  ON b.server_id = r.server_id AND b.database_name = r.database_name AND b.query_id = r.query_id
+WHERE (r.avg_cpu_time_ms - b.avg_cpu_time_ms) * 100.0 / NULLIF(b.avg_cpu_time_ms, 0) > 25
+"""
+
+_STAT_ROW = [
+    {
+        "title": "Active Queries",
+        "sql": _ACTIVE_QUERY_COUNT_SQL,
+        "th": thresholds(("text", None)),
+    },
+    {
+        "title": "Top CPU Consumer This Window",
+        "sql": _TOP_CPU_CONSUMER_SQL,
+        "th": thresholds(("text", None)),
+    },
+    {
+        "title": "Regressions Detected",
+        "sql": _REGRESSIONS_COUNT_SQL,
+        "th": thresholds(("green", None), ("red", 1)),
+    },
+]
+
+# Long Queries section, absorbed from the former standalone dashboard (#1496).
+_LONG_QUERY_DATABASE_VAR_SQL = f"""
+SELECT DISTINCT database_name
+FROM {collector('long_query_completions')}
+WHERE {server_filter()}
+ORDER BY 1
+"""
+
+# Upstream ref: GetLongQueryTraceEnabledAsync - per-server override > fleet override > default OFF.
+_TRACE_STATUS_SQL = f"""
+SELECT
+    srv.name AS "Server",
+    CASE WHEN COALESCE(
+        (SELECT s.enabled FROM config.config_collector_schedules AS s
+         WHERE s.collector_name = 'long_query_completions'
+           AND s.server_id = srv.server_id),
+        (SELECT s.enabled FROM config.config_collector_schedules AS s
+         WHERE s.collector_name = 'long_query_completions'
+           AND s.server_id IS NULL),
+        false
+    ) THEN 'ON' ELSE 'OFF' END AS "Trace Status"
+FROM {SERVER_REGISTRY} AS srv
+WHERE srv.is_enabled
+  AND {server_filter('srv.server_id')}
+ORDER BY srv.name
+"""
+
+# Upstream ref: LongQueryCompletionsSql. IsAborted/IsAttention row tints become column colors below.
+_LONG_QUERIES_SQL = f"""
+SELECT
+    srv.name AS "Server",
+    lqc.event_time AS "Event Time",
+    lqc.event_type AS "Event Type",
+    lqc.duration_microseconds / 1000.0 AS "Duration",
+    lqc.cpu_time_microseconds / 1000.0 AS "CPU",
+    lqc.logical_reads AS "Logical Reads",
+    lqc.physical_reads AS "Physical Reads",
+    lqc.writes AS "Writes",
+    lqc.row_count AS "Rows",
+    lqc.result AS "Result",
+    lqc.database_name AS "Database",
+    lqc.object_name AS "Object",
+    lqc.statement_text AS "Statement",
+    lqc.session_id AS "Session",
+    lqc.client_app_name AS "Application",
+    lqc.server_principal_name AS "Login",
+    lqc.query_hash AS "Query Hash"
+FROM {collector('long_query_completions')} AS lqc
+{server_join('lqc.server_id')}
+WHERE $__timeFilter(lqc.collection_time)
+  AND {server_filter('lqc.server_id')}
+  AND {multi_filter('lqc.database_name', 'long_query_database')}
+ORDER BY lqc.event_time DESC
+LIMIT 200
 """
 
 _COMPARISON_WINDOW_CTE = """
@@ -1444,10 +1597,12 @@ def queries():
     reset_id()
     panels: list[dict] = []
 
+    y = flow(panels, 0, [(24, 4, stat_grid(_STAT_ROW, cols=3))])
+
     y = subtab(
         panels,
         "Performance Trends",
-        0,
+        y,
         [
             (
                 6,
@@ -1795,7 +1950,7 @@ def queries():
         ],
     )
 
-    subtab(
+    y = subtab(
         panels,
         "Query Heatmap",
         y,
@@ -1834,6 +1989,50 @@ def queries():
         ],
     )
 
+    subtab(
+        panels,
+        "Long Queries",
+        y,
+        [
+            (
+                24,
+                5,
+                lambda x, y, w, h: table(
+                    "Trace Status",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _TRACE_STATUS_SQL,
+                    overrides=[
+                        status_colors("Trace Status", {"ON": "green", "OFF": "red"}),
+                    ],
+                    description="Opt-in collector, defaults OFF. Enable it in the collector schedule config.",
+                ),
+            ),
+            (
+                24,
+                16,
+                lambda x, y, w, h: table(
+                    "Long-Running Query Completions",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _LONG_QUERIES_SQL,
+                    sort_by=[{"displayName": "Event Time", "desc": True}],
+                    overrides=[
+                        status_colors("Result", {"Abort": "red"}),
+                        status_colors("Event Type", {"attention": "orange"}),
+                        col_unit("Duration", "ms"),
+                        col_unit("CPU", "ms"),
+                    ],
+                    description="Attentions (cancels/timeouts) carry no duration - the event has none.",
+                ),
+            ),
+        ],
+    )
+
     return dashboard(
         uid("queries"),
         "Query Performance",
@@ -1845,6 +2044,12 @@ def queries():
                 "Database",
                 _DATABASE_VAR_SQL,
                 "Optional database filter, shared across every Queries sub-tab.",
+            ),
+            query_var(
+                "long_query_database",
+                "Long Query Database",
+                _LONG_QUERY_DATABASE_VAR_SQL,
+                "Optional database filter, scoped to the Long Queries section only.",
             ),
             custom_var(
                 "topn", "Top N", ["25", "10", "50", "100"], "Row cap for the grids."

@@ -17,6 +17,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 # pylint: disable=wrong-import-position
 from darling_defs._shared import OUT  # noqa: E402
+from darling_defs.administration import administration  # noqa: E402
 from darling_defs.availability_groups import (  # noqa: E402
     availability_group_detail,
     availability_groups,
@@ -26,87 +27,60 @@ from darling_defs.collection_health import (  # noqa: E402
     collection_health,
     collection_log_detail,
 )
-from darling_defs.config_changes import config_changes  # noqa: E402
-from darling_defs.configuration import configuration  # noqa: E402
-from darling_defs.cpu import cpu  # noqa: E402
-from darling_defs.daily_summary import daily_summary  # noqa: E402
-from darling_defs.file_io import file_io  # noqa: E402
+from darling_defs.cpu_memory_sessions import cpu_memory_sessions  # noqa: E402
 from darling_defs.fleet import fleet  # noqa: E402
-from darling_defs.latch_spinlock import latch_spinlock  # noqa: E402
-from darling_defs.long_queries import long_queries  # noqa: E402
-from darling_defs.memory import memory  # noqa: E402
 from darling_defs.overview import overview  # noqa: E402
-from darling_defs.perfmon import perfmon  # noqa: E402
 from darling_defs.queries import (  # noqa: E402
     procedure_history,
     queries,
     query_stats_history,
     query_store_history,
 )
-from darling_defs.running_jobs import running_jobs  # noqa: E402
-from darling_defs.session_stats import session_stats  # noqa: E402
+from darling_defs.storage_tempdb import storage_tempdb  # noqa: E402
 from darling_defs.system_events import system_events  # noqa: E402
-from darling_defs.tempdb import tempdb  # noqa: E402
-from darling_defs.waits import wait_drill_down, waits  # noqa: E402
-from darling_defs.finops.application_connections import (  # noqa: E402
-    application_connections,
-)
-from darling_defs.finops.database_resources import database_resources  # noqa: E402
-from darling_defs.finops.database_sizes import database_sizes  # noqa: E402
-from darling_defs.finops.high_impact import high_impact  # noqa: E402
-from darling_defs.finops.index_analysis import index_analysis  # noqa: E402
+from darling_defs.wait_analysis import wait_analysis  # noqa: E402
+from darling_defs.waits import wait_drill_down  # noqa: E402
+from darling_defs.finops.capacity_growth import capacity_growth  # noqa: E402
 from darling_defs.finops.index_usage import index_usage  # noqa: E402
-from darling_defs.finops.locking import locking  # noqa: E402
 from darling_defs.finops.object_sizes import object_sizes  # noqa: E402
-from darling_defs.finops.optimization import optimization  # noqa: E402
+from darling_defs.finops.optimization_indexing import (  # noqa: E402
+    optimization_indexing,
+)
 from darling_defs.finops.recommendations import recommendations  # noqa: E402
-from darling_defs.finops.server_inventory import server_inventory  # noqa: E402
-from darling_defs.finops.storage_growth import storage_growth  # noqa: E402
-from darling_defs.finops.utilization import utilization  # noqa: E402
+from darling_defs.finops.utilization_inventory import (  # noqa: E402
+    utilization_inventory,
+)
+from darling_defs.finops.workload_contention import workload_contention  # noqa: E402
 
 DASHBOARDS = [
+    administration,
     availability_groups,
     availability_group_detail,
     blocking,
     deadlock_detail,
     collection_health,
     collection_log_detail,
-    config_changes,
-    configuration,
-    cpu,
-    daily_summary,
-    file_io,
+    cpu_memory_sessions,
     fleet,
-    latch_spinlock,
-    long_queries,
-    memory,
     overview,
-    perfmon,
     procedure_history,
     queries,
     query_stats_history,
     query_store_history,
-    running_jobs,
-    session_stats,
+    storage_tempdb,
     system_events,
-    tempdb,
+    wait_analysis,
     wait_drill_down,
-    waits,
-    # FinOps: one dashboard per upstream FinOps sub-tab, plus the two Storage Growth
-    # drill-down levels (object_sizes, index_usage) reached from its data links.
-    application_connections,
-    database_resources,
-    database_sizes,
-    high_impact,
-    index_analysis,
+    # FinOps: Recommendations stays the unchanged landing page; the rest are consolidated
+    # groups, plus the two Storage Growth drill-down levels (object_sizes, index_usage)
+    # reached from its data links.
+    capacity_growth,
     index_usage,
-    locking,
     object_sizes,
-    optimization,
+    optimization_indexing,
     recommendations,
-    server_inventory,
-    storage_growth,
-    utilization,
+    utilization_inventory,
+    workload_contention,
 ]
 
 

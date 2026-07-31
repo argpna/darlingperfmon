@@ -191,10 +191,9 @@ nodes AS (
 )
 SELECT
     n.event_time AS time,
-    srv.name || ' - ' || s.label AS metric,
+    s.label AS metric,
     s.value::double precision AS value
 FROM nodes n
-{server_join('n.server_id')}
 CROSS JOIN LATERAL (VALUES
     {values}
 ) AS s(label, value)
@@ -255,10 +254,9 @@ candidates AS (
 )
 SELECT
     n.event_time AS time,
-    srv.name || ' - ' || n.sick_type AS metric,
+    n.sick_type AS metric,
     n.backoffs::double precision AS value
 FROM nodes n
-{server_join('n.server_id')}
 WHERE n.sick_type IN (SELECT sick_type FROM candidates)
 ORDER BY 1
 """
@@ -307,10 +305,9 @@ _SCHEDULER_ISSUES_TREND_SQL = f"""
 WITH sig AS ({_SCHEDULER_ISSUES_SIGNIFICANT_SQL})
 SELECT
     sig.event_time AS time,
-    srv.name || ' - Scheduler ' || sig.scheduler_id AS metric,
+    'Scheduler ' || sig.scheduler_id AS metric,
     sig.non_yielding_time_ms::double precision AS value
 FROM sig
-{server_join('sig.server_id')}
 WHERE sig.status = 'WARNING'
 ORDER BY 1
 """
@@ -417,10 +414,9 @@ _SEVERE_ERRORS_TREND_SQL = f"""
 WITH sig AS ({_SEVERE_ERRORS_SIGNIFICANT_SQL})
 SELECT
     date_trunc('hour', sig.event_time) AS time,
-    srv.name AS metric,
+    'Severe Errors' AS metric,
     COUNT(*)::double precision AS value
 FROM sig
-{server_join('sig.server_id')}
 WHERE {_SEVERE_ERRORS_WHERE}
 GROUP BY 1, 2
 ORDER BY 1
@@ -502,10 +498,9 @@ _MEMORY_CONDITIONS_TREND_SQL = f"""
 WITH sig AS ({_MEMORY_CONDITIONS_SIGNIFICANT_SQL})
 SELECT
     date_trunc('hour', sig.event_time) AS time,
-    srv.name AS metric,
+    'OOM Exceptions' AS metric,
     SUM(sig.out_of_memory_exceptions)::double precision AS value
 FROM sig
-{server_join('sig.server_id')}
 WHERE sig.last_notification = 'RESOURCE_MEMPHYSICAL_LOW'
 GROUP BY 1, 2
 ORDER BY 1
@@ -564,10 +559,9 @@ _MEMORY_BROKER_TREND_SQL = f"""
 WITH sig AS ({_MEMORY_BROKER_SIGNIFICANT_SQL})
 SELECT
     sig.event_time AS time,
-    srv.name || ' - ' || sig.broker AS metric,
+    sig.broker AS metric,
     sig.currently_allocated::double precision AS value
 FROM sig
-{server_join('sig.server_id')}
 WHERE sig.notification = 'RESOURCE_MEMPHYSICAL_LOW'
 ORDER BY 1
 """
@@ -652,10 +646,9 @@ _MEMORY_NODE_OOM_UTILIZATION_SQL = f"""
 WITH sig AS ({_MEMORY_NODE_OOM_SQL})
 SELECT
     sig.event_time AS time,
-    srv.name || ' - Node ' || sig.memory_node_id AS metric,
+    'Node ' || sig.memory_node_id AS metric,
     sig.memory_utilization_pct::double precision AS value
 FROM sig
-{server_join('sig.server_id')}
 ORDER BY 1
 """
 
@@ -663,10 +656,9 @@ _MEMORY_NODE_OOM_BREAKDOWN_SQL = f"""
 WITH sig AS ({_MEMORY_NODE_OOM_SQL})
 SELECT
     sig.event_time AS time,
-    srv.name || ' - ' || s.label AS metric,
+    s.label AS metric,
     s.value / 1048576.0 AS value
 FROM sig
-{server_join('sig.server_id')}
 CROSS JOIN LATERAL (VALUES
     ('Target', sig.target_kb),
     ('Committed', sig.committed_kb),
@@ -680,10 +672,9 @@ _MEMORY_NODE_OOM_TREND_SQL = f"""
 WITH sig AS ({_MEMORY_NODE_OOM_SQL})
 SELECT
     date_trunc('hour', sig.event_time) AS time,
-    srv.name AS metric,
+    'OOM Events' AS metric,
     COUNT(*)::double precision AS value
 FROM sig
-{server_join('sig.server_id')}
 GROUP BY 1, 2
 ORDER BY 1
 """
@@ -763,10 +754,9 @@ _SIGNIFICANT_WAITS_TREND_SQL = f"""
 WITH sig AS ({_SIGNIFICANT_WAITS_SIGNIFICANT_SQL})
 SELECT
     date_trunc('hour', sig.event_time) AS time,
-    srv.name AS metric,
+    'Significant Waits' AS metric,
     COUNT(*)::double precision AS value
 FROM sig
-{server_join('sig.server_id')}
 WHERE {_SIGNIFICANT_WAITS_WHERE}
 GROUP BY 1, 2
 ORDER BY 1
@@ -857,10 +847,9 @@ _CPU_TASKS_WORKERS_SQL = f"""
 WITH sig AS ({_CPU_TASKS_SIGNIFICANT_SQL})
 SELECT
     sig.event_time AS time,
-    srv.name || ' - ' || s.label AS metric,
+    s.label AS metric,
     s.value::double precision AS value
 FROM sig
-{server_join('sig.server_id')}
 CROSS JOIN LATERAL (VALUES
     ('Workers Created', sig.workers_created),
     ('Workers Idle', sig.workers_idle),
@@ -874,10 +863,9 @@ _CPU_TASKS_PENDING_SQL = f"""
 WITH sig AS ({_CPU_TASKS_SIGNIFICANT_SQL})
 SELECT
     sig.event_time AS time,
-    srv.name || ' - ' || s.label AS metric,
+    s.label AS metric,
     s.value::double precision AS value
 FROM sig
-{server_join('sig.server_id')}
 CROSS JOIN LATERAL (VALUES
     ('Pending Tasks', sig.pending_tasks),
     ('Oldest Pending Wait (ms)', sig.oldest_pending_task_waiting_time)
@@ -970,10 +958,9 @@ _IO_ISSUES_TREND_SQL = f"""
 WITH sig AS ({_IO_ISSUES_SIGNIFICANT_SQL})
 SELECT
     sig.event_time AS time,
-    srv.name || ' - ' || s.label AS metric,
+    s.label AS metric,
     s.value::double precision AS value
 FROM sig
-{server_join('sig.server_id')}
 CROSS JOIN LATERAL (VALUES
     ('I/O Latch Timeouts', sig.io_latch_timeouts),
     ('Interval Long I/Os', sig.interval_long_ios)
@@ -1183,7 +1170,7 @@ def system_events():
         "Scheduler Issues",
         y,
         [
-            (24, 6, stat_grid(_SCHEDULER_ISSUES_STATS, cols=5)),
+            (24, 4, stat_grid(_SCHEDULER_ISSUES_STATS, cols=5)),
             (
                 24,
                 8,
@@ -1383,7 +1370,7 @@ def system_events():
         "Significant Waits",
         y,
         [
-            (24, 6, stat_grid(_SIGNIFICANT_WAITS_STATS, cols=4)),
+            (24, 4, stat_grid(_SIGNIFICANT_WAITS_STATS, cols=4)),
             (
                 24,
                 8,

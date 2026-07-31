@@ -1,0 +1,871 @@
+{
+  "uid": "darling-wait-analysis",
+  "title": "Perfmon (Darling) - Wait Analysis",
+  "tags": [
+    "perfmon-darling"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon-darling"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon (Darling) Dashboards",
+      "type": "dashboards",
+      "url": ""
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "finops-darling"
+      ],
+      "targetBlank": false,
+      "title": "All FinOps (Darling) Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      },
+      {
+        "name": "wait_type",
+        "label": "Wait type",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "\nSELECT ws.wait_type\nFROM collect.v_wait_stats AS ws\nWHERE $__timeFilter(ws.collection_time)\n  AND ws.server_id IN (${server:csv})\nGROUP BY ws.wait_type\nORDER BY SUM(ws.delta_wait_time_ms) DESC\n",
+        "definition": "\nSELECT ws.wait_type\nFROM collect.v_wait_stats AS ws\nWHERE $__timeFilter(ws.collection_time)\n  AND ws.server_id IN (${server:csv})\nGROUP BY ws.wait_type\nORDER BY SUM(ws.delta_wait_time_ms) DESC\n",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "refresh": 2,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 0,
+        "description": "Wait types collected over the window, heaviest first. All plots the top 20."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Top Wait Type",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT wait_type AS v\nFROM collect.v_wait_stats\nWHERE collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '1 hour' AND server_id IN (${server:csv})\nGROUP BY wait_type\nORDER BY SUM(delta_wait_time_ms) DESC\nLIMIT 1\n"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Total Wait ms/sec",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT CASE WHEN SUM(interval_seconds) > 0\n    THEN SUM(delta_wait_time_ms)::double precision / SUM(interval_seconds)\n    ELSE 0 END AS v\nFROM (\n    SELECT\n        delta_wait_time_ms,\n        EXTRACT(EPOCH FROM (date_trunc('second', collection_time)\n            - date_trunc('second', LAG(collection_time) OVER (ORDER BY collection_time))))\n            AS interval_seconds\n    FROM collect.v_wait_stats\n    WHERE collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '1 hour' AND server_id IN (${server:csv})\n) AS w\n"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Latch Wait Count",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT COALESCE(SUM(delta_waiting_requests_count), 0) AS v\nFROM collect.v_latch_stats\nWHERE collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '1 hour' AND server_id IN (${server:csv})\n"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Spinlock Collision Rate",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT CASE WHEN SUM(interval_seconds) > 0\n    THEN SUM(delta_collisions)::double precision / SUM(interval_seconds)\n    ELSE 0 END AS v\nFROM (\n    SELECT\n        delta_collisions,\n        EXTRACT(EPOCH FROM (date_trunc('second', collection_time)\n            - date_trunc('second', LAG(collection_time) OVER (ORDER BY collection_time))))\n            AS interval_seconds\n    FROM collect.v_spinlock_stats\n    WHERE collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '1 hour' AND server_id IN (${server:csv})\n) AS s\n"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "row",
+      "title": "Wait Stats",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "panels": []
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Wait Time (ms/sec)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "ms/sec"
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH ranked AS (\n    SELECT ws.server_id, ws.wait_type\n    FROM collect.v_wait_stats AS ws\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${wait_type:sqlstring}]::text[]) = 0 OR ws.wait_type = ANY(ARRAY[${wait_type:sqlstring}]::text[]))\n    GROUP BY ws.server_id, ws.wait_type\n    ORDER BY SUM(ws.delta_wait_time_ms) DESC\n    LIMIT 20\n),\nwindowed AS (\n    SELECT\n        ws.wait_type,\n        ws.collection_time,\n        ws.delta_wait_time_ms,\n        ws.delta_signal_wait_time_ms,\n        ws.delta_waiting_tasks,\n        EXTRACT(EPOCH FROM (date_trunc('second', ws.collection_time)\n            - date_trunc('second', LAG(ws.collection_time) OVER (\n                PARTITION BY ws.server_id, ws.wait_type\n                ORDER BY ws.collection_time)))) AS interval_seconds\n    FROM collect.v_wait_stats AS ws\n    JOIN ranked AS r\n      ON r.server_id = ws.server_id\n     AND r.wait_type = ws.wait_type\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n)\nSELECT\n    collection_time AS time,\n    wait_type AS metric,\n    CASE\n        WHEN interval_seconds > 0\n        THEN delta_wait_time_ms::double precision / interval_seconds\n        ELSE 0\n    END AS value\nFROM windowed\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Avg Wait Time (ms/wait)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 15
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "ms/wait"
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH ranked AS (\n    SELECT ws.server_id, ws.wait_type\n    FROM collect.v_wait_stats AS ws\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${wait_type:sqlstring}]::text[]) = 0 OR ws.wait_type = ANY(ARRAY[${wait_type:sqlstring}]::text[]))\n    GROUP BY ws.server_id, ws.wait_type\n    ORDER BY SUM(ws.delta_wait_time_ms) DESC\n    LIMIT 20\n),\nwindowed AS (\n    SELECT\n        ws.wait_type,\n        ws.collection_time,\n        ws.delta_wait_time_ms,\n        ws.delta_signal_wait_time_ms,\n        ws.delta_waiting_tasks,\n        EXTRACT(EPOCH FROM (date_trunc('second', ws.collection_time)\n            - date_trunc('second', LAG(ws.collection_time) OVER (\n                PARTITION BY ws.server_id, ws.wait_type\n                ORDER BY ws.collection_time)))) AS interval_seconds\n    FROM collect.v_wait_stats AS ws\n    JOIN ranked AS r\n      ON r.server_id = ws.server_id\n     AND r.wait_type = ws.wait_type\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n)\nSELECT\n    collection_time AS time,\n    wait_type AS metric,\n    CASE\n        WHEN delta_waiting_tasks > 0\n        THEN delta_wait_time_ms::double precision / delta_waiting_tasks\n        ELSE 0\n    END AS value\nFROM windowed\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Signal Wait Time (ms/sec)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 15
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "ms/sec"
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH ranked AS (\n    SELECT ws.server_id, ws.wait_type\n    FROM collect.v_wait_stats AS ws\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${wait_type:sqlstring}]::text[]) = 0 OR ws.wait_type = ANY(ARRAY[${wait_type:sqlstring}]::text[]))\n    GROUP BY ws.server_id, ws.wait_type\n    ORDER BY SUM(ws.delta_wait_time_ms) DESC\n    LIMIT 20\n),\nwindowed AS (\n    SELECT\n        ws.wait_type,\n        ws.collection_time,\n        ws.delta_wait_time_ms,\n        ws.delta_signal_wait_time_ms,\n        ws.delta_waiting_tasks,\n        EXTRACT(EPOCH FROM (date_trunc('second', ws.collection_time)\n            - date_trunc('second', LAG(ws.collection_time) OVER (\n                PARTITION BY ws.server_id, ws.wait_type\n                ORDER BY ws.collection_time)))) AS interval_seconds\n    FROM collect.v_wait_stats AS ws\n    JOIN ranked AS r\n      ON r.server_id = ws.server_id\n     AND r.wait_type = ws.wait_type\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n)\nSELECT\n    collection_time AS time,\n    wait_type AS metric,\n    CASE\n        WHEN interval_seconds > 0\n        THEN delta_signal_wait_time_ms::double precision / interval_seconds\n        ELSE 0\n    END AS value\nFROM windowed\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "Query Snapshots ($wait_type)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT COUNT(*) AS \"Query Snapshots\"\nFROM collect.v_query_snapshots AS qs\nWHERE $__timeFilter(qs.collection_time)\n  AND qs.server_id IN (${server:csv})\n  AND (cardinality(ARRAY[${wait_type:sqlstring}]::text[]) = 0 OR qs.wait_type = ANY(ARRAY[${wait_type:sqlstring}]::text[]))\n  AND qs.query_text NOT LIKE 'WAITFOR%'\n"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Latches & Spinlocks",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 28
+      },
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Latch Waits",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 29
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Wait Time (ms/sec)"
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH top_classes AS (\n    SELECT t.server_id, t.latch_class\n    FROM collect.v_latch_stats AS t\n    WHERE $__timeFilter(t.collection_time)\n      AND t.server_id IN (${server:csv})\n    GROUP BY t.server_id, t.latch_class\n    ORDER BY SUM(t.delta_wait_time_ms) DESC\n    LIMIT 5\n),\nwindowed AS (\n    SELECT\n        t.latch_class,\n        t.collection_time,\n        t.delta_wait_time_ms AS delta_value,\n        EXTRACT(EPOCH FROM (date_trunc('second', t.collection_time)\n            - date_trunc('second', LAG(t.collection_time) OVER (\n                PARTITION BY t.server_id, t.latch_class\n                ORDER BY t.collection_time)))) AS interval_seconds\n    FROM collect.v_latch_stats AS t\n    JOIN top_classes AS c\n      ON c.server_id = t.server_id\n     AND c.latch_class = t.latch_class\n    WHERE $__timeFilter(t.collection_time)\n      AND t.server_id IN (${server:csv})\n)\nSELECT\n    collection_time AS time,\n    latch_class AS metric,\n    CASE\n        WHEN interval_seconds > 0\n        THEN delta_value::double precision / interval_seconds\n        ELSE 0\n    END AS value\nFROM windowed\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Spinlock Collisions",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 29
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Collisions/sec"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH top_classes AS (\n    SELECT t.server_id, t.spinlock_name\n    FROM collect.v_spinlock_stats AS t\n    WHERE $__timeFilter(t.collection_time)\n      AND t.server_id IN (${server:csv})\n    GROUP BY t.server_id, t.spinlock_name\n    ORDER BY SUM(t.delta_collisions) DESC\n    LIMIT 5\n),\nwindowed AS (\n    SELECT\n        t.spinlock_name,\n        t.collection_time,\n        t.delta_collisions AS delta_value,\n        EXTRACT(EPOCH FROM (date_trunc('second', t.collection_time)\n            - date_trunc('second', LAG(t.collection_time) OVER (\n                PARTITION BY t.server_id, t.spinlock_name\n                ORDER BY t.collection_time)))) AS interval_seconds\n    FROM collect.v_spinlock_stats AS t\n    JOIN top_classes AS c\n      ON c.server_id = t.server_id\n     AND c.spinlock_name = t.spinlock_name\n    WHERE $__timeFilter(t.collection_time)\n      AND t.server_id IN (${server:csv})\n)\nSELECT\n    collection_time AS time,\n    spinlock_name AS metric,\n    CASE\n        WHEN interval_seconds > 0\n        THEN delta_value::double precision / interval_seconds\n        ELSE 0\n    END AS value\nFROM windowed\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "Latch Stats",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 38
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH latest AS (\n    SELECT t.server_id, MAX(t.collection_time) AS mx\n    FROM collect.v_latch_stats AS t\n    WHERE $__timeFilter(t.collection_time)\n      AND t.server_id IN (${server:csv})\n    GROUP BY t.server_id\n)\nSELECT\n    t.latch_class AS \"Latch Class\",\n    t.waiting_requests_count AS \"Waiting Requests\",\n    t.wait_time_ms AS \"Wait Time (ms)\",\n    t.max_wait_time_ms AS \"Max Wait Time (ms)\",\n    t.delta_waiting_requests_count AS \"Waiting Requests (delta)\",\n    t.delta_wait_time_ms AS \"Wait Time (delta ms)\"\nFROM latest AS l\nJOIN collect.v_latch_stats AS t\n  ON t.server_id = l.server_id\n AND t.collection_time = l.mx\nORDER BY t.delta_wait_time_ms DESC, t.wait_time_ms DESC\nLIMIT 20\n"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "table",
+      "title": "Spinlock Stats",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 38
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH latest AS (\n    SELECT t.server_id, MAX(t.collection_time) AS mx\n    FROM collect.v_spinlock_stats AS t\n    WHERE $__timeFilter(t.collection_time)\n      AND t.server_id IN (${server:csv})\n    GROUP BY t.server_id\n)\nSELECT\n    t.spinlock_name AS \"Spinlock\",\n    t.collisions AS \"Collisions\",\n    t.spins AS \"Spins\",\n    t.spins_per_collision AS \"Spins per Collision\",\n    t.sleep_time AS \"Sleep Time\",\n    t.backoffs AS \"Backoffs\",\n    t.delta_collisions AS \"Collisions (delta)\",\n    t.delta_spins AS \"Spins (delta)\"\nFROM latest AS l\nJOIN collect.v_spinlock_stats AS t\n  ON t.server_id = l.server_id\n AND t.collection_time = l.mx\nORDER BY t.delta_collisions DESC, t.collisions DESC\nLIMIT 20\n"
+        }
+      ]
+    }
+  ]
+}

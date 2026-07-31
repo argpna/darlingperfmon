@@ -1,6 +1,6 @@
 {
-  "uid": "darling-finops-optimization",
-  "title": "FinOps (Darling) - Optimization",
+  "uid": "darling-finops-optimization-indexing",
+  "title": "FinOps (Darling) - Optimization & Indexing",
   "tags": [
     "finops-darling"
   ],
@@ -13,7 +13,7 @@
     "from": "now-24h",
     "to": "now"
   },
-  "refresh": "5m",
+  "refresh": "15m",
   "weekStart": "",
   "annotations": {
     "list": []
@@ -70,8 +70,8 @@
         "options": [],
         "refresh": 1,
         "hide": 0,
-        "multi": true,
-        "includeAll": true,
+        "multi": false,
+        "includeAll": false,
         "sort": 1,
         "description": "Monitored SQL Server instance, from Darling's fleet registry."
       }
@@ -771,6 +771,295 @@
           "rawSql": "\nSELECT\n    mg.collection_time::date AS \"Day\",\n    srv.name AS \"Server\",\n    round(AVG(mg.granted_memory_mb), 1) AS \"Avg Granted MB\",\n    round(AVG(mg.used_memory_mb), 1) AS \"Avg Used MB\",\n    round(AVG(mg.used_memory_mb) * 100.0 / NULLIF(AVG(mg.granted_memory_mb), 0), 1)\n        AS \"Efficiency %\",\n    round(MAX(mg.granted_memory_mb), 1) AS \"Peak Grant MB\",\n    round(AVG(mg.granted_memory_mb) - AVG(mg.used_memory_mb), 1) AS \"Wasted MB\",\n    SUM(mg.grantee_count) AS \"Grantees\",\n    SUM(mg.waiter_count) AS \"Waiters\",\n    SUM(mg.timeout_error_count_delta) AS \"Timeouts\",\n    SUM(mg.forced_grant_count_delta) AS \"Forced\"\nFROM collect.v_memory_grant_stats AS mg\nJOIN config.config_monitored_servers AS srv ON srv.server_id = mg.server_id\nWHERE mg.server_id IN (${server:csv})\n  AND mg.collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '24 hours'\nGROUP BY mg.collection_time::date, srv.name\nORDER BY mg.collection_time::date\n"
         }
       ]
+    },
+    {
+      "id": 11,
+      "type": "row",
+      "title": "Reclaimable Space (overall + per database)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 47
+      },
+      "panels": []
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Reclaimable Space",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 48
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Size GB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "gbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Unused GB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "gbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Unused"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH snapshot AS (\n    SELECT DISTINCT ON (ios.server_id, ios.database_id, ios.object_id, ios.index_id)\n           ios.*,\n           CASE\n        WHEN sp.engine_edition IS NULL THEN true\n        WHEN sp.engine_edition IN (3, 5, 8) THEN true\n        WHEN sp.engine_edition IN (2, 4)\n             THEN COALESCE(split_part(sp.product_version, '.', 1)::int, 0) >= 13\n        ELSE false\n    END AS supports_compression,\n           EXTRACT(EPOCH FROM (LOCALTIMESTAMP - sp.sqlserver_start_time)) / 86400.0 AS uptime_days,\n           COALESCE(ios.user_seeks, 0) + COALESCE(ios.user_scans, 0) + COALESCE(ios.user_lookups, 0) AS reads,\n           (COALESCE(ios.user_seeks, 0) + COALESCE(ios.user_scans, 0) + COALESCE(ios.user_lookups, 0) = 0\n        AND upper(ios.index_type_desc) = 'NONCLUSTERED'\n        AND NOT COALESCE(ios.is_primary_key, false)\n        AND NOT COALESCE(ios.is_unique_constraint, false)\n        AND NOT COALESCE(ios.is_unique, false)\n        AND NOT COALESCE(ios.is_foreign_key_reference, false)\n        AND ios.index_id <> 1) AS is_unused_candidate,\n           (CASE\n        WHEN sp.engine_edition IS NULL THEN true\n        WHEN sp.engine_edition IN (3, 5, 8) THEN true\n        WHEN sp.engine_edition IN (2, 4)\n             THEN COALESCE(split_part(sp.product_version, '.', 1)::int, 0) >= 13\n        ELSE false\n    END\n        AND ios.index_id > 0\n        AND upper(COALESCE(ios.data_compression_desc, '')) = 'NONE') AS can_compress\n    FROM collect.v_index_object_stats AS ios\n    LEFT JOIN (\n        SELECT DISTINCT ON (server_id) server_id, engine_edition, product_version,\n               sqlserver_start_time\n        FROM collect.server_properties\n        ORDER BY server_id, collection_time DESC\n    ) sp ON sp.server_id = ios.server_id\n    WHERE ios.server_id IN (${server:csv})\n      AND NOT COALESCE(ios.is_disabled, false)\n      AND COALESCE(ios.index_name, '') <> ''\n      AND upper(ios.index_type_desc) IN ('CLUSTERED', 'NONCLUSTERED')\n    ORDER BY ios.server_id, ios.database_id, ios.object_id, ios.index_id,\n             ios.collection_time DESC\n),\nanalyzed AS (\n    SELECT s.*,\n           /* Dedupe-only at <= 7 days uptime suppresses Rule 1. */\n           s.is_unused_candidate\n               AND COALESCE(s.uptime_days, 999) > 7 AS is_unused\n    FROM snapshot s\n),\nbase_rows AS (\n    SELECT DISTINCT ON (server_id, database_id, object_id)\n           server_id, database_name, total_rows\n    FROM analyzed\n    WHERE index_id <= 1\n    ORDER BY server_id, database_id, object_id, index_id\n),\nper_db AS (\n    SELECT a.server_id,\n           a.database_name,\n           COUNT(DISTINCT a.object_id) AS tables_analyzed,\n           COUNT(*) AS index_count,\n           SUM(COALESCE(a.reserved_mb, 0)) / 1024.0 AS total_size_gb,\n           COUNT(*) FILTER (WHERE a.is_unused) AS unused_indexes,\n           COALESCE(SUM(COALESCE(a.reserved_mb, 0)) FILTER (WHERE a.is_unused), 0)\n               / 1024.0 AS unused_size_gb,\n           COUNT(*) FILTER (WHERE a.can_compress) AS compressable_indexes,\n           SUM(COALESCE(a.user_seeks, 0)) AS user_seeks,\n           SUM(COALESCE(a.user_scans, 0)) AS user_scans,\n           SUM(COALESCE(a.user_lookups, 0)) AS user_lookups,\n           SUM(COALESCE(a.user_updates, 0)) AS total_writes,\n           SUM(COALESCE(a.row_lock_wait_count, 0)\n               + COALESCE(a.page_lock_wait_count, 0)) AS lock_wait_count,\n           SUM(COALESCE(a.row_lock_wait_in_ms, 0)\n               + COALESCE(a.page_lock_wait_in_ms, 0)) AS lock_wait_ms,\n           SUM(COALESCE(a.page_latch_wait_count, 0)\n               + COALESCE(a.page_io_latch_wait_count, 0)) AS latch_wait_count,\n           SUM(COALESCE(a.page_latch_wait_in_ms, 0)\n               + COALESCE(a.page_io_latch_wait_in_ms, 0)) AS latch_wait_ms,\n           MIN(a.uptime_days) AS uptime_days\n    FROM analyzed a\n    GROUP BY a.server_id, a.database_name\n),\ndb_rows AS (\n    SELECT server_id, database_name, SUM(COALESCE(total_rows, 0)) AS total_rows\n    FROM base_rows\n    GROUP BY server_id, database_name\n),\nscoped AS (\n    /* ProjectRollups' order: one ALL DATABASES total per server, then a row per database.\n       GROUPING() marks the total, which renders sp_IndexCleanup's SUMMARY-level 'N/A'. */\n    SELECT p.server_id,\n           GROUPING(p.database_name) AS is_overall,\n           CASE WHEN GROUPING(p.database_name) = 1\n                THEN 'ALL DATABASES' ELSE p.database_name END AS scope,\n           SUM(p.tables_analyzed) AS tables_analyzed,\n           SUM(p.index_count) AS index_count,\n           SUM(p.total_size_gb) AS total_size_gb,\n           SUM(p.unused_indexes) AS unused_indexes,\n           SUM(p.unused_size_gb) AS unused_size_gb,\n           SUM(p.compressable_indexes) AS compressable_indexes,\n           SUM(p.user_seeks) AS user_seeks,\n           SUM(p.user_scans) AS user_scans,\n           SUM(p.user_lookups) AS user_lookups,\n           SUM(p.total_writes) AS total_writes,\n           SUM(p.lock_wait_count) AS lock_wait_count,\n           SUM(p.lock_wait_ms) AS lock_wait_ms,\n           SUM(p.latch_wait_count) AS latch_wait_count,\n           SUM(p.latch_wait_ms) AS latch_wait_ms,\n           SUM(r.total_rows) AS total_rows,\n           MIN(p.uptime_days) AS uptime_days\n    FROM per_db p\n    LEFT JOIN db_rows r\n           ON r.server_id = p.server_id AND r.database_name = p.database_name\n    GROUP BY p.server_id, ROLLUP(p.database_name)\n)\nSELECT\n    srv.name AS \"Server\",\n    s.scope AS \"Database\",\n    s.tables_analyzed AS \"Tables\",\n    s.index_count AS \"Indexes\",\n    round(s.total_size_gb, 2) AS \"Size GB\",\n    s.total_rows AS \"Rows\",\n    s.unused_indexes AS \"Unused\",\n    round(s.unused_size_gb, 2) AS \"Unused GB\",\n    s.compressable_indexes AS \"Compressable\",\n    CASE WHEN s.is_overall = 1 THEN 'N/A'\n         ELSE to_char(s.user_seeks + s.user_scans + s.user_lookups, 'FM999,999,999,990')\n              || ' (' || to_char(s.user_seeks, 'FM999,999,999,990') || ' seeks, '\n              || to_char(s.user_scans, 'FM999,999,999,990') || ' scans, '\n              || to_char(s.user_lookups, 'FM999,999,999,990') || ' lookups)' END AS \"Reads\",\n    CASE WHEN s.is_overall = 1 THEN 'N/A' ELSE to_char(s.total_writes, 'FM999,999,999,990') END AS \"Writes\",\n    CASE WHEN s.is_overall = 1 THEN 'N/A'\n         ELSE to_char(s.lock_wait_count, 'FM999,999,999,990') END AS \"Lock Waits\",\n    CASE WHEN s.is_overall = 1 THEN 'N/A'\n         WHEN s.lock_wait_count > 0\n         THEN round(s.lock_wait_ms::numeric / s.lock_wait_count, 2)::text\n         ELSE '0' END AS \"Avg Lock Wait ms\",\n    CASE WHEN s.is_overall = 1 THEN 'N/A'\n         ELSE to_char(s.latch_wait_count, 'FM999,999,999,990') END AS \"Latch Waits\",\n    CASE WHEN s.is_overall = 1 THEN 'N/A'\n         WHEN s.latch_wait_count > 0\n         THEN round(s.latch_wait_ms::numeric / s.latch_wait_count, 2)::text\n         ELSE '0' END AS \"Avg Latch Wait ms\",\n    CASE\n        WHEN s.uptime_days IS NULL THEN 'Uptime unknown'\n        WHEN s.uptime_days <= 7\n        THEN 'Uptime ' || round(s.uptime_days, 1)\n             || 'd - dedupe-only, unused indexes not reported'\n        WHEN s.uptime_days < 14\n        THEN 'Uptime ' || round(s.uptime_days, 1)\n             || 'd - usage counters may be incomplete'\n        ELSE ''\n    END AS \"Note\"\nFROM scoped s\nJOIN config.config_monitored_servers AS srv ON srv.server_id = s.server_id\nORDER BY srv.name, s.is_overall DESC, s.scope\n"
+        }
+      ],
+      "description": "From each server's latest snapshot - no live proc. ALL DATABASES renders the workload columns N/A, as sp_IndexCleanup does."
+    },
+    {
+      "id": 13,
+      "type": "row",
+      "title": "Unused Indexes",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 57
+      },
+      "panels": []
+    },
+    {
+      "id": 14,
+      "type": "table",
+      "title": "Unused Indexes",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 58
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Size GB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "gbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Compressable"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Yes": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "No": {
+                        "color": "text",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Size GB",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH snapshot AS (\n    SELECT DISTINCT ON (ios.server_id, ios.database_id, ios.object_id, ios.index_id)\n           ios.*,\n           CASE\n        WHEN sp.engine_edition IS NULL THEN true\n        WHEN sp.engine_edition IN (3, 5, 8) THEN true\n        WHEN sp.engine_edition IN (2, 4)\n             THEN COALESCE(split_part(sp.product_version, '.', 1)::int, 0) >= 13\n        ELSE false\n    END AS supports_compression,\n           EXTRACT(EPOCH FROM (LOCALTIMESTAMP - sp.sqlserver_start_time)) / 86400.0 AS uptime_days,\n           COALESCE(ios.user_seeks, 0) + COALESCE(ios.user_scans, 0) + COALESCE(ios.user_lookups, 0) AS reads,\n           (COALESCE(ios.user_seeks, 0) + COALESCE(ios.user_scans, 0) + COALESCE(ios.user_lookups, 0) = 0\n        AND upper(ios.index_type_desc) = 'NONCLUSTERED'\n        AND NOT COALESCE(ios.is_primary_key, false)\n        AND NOT COALESCE(ios.is_unique_constraint, false)\n        AND NOT COALESCE(ios.is_unique, false)\n        AND NOT COALESCE(ios.is_foreign_key_reference, false)\n        AND ios.index_id <> 1) AS is_unused_candidate,\n           (CASE\n        WHEN sp.engine_edition IS NULL THEN true\n        WHEN sp.engine_edition IN (3, 5, 8) THEN true\n        WHEN sp.engine_edition IN (2, 4)\n             THEN COALESCE(split_part(sp.product_version, '.', 1)::int, 0) >= 13\n        ELSE false\n    END\n        AND ios.index_id > 0\n        AND upper(COALESCE(ios.data_compression_desc, '')) = 'NONE') AS can_compress\n    FROM collect.v_index_object_stats AS ios\n    LEFT JOIN (\n        SELECT DISTINCT ON (server_id) server_id, engine_edition, product_version,\n               sqlserver_start_time\n        FROM collect.server_properties\n        ORDER BY server_id, collection_time DESC\n    ) sp ON sp.server_id = ios.server_id\n    WHERE ios.server_id IN (${server:csv})\n      AND NOT COALESCE(ios.is_disabled, false)\n      AND COALESCE(ios.index_name, '') <> ''\n      AND upper(ios.index_type_desc) IN ('CLUSTERED', 'NONCLUSTERED')\n    ORDER BY ios.server_id, ios.database_id, ios.object_id, ios.index_id,\n             ios.collection_time DESC\n),\nanalyzed AS (\n    SELECT s.*,\n           /* Dedupe-only at <= 7 days uptime suppresses Rule 1. */\n           s.is_unused_candidate\n               AND COALESCE(s.uptime_days, 999) > 7 AS is_unused\n    FROM snapshot s\n)\nSELECT\n    srv.name AS \"Server\",\n    a.database_name AS \"Database\",\n    a.schema_name AS \"Schema\",\n    a.table_name AS \"Table\",\n    a.index_name AS \"Index\",\n    CASE WHEN COALESCE(a.uptime_days, 999) < 14\n         THEN 'Unused Index (uptime < 14 days)' ELSE 'Unused Index' END AS \"Rule\",\n    round(COALESCE(a.reserved_mb, 0) / 1024.0, 3) AS \"Size GB\",\n    a.total_rows AS \"Rows\",\n    a.reads AS \"Reads\",\n    COALESCE(a.user_updates, 0) AS \"Writes\",\n    a.index_type_desc AS \"Type\",\n    /* OriginalIndexDefinition's inputs. */\n    a.key_columns AS \"Key Columns\",\n    COALESCE(a.included_columns, '') AS \"Included Columns\",\n    COALESCE(a.filter_definition, '') AS \"Filter\",\n    COALESCE(a.data_compression_desc, '') AS \"Compression\",\n    CASE WHEN a.can_compress THEN 'Yes' ELSE 'No' END AS \"Compressable\"\nFROM analyzed a\nJOIN config.config_monitored_servers AS srv ON srv.server_id = a.server_id\nWHERE a.is_unused\nORDER BY a.database_name, a.schema_name, a.table_name, a.index_name\n"
+        }
+      ],
+      "description": "Nonclustered, non-unique, non-PK/UC/FK-referenced indexes with no reads. Empty on a server up 7 days or less, where upstream switches to dedupe-only."
+    },
+    {
+      "id": 15,
+      "type": "row",
+      "title": "Consolidation Recommendations",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 70
+      },
+      "panels": []
+    },
+    {
+      "id": 16,
+      "type": "text",
+      "title": "Not ported",
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 71
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "\n## What the rule engine adds\n\nUpstream also runs an ordered consolidation engine (`IndexCleanupAnalyzer`, reproducing\n`sp_IndexCleanup`): exact duplicate, key subset, key superset, key duplicate and\nunique-constraint replacement, each emitting a generated `DISABLE` / `MERGE` /\n`DROP CONSTRAINT` script. Its output is destructive DDL, so it is not re-derived as panel SQL.\n\nThe rollup columns needing an engine verdict are therefore absent: **To Disable**,\n**To Merge**, **Disable GB**, and the **compression-savings band**, which counts only indexes\nthe engine leaves alone.\n\nFor those recommendations and their scripts, use the PerformanceMonitor Viewer's\nFinOps -> Index Analysis tab against this store, or run `sp_IndexCleanup` on the target.\n"
+      }
     }
   ]
 }

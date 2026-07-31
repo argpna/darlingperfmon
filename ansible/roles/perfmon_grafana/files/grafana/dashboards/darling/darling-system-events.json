@@ -70,8 +70,8 @@
         "options": [],
         "refresh": 1,
         "hide": 0,
-        "multi": true,
-        "includeAll": true,
+        "multi": false,
+        "includeAll": false,
         "sort": 1,
         "description": "Monitored SQL Server instance, from Darling's fleet registry."
       },
@@ -174,7 +174,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//system', ev.xml)) AS node\n)\nSELECT\n    n.event_time AS time,\n    srv.name || ' - ' || s.label AS metric,\n    s.value::double precision AS value\nFROM nodes n\nJOIN config.config_monitored_servers AS srv ON srv.server_id = n.server_id\nCROSS JOIN LATERAL (VALUES\n    ('Bad Pages Detected', (xpath('/*/@BadPagesDetected', node))[1]::text),\n        ('Bad Pages Fixed', (xpath('/*/@BadPagesFixed', node))[1]::text),\n        ('Interval Dump Requests', (xpath('/*/@intervalDumpRequests', node))[1]::text)\n) AS s(label, value)\nORDER BY 1\n"
+          "rawSql": "\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//system', ev.xml)) AS node\n)\nSELECT\n    n.event_time AS time,\n    s.label AS metric,\n    s.value::double precision AS value\nFROM nodes n\nCROSS JOIN LATERAL (VALUES\n    ('Bad Pages Detected', (xpath('/*/@BadPagesDetected', node))[1]::text),\n        ('Bad Pages Fixed', (xpath('/*/@BadPagesFixed', node))[1]::text),\n        ('Interval Dump Requests', (xpath('/*/@intervalDumpRequests', node))[1]::text)\n) AS s(label, value)\nORDER BY 1\n"
         }
       ]
     },
@@ -235,7 +235,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//system', ev.xml)) AS node\n)\nSELECT\n    n.event_time AS time,\n    srv.name || ' - ' || s.label AS metric,\n    s.value::double precision AS value\nFROM nodes n\nJOIN config.config_monitored_servers AS srv ON srv.server_id = n.server_id\nCROSS JOIN LATERAL (VALUES\n    ('Access Violation Occurred', (xpath('/*/@isAccessViolationOccurred', node))[1]::text),\n        ('Write Access Violations', (xpath('/*/@writeAccessViolationCount', node))[1]::text)\n) AS s(label, value)\nORDER BY 1\n"
+          "rawSql": "\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//system', ev.xml)) AS node\n)\nSELECT\n    n.event_time AS time,\n    s.label AS metric,\n    s.value::double precision AS value\nFROM nodes n\nCROSS JOIN LATERAL (VALUES\n    ('Access Violation Occurred', (xpath('/*/@isAccessViolationOccurred', node))[1]::text),\n        ('Write Access Violations', (xpath('/*/@writeAccessViolationCount', node))[1]::text)\n) AS s(label, value)\nORDER BY 1\n"
         }
       ]
     },
@@ -309,7 +309,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//system', ev.xml)) AS node\n)\nSELECT\n    n.event_time AS time,\n    srv.name || ' - ' || s.label AS metric,\n    s.value::double precision AS value\nFROM nodes n\nJOIN config.config_monitored_servers AS srv ON srv.server_id = n.server_id\nCROSS JOIN LATERAL (VALUES\n    ('Non-Yielding Tasks', (xpath('/*/@nonYieldingTasksReported', node))[1]::text),\n        ('Latch Warnings', (xpath('/*/@latchWarnings', node))[1]::text),\n        ('Spinlock Backoffs', (xpath('/*/@spinlockBackoffs', node))[1]::text)\n) AS s(label, value)\nORDER BY 1\n"
+          "rawSql": "\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//system', ev.xml)) AS node\n)\nSELECT\n    n.event_time AS time,\n    s.label AS metric,\n    s.value::double precision AS value\nFROM nodes n\nCROSS JOIN LATERAL (VALUES\n    ('Non-Yielding Tasks', (xpath('/*/@nonYieldingTasksReported', node))[1]::text),\n        ('Latch Warnings', (xpath('/*/@latchWarnings', node))[1]::text),\n        ('Spinlock Backoffs', (xpath('/*/@spinlockBackoffs', node))[1]::text)\n) AS s(label, value)\nORDER BY 1\n"
         }
       ]
     },
@@ -372,7 +372,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//system', ev.xml)) AS node\n)\nSELECT\n    n.event_time AS time,\n    srv.name || ' - ' || s.label AS metric,\n    s.value::double precision AS value\nFROM nodes n\nJOIN config.config_monitored_servers AS srv ON srv.server_id = n.server_id\nCROSS JOIN LATERAL (VALUES\n    ('SQL CPU %', (xpath('/*/@sqlCpuUtilization', node))[1]::text),\n        ('System CPU %', (xpath('/*/@systemCpuUtilization', node))[1]::text)\n) AS s(label, value)\nORDER BY 1\n"
+          "rawSql": "\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//system', ev.xml)) AS node\n)\nSELECT\n    n.event_time AS time,\n    s.label AS metric,\n    s.value::double precision AS value\nFROM nodes n\nCROSS JOIN LATERAL (VALUES\n    ('SQL CPU %', (xpath('/*/@sqlCpuUtilization', node))[1]::text),\n        ('System CPU %', (xpath('/*/@systemCpuUtilization', node))[1]::text)\n) AS s(label, value)\nORDER BY 1\n"
         }
       ]
     },
@@ -433,7 +433,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT\n        ev.server_id,\n        ev.event_time,\n        (xpath('/*/@sickSpinlockType', node))[1]::text AS sick_type,\n        COALESCE((xpath('/*/@spinlockBackoffs', node))[1]::text::bigint, 1) AS backoffs\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//system', ev.xml)) AS node\n),\n/* Postgres always carries the literal \"none\" rather than a null attribute when no sick\n   spinlock was recorded - excluded here so the top 5 ranks real occurrences, matching the\n   T-SQL precedent's IS NOT NULL intent. */\ncandidates AS (\n    SELECT sick_type FROM nodes\n    WHERE sick_type IS NOT NULL AND sick_type <> 'none'\n    GROUP BY sick_type\n    ORDER BY COUNT(*) DESC\n    LIMIT 5\n)\nSELECT\n    n.event_time AS time,\n    srv.name || ' - ' || n.sick_type AS metric,\n    n.backoffs::double precision AS value\nFROM nodes n\nJOIN config.config_monitored_servers AS srv ON srv.server_id = n.server_id\nWHERE n.sick_type IN (SELECT sick_type FROM candidates)\nORDER BY 1\n"
+          "rawSql": "\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT\n        ev.server_id,\n        ev.event_time,\n        (xpath('/*/@sickSpinlockType', node))[1]::text AS sick_type,\n        COALESCE((xpath('/*/@spinlockBackoffs', node))[1]::text::bigint, 1) AS backoffs\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//system', ev.xml)) AS node\n),\n/* Postgres always carries the literal \"none\" rather than a null attribute when no sick\n   spinlock was recorded - excluded here so the top 5 ranks real occurrences, matching the\n   T-SQL precedent's IS NOT NULL intent. */\ncandidates AS (\n    SELECT sick_type FROM nodes\n    WHERE sick_type IS NOT NULL AND sick_type <> 'none'\n    GROUP BY sick_type\n    ORDER BY COUNT(*) DESC\n    LIMIT 5\n)\nSELECT\n    n.event_time AS time,\n    n.sick_type AS metric,\n    n.backoffs::double precision AS value\nFROM nodes n\nWHERE n.sick_type IN (SELECT sick_type FROM candidates)\nORDER BY 1\n"
         }
       ]
     },
@@ -459,7 +459,7 @@
         "uid": "darling"
       },
       "gridPos": {
-        "h": 6,
+        "h": 4,
         "w": 4,
         "x": 0,
         "y": 27
@@ -520,7 +520,7 @@
         "uid": "darling"
       },
       "gridPos": {
-        "h": 6,
+        "h": 4,
         "w": 4,
         "x": 4,
         "y": 27
@@ -581,7 +581,7 @@
         "uid": "darling"
       },
       "gridPos": {
-        "h": 6,
+        "h": 4,
         "w": 4,
         "x": 8,
         "y": 27
@@ -642,7 +642,7 @@
         "uid": "darling"
       },
       "gridPos": {
-        "h": 6,
+        "h": 4,
         "w": 4,
         "x": 12,
         "y": 27
@@ -703,7 +703,7 @@
         "uid": "darling"
       },
       "gridPos": {
-        "h": 6,
+        "h": 4,
         "w": 4,
         "x": 16,
         "y": 27
@@ -771,7 +771,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 33
+        "y": 31
       },
       "fieldConfig": {
         "defaults": {
@@ -816,7 +816,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'scheduler_monitor_system_health_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"scheduler_id\"]/value/text()', ev.xml))[1]::text::int AS scheduler_id,\n    (xpath('/*/data[@name=\"cpu_id\"]/value/text()', ev.xml))[1]::text::int AS cpu_id,\n    (xpath('/*/data[@name=\"status\"]/text/text()', ev.xml))[1]::text AS status,\n    CASE WHEN (xpath('/*/data[@name=\"is_online\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_online\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_online,\n    CASE WHEN (xpath('/*/data[@name=\"is_runnable\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_runnable\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_runnable,\n    CASE WHEN (xpath('/*/data[@name=\"is_running\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_running\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_running,\n    (xpath('/*/data[@name=\"non_yielding_time\"]/value/text()', ev.xml))[1]::text::bigint AS non_yielding_time_ms,\n    (xpath('/*/data[@name=\"thread_quantum\"]/value/text()', ev.xml))[1]::text::bigint AS thread_quantum_ms\nFROM events ev\n)\nSELECT\n    sig.event_time AS time,\n    srv.name || ' - Scheduler ' || sig.scheduler_id AS metric,\n    sig.non_yielding_time_ms::double precision AS value\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nWHERE sig.status = 'WARNING'\nORDER BY 1\n"
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'scheduler_monitor_system_health_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"scheduler_id\"]/value/text()', ev.xml))[1]::text::int AS scheduler_id,\n    (xpath('/*/data[@name=\"cpu_id\"]/value/text()', ev.xml))[1]::text::int AS cpu_id,\n    (xpath('/*/data[@name=\"status\"]/text/text()', ev.xml))[1]::text AS status,\n    CASE WHEN (xpath('/*/data[@name=\"is_online\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_online\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_online,\n    CASE WHEN (xpath('/*/data[@name=\"is_runnable\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_runnable\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_runnable,\n    CASE WHEN (xpath('/*/data[@name=\"is_running\"]/value/text()', ev.xml))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/data[@name=\"is_running\"]/value/text()', ev.xml))[1]::text IN ('0', 'false') THEN false END AS is_running,\n    (xpath('/*/data[@name=\"non_yielding_time\"]/value/text()', ev.xml))[1]::text::bigint AS non_yielding_time_ms,\n    (xpath('/*/data[@name=\"thread_quantum\"]/value/text()', ev.xml))[1]::text::bigint AS thread_quantum_ms\nFROM events ev\n)\nSELECT\n    sig.event_time AS time,\n    'Scheduler ' || sig.scheduler_id AS metric,\n    sig.non_yielding_time_ms::double precision AS value\nFROM sig\nWHERE sig.status = 'WARNING'\nORDER BY 1\n"
         }
       ]
     },
@@ -832,7 +832,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 41
+        "y": 39
       },
       "fieldConfig": {
         "defaults": {
@@ -895,7 +895,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 51
+        "y": 49
       },
       "panels": []
     },
@@ -911,7 +911,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 52
+        "y": 50
       },
       "fieldConfig": {
         "defaults": {
@@ -956,7 +956,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'error_reported'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nparsed AS (\n    SELECT\n        ev.server_id,\n        ev.event_time,\n        (xpath('/*/data[@name=\"error_number\"]/value/text()', ev.xml))[1]::text::int AS error_number,\n        (xpath('/*/data[@name=\"severity\"]/value/text()', ev.xml))[1]::text::int AS severity,\n        (xpath('/*/data[@name=\"state\"]/value/text()', ev.xml))[1]::text::int AS state,\n        (xpath('/*/data[@name=\"database_id\"]/value/text()', ev.xml))[1]::text::int AS database_id,\n        (xpath('/*/data[@name=\"message\"]/value/text()', ev.xml))[1]::text AS message\n    FROM events ev\n),\n/* database_size_stats carries both database_id and database_name for every online\n   database - the same mapping source ResolveDatabaseName uses. */\ndbmap AS (\n    SELECT DISTINCT ON (d.server_id, d.database_id)\n        d.server_id, d.database_id, d.database_name\n    FROM collect.v_database_size_stats AS d\n    ORDER BY d.server_id, d.database_id, d.collection_time DESC\n)\nSELECT\n    p.server_id,\n    p.event_time,\n    p.error_number,\n    p.severity,\n    p.state,\n    p.message,\n    COALESCE(\n        m.database_name,\n        CASE WHEN p.database_id IS NULL OR p.database_id = 0\n            THEN '' ELSE 'database_id ' || p.database_id END\n    ) AS resolved_database_name\nFROM parsed p\nLEFT JOIN dbmap m ON m.server_id = p.server_id AND m.database_id = p.database_id\n)\nSELECT\n    date_trunc('hour', sig.event_time) AS time,\n    srv.name AS metric,\n    COUNT(*)::double precision AS value\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nWHERE sig.severity >= 19\n  AND (sig.error_number IS NULL OR sig.error_number NOT IN (17830, 18056))\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR sig.resolved_database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nGROUP BY 1, 2\nORDER BY 1\n"
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'error_reported'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nparsed AS (\n    SELECT\n        ev.server_id,\n        ev.event_time,\n        (xpath('/*/data[@name=\"error_number\"]/value/text()', ev.xml))[1]::text::int AS error_number,\n        (xpath('/*/data[@name=\"severity\"]/value/text()', ev.xml))[1]::text::int AS severity,\n        (xpath('/*/data[@name=\"state\"]/value/text()', ev.xml))[1]::text::int AS state,\n        (xpath('/*/data[@name=\"database_id\"]/value/text()', ev.xml))[1]::text::int AS database_id,\n        (xpath('/*/data[@name=\"message\"]/value/text()', ev.xml))[1]::text AS message\n    FROM events ev\n),\n/* database_size_stats carries both database_id and database_name for every online\n   database - the same mapping source ResolveDatabaseName uses. */\ndbmap AS (\n    SELECT DISTINCT ON (d.server_id, d.database_id)\n        d.server_id, d.database_id, d.database_name\n    FROM collect.v_database_size_stats AS d\n    ORDER BY d.server_id, d.database_id, d.collection_time DESC\n)\nSELECT\n    p.server_id,\n    p.event_time,\n    p.error_number,\n    p.severity,\n    p.state,\n    p.message,\n    COALESCE(\n        m.database_name,\n        CASE WHEN p.database_id IS NULL OR p.database_id = 0\n            THEN '' ELSE 'database_id ' || p.database_id END\n    ) AS resolved_database_name\nFROM parsed p\nLEFT JOIN dbmap m ON m.server_id = p.server_id AND m.database_id = p.database_id\n)\nSELECT\n    date_trunc('hour', sig.event_time) AS time,\n    'Severe Errors' AS metric,\n    COUNT(*)::double precision AS value\nFROM sig\nWHERE sig.severity >= 19\n  AND (sig.error_number IS NULL OR sig.error_number NOT IN (17830, 18056))\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR sig.resolved_database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nGROUP BY 1, 2\nORDER BY 1\n"
         }
       ]
     },
@@ -972,7 +972,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 52
+        "y": 50
       },
       "fieldConfig": {
         "defaults": {
@@ -1035,7 +1035,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 60
+        "y": 58
       },
       "panels": []
     },
@@ -1051,7 +1051,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 61
+        "y": 59
       },
       "fieldConfig": {
         "defaults": {
@@ -1096,7 +1096,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nresources AS (\n    SELECT ev.server_id, ev.event_time, ev.xml,\n        (xpath('/*/@lastNotification', node))[1]::text AS last_notification,\n        (xpath('/*/@outOfMemoryExceptions', node))[1]::text::bigint AS out_of_memory_exceptions,\n        CASE WHEN (xpath('/*/@isAnyPoolOutOfMemory', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@isAnyPoolOutOfMemory', node))[1]::text IN ('0', 'false') THEN false END AS is_any_pool_out_of_memory,\n        (xpath('/*/@processOutOfMemoryPeriod', node))[1]::text::bigint AS process_out_of_memory_period\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//resource', ev.xml)) AS node\n)\nSELECT\n    r.server_id,\n    r.event_time,\n    (xpath('//memoryReport/@name', r.xml))[1]::text AS name,\n    r.last_notification,\n    r.out_of_memory_exceptions,\n    r.is_any_pool_out_of_memory,\n    r.process_out_of_memory_period,\n    (xpath('//entry[@description=\"Available Physical Memory\"]/@value', r.xml))[1]::text::bigint / 1073741824 AS available_physical_memory_gb,\n    (xpath('//entry[@description=\"Available Virtual Memory\"]/@value', r.xml))[1]::text::bigint / 1073741824 AS available_virtual_memory_gb,\n    (xpath('//entry[@description=\"Available Paging File\"]/@value', r.xml))[1]::text::bigint / 1073741824 AS available_paging_file_gb,\n    (xpath('//entry[@description=\"Working Set\"]/@value', r.xml))[1]::text::bigint / 1073741824 AS working_set_gb,\n    (xpath('//entry[@description=\"Percent of Committed Memory in WS\"]/@value', r.xml))[1]::text::bigint AS percent_of_committed_memory_in_ws,\n    (xpath('//entry[@description=\"Page Faults\"]/@value', r.xml))[1]::text::bigint AS page_faults,\n    (xpath('//entry[@description=\"System physical memory high\"]/@value', r.xml))[1]::text::bigint AS system_physical_memory_high,\n    (xpath('//entry[@description=\"System physical memory low\"]/@value', r.xml))[1]::text::bigint AS system_physical_memory_low,\n    (xpath('//entry[@description=\"Process physical memory low\"]/@value', r.xml))[1]::text::bigint AS process_physical_memory_low,\n    (xpath('//entry[@description=\"Process virtual memory low\"]/@value', r.xml))[1]::text::bigint AS process_virtual_memory_low,\n    (xpath('//entry[@description=\"VM Reserved\"]/@value', r.xml))[1]::text::bigint / 1048576 AS vm_reserved_gb,\n    (xpath('//entry[@description=\"VM Committed\"]/@value', r.xml))[1]::text::bigint / 1048576 AS vm_committed_gb,\n    (xpath('//entry[@description=\"Target Committed\"]/@value', r.xml))[1]::text::bigint / 1048576 AS target_committed_gb,\n    (xpath('//entry[@description=\"Current Committed\"]/@value', r.xml))[1]::text::bigint / 1048576 AS current_committed_gb\nFROM resources r\n)\nSELECT\n    date_trunc('hour', sig.event_time) AS time,\n    srv.name AS metric,\n    SUM(sig.out_of_memory_exceptions)::double precision AS value\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nWHERE sig.last_notification = 'RESOURCE_MEMPHYSICAL_LOW'\nGROUP BY 1, 2\nORDER BY 1\n"
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nresources AS (\n    SELECT ev.server_id, ev.event_time, ev.xml,\n        (xpath('/*/@lastNotification', node))[1]::text AS last_notification,\n        (xpath('/*/@outOfMemoryExceptions', node))[1]::text::bigint AS out_of_memory_exceptions,\n        CASE WHEN (xpath('/*/@isAnyPoolOutOfMemory', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@isAnyPoolOutOfMemory', node))[1]::text IN ('0', 'false') THEN false END AS is_any_pool_out_of_memory,\n        (xpath('/*/@processOutOfMemoryPeriod', node))[1]::text::bigint AS process_out_of_memory_period\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//resource', ev.xml)) AS node\n)\nSELECT\n    r.server_id,\n    r.event_time,\n    (xpath('//memoryReport/@name', r.xml))[1]::text AS name,\n    r.last_notification,\n    r.out_of_memory_exceptions,\n    r.is_any_pool_out_of_memory,\n    r.process_out_of_memory_period,\n    (xpath('//entry[@description=\"Available Physical Memory\"]/@value', r.xml))[1]::text::bigint / 1073741824 AS available_physical_memory_gb,\n    (xpath('//entry[@description=\"Available Virtual Memory\"]/@value', r.xml))[1]::text::bigint / 1073741824 AS available_virtual_memory_gb,\n    (xpath('//entry[@description=\"Available Paging File\"]/@value', r.xml))[1]::text::bigint / 1073741824 AS available_paging_file_gb,\n    (xpath('//entry[@description=\"Working Set\"]/@value', r.xml))[1]::text::bigint / 1073741824 AS working_set_gb,\n    (xpath('//entry[@description=\"Percent of Committed Memory in WS\"]/@value', r.xml))[1]::text::bigint AS percent_of_committed_memory_in_ws,\n    (xpath('//entry[@description=\"Page Faults\"]/@value', r.xml))[1]::text::bigint AS page_faults,\n    (xpath('//entry[@description=\"System physical memory high\"]/@value', r.xml))[1]::text::bigint AS system_physical_memory_high,\n    (xpath('//entry[@description=\"System physical memory low\"]/@value', r.xml))[1]::text::bigint AS system_physical_memory_low,\n    (xpath('//entry[@description=\"Process physical memory low\"]/@value', r.xml))[1]::text::bigint AS process_physical_memory_low,\n    (xpath('//entry[@description=\"Process virtual memory low\"]/@value', r.xml))[1]::text::bigint AS process_virtual_memory_low,\n    (xpath('//entry[@description=\"VM Reserved\"]/@value', r.xml))[1]::text::bigint / 1048576 AS vm_reserved_gb,\n    (xpath('//entry[@description=\"VM Committed\"]/@value', r.xml))[1]::text::bigint / 1048576 AS vm_committed_gb,\n    (xpath('//entry[@description=\"Target Committed\"]/@value', r.xml))[1]::text::bigint / 1048576 AS target_committed_gb,\n    (xpath('//entry[@description=\"Current Committed\"]/@value', r.xml))[1]::text::bigint / 1048576 AS current_committed_gb\nFROM resources r\n)\nSELECT\n    date_trunc('hour', sig.event_time) AS time,\n    'OOM Exceptions' AS metric,\n    SUM(sig.out_of_memory_exceptions)::double precision AS value\nFROM sig\nWHERE sig.last_notification = 'RESOURCE_MEMPHYSICAL_LOW'\nGROUP BY 1, 2\nORDER BY 1\n"
         }
       ]
     },
@@ -1112,7 +1112,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 69
+        "y": 67
       },
       "fieldConfig": {
         "defaults": {
@@ -1175,7 +1175,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 78
+        "y": 76
       },
       "panels": []
     },
@@ -1191,7 +1191,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 79
+        "y": 77
       },
       "fieldConfig": {
         "defaults": {
@@ -1236,7 +1236,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'memory_broker_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"id\"]/value/text()', ev.xml))[1]::text::bigint AS broker_id,\n    (xpath('/*/data[@name=\"pool_metadata_id\"]/value/text()', ev.xml))[1]::text::bigint AS pool_metadata_id,\n    (xpath('/*/data[@name=\"delta_time\"]/value/text()', ev.xml))[1]::text::bigint AS delta_time,\n    (xpath('/*/data[@name=\"memory_ratio\"]/value/text()', ev.xml))[1]::text::bigint AS memory_ratio,\n    (xpath('/*/data[@name=\"new_target\"]/value/text()', ev.xml))[1]::text::bigint AS new_target,\n    (xpath('/*/data[@name=\"overall\"]/value/text()', ev.xml))[1]::text::bigint AS overall,\n    (xpath('/*/data[@name=\"rate\"]/value/text()', ev.xml))[1]::text::bigint AS rate,\n    (xpath('/*/data[@name=\"currently_predicated\"]/value/text()', ev.xml))[1]::text::bigint AS currently_predicated,\n    (xpath('/*/data[@name=\"currently_allocated\"]/value/text()', ev.xml))[1]::text::bigint AS currently_allocated,\n    (xpath('/*/data[@name=\"previously_allocated\"]/value/text()', ev.xml))[1]::text::bigint AS previously_allocated,\n    (xpath('/*/data[@name=\"broker\"]/value/text()', ev.xml))[1]::text AS broker,\n    (xpath('/*/data[@name=\"notification\"]/value/text()', ev.xml))[1]::text AS notification\nFROM events ev\n)\nSELECT\n    sig.event_time AS time,\n    srv.name || ' - ' || sig.broker AS metric,\n    sig.currently_allocated::double precision AS value\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nWHERE sig.notification = 'RESOURCE_MEMPHYSICAL_LOW'\nORDER BY 1\n"
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'memory_broker_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"id\"]/value/text()', ev.xml))[1]::text::bigint AS broker_id,\n    (xpath('/*/data[@name=\"pool_metadata_id\"]/value/text()', ev.xml))[1]::text::bigint AS pool_metadata_id,\n    (xpath('/*/data[@name=\"delta_time\"]/value/text()', ev.xml))[1]::text::bigint AS delta_time,\n    (xpath('/*/data[@name=\"memory_ratio\"]/value/text()', ev.xml))[1]::text::bigint AS memory_ratio,\n    (xpath('/*/data[@name=\"new_target\"]/value/text()', ev.xml))[1]::text::bigint AS new_target,\n    (xpath('/*/data[@name=\"overall\"]/value/text()', ev.xml))[1]::text::bigint AS overall,\n    (xpath('/*/data[@name=\"rate\"]/value/text()', ev.xml))[1]::text::bigint AS rate,\n    (xpath('/*/data[@name=\"currently_predicated\"]/value/text()', ev.xml))[1]::text::bigint AS currently_predicated,\n    (xpath('/*/data[@name=\"currently_allocated\"]/value/text()', ev.xml))[1]::text::bigint AS currently_allocated,\n    (xpath('/*/data[@name=\"previously_allocated\"]/value/text()', ev.xml))[1]::text::bigint AS previously_allocated,\n    (xpath('/*/data[@name=\"broker\"]/value/text()', ev.xml))[1]::text AS broker,\n    (xpath('/*/data[@name=\"notification\"]/value/text()', ev.xml))[1]::text AS notification\nFROM events ev\n)\nSELECT\n    sig.event_time AS time,\n    sig.broker AS metric,\n    sig.currently_allocated::double precision AS value\nFROM sig\nWHERE sig.notification = 'RESOURCE_MEMPHYSICAL_LOW'\nORDER BY 1\n"
         }
       ]
     },
@@ -1252,7 +1252,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 87
+        "y": 85
       },
       "fieldConfig": {
         "defaults": {
@@ -1315,7 +1315,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 95
+        "y": 93
       },
       "panels": []
     },
@@ -1331,7 +1331,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 96
+        "y": 94
       },
       "fieldConfig": {
         "defaults": {
@@ -1378,7 +1378,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'memory_node_oom_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"id\"]/value/text()', ev.xml))[1]::text::bigint AS node_id,\n    (xpath('/*/data[@name=\"memory_node_id\"]/value/text()', ev.xml))[1]::text::bigint AS memory_node_id,\n    (xpath('/*/data[@name=\"memory_utilization_pct\"]/value/text()', ev.xml))[1]::text::bigint AS memory_utilization_pct,\n    (xpath('/*/data[@name=\"total_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_physical_memory_kb,\n    (xpath('/*/data[@name=\"available_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_physical_memory_kb,\n    (xpath('/*/data[@name=\"total_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_page_file_kb,\n    (xpath('/*/data[@name=\"available_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_page_file_kb,\n    (xpath('/*/data[@name=\"total_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"available_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"target_kb\"]/value/text()', ev.xml))[1]::text::bigint AS target_kb,\n    (xpath('/*/data[@name=\"reserved_kb\"]/value/text()', ev.xml))[1]::text::bigint AS reserved_kb,\n    (xpath('/*/data[@name=\"committed_kb\"]/value/text()', ev.xml))[1]::text::bigint AS committed_kb,\n    (xpath('/*/data[@name=\"awe_kb\"]/value/text()', ev.xml))[1]::text::bigint AS awe_kb,\n    (xpath('/*/data[@name=\"pages_kb\"]/value/text()', ev.xml))[1]::text::bigint AS pages_kb,\n    (xpath('/*/data[@name=\"failure\"]/text/text()', ev.xml))[1]::text AS failure_type,\n    (xpath('/*/data[@name=\"failure\"]/value/text()', ev.xml))[1]::text::bigint AS failure_value,\n    (xpath('/*/data[@name=\"resources\"]/value/text()', ev.xml))[1]::text::bigint AS resources,\n    (xpath('/*/data[@name=\"factor\"]/text/text()', ev.xml))[1]::text AS factor_text,\n    (xpath('/*/data[@name=\"factor\"]/value/text()', ev.xml))[1]::text::bigint AS factor_value,\n    (xpath('/*/data[@name=\"last_error\"]/value/text()', ev.xml))[1]::text::bigint AS last_error,\n    (xpath('/*/data[@name=\"pool_metadata_id\"]/value/text()', ev.xml))[1]::text::bigint AS pool_metadata_id,\n    (xpath('/*/data[@name=\"is_process_in_job\"]/value/text()', ev.xml))[1]::text AS is_process_in_job,\n    (xpath('/*/data[@name=\"is_system_physical_memory_high\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_high,\n    (xpath('/*/data[@name=\"is_system_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_virtual_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_virtual_memory_low\nFROM events ev\n)\nSELECT\n    sig.event_time AS time,\n    srv.name || ' - Node ' || sig.memory_node_id AS metric,\n    sig.memory_utilization_pct::double precision AS value\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nORDER BY 1\n"
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'memory_node_oom_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"id\"]/value/text()', ev.xml))[1]::text::bigint AS node_id,\n    (xpath('/*/data[@name=\"memory_node_id\"]/value/text()', ev.xml))[1]::text::bigint AS memory_node_id,\n    (xpath('/*/data[@name=\"memory_utilization_pct\"]/value/text()', ev.xml))[1]::text::bigint AS memory_utilization_pct,\n    (xpath('/*/data[@name=\"total_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_physical_memory_kb,\n    (xpath('/*/data[@name=\"available_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_physical_memory_kb,\n    (xpath('/*/data[@name=\"total_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_page_file_kb,\n    (xpath('/*/data[@name=\"available_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_page_file_kb,\n    (xpath('/*/data[@name=\"total_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"available_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"target_kb\"]/value/text()', ev.xml))[1]::text::bigint AS target_kb,\n    (xpath('/*/data[@name=\"reserved_kb\"]/value/text()', ev.xml))[1]::text::bigint AS reserved_kb,\n    (xpath('/*/data[@name=\"committed_kb\"]/value/text()', ev.xml))[1]::text::bigint AS committed_kb,\n    (xpath('/*/data[@name=\"awe_kb\"]/value/text()', ev.xml))[1]::text::bigint AS awe_kb,\n    (xpath('/*/data[@name=\"pages_kb\"]/value/text()', ev.xml))[1]::text::bigint AS pages_kb,\n    (xpath('/*/data[@name=\"failure\"]/text/text()', ev.xml))[1]::text AS failure_type,\n    (xpath('/*/data[@name=\"failure\"]/value/text()', ev.xml))[1]::text::bigint AS failure_value,\n    (xpath('/*/data[@name=\"resources\"]/value/text()', ev.xml))[1]::text::bigint AS resources,\n    (xpath('/*/data[@name=\"factor\"]/text/text()', ev.xml))[1]::text AS factor_text,\n    (xpath('/*/data[@name=\"factor\"]/value/text()', ev.xml))[1]::text::bigint AS factor_value,\n    (xpath('/*/data[@name=\"last_error\"]/value/text()', ev.xml))[1]::text::bigint AS last_error,\n    (xpath('/*/data[@name=\"pool_metadata_id\"]/value/text()', ev.xml))[1]::text::bigint AS pool_metadata_id,\n    (xpath('/*/data[@name=\"is_process_in_job\"]/value/text()', ev.xml))[1]::text AS is_process_in_job,\n    (xpath('/*/data[@name=\"is_system_physical_memory_high\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_high,\n    (xpath('/*/data[@name=\"is_system_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_virtual_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_virtual_memory_low\nFROM events ev\n)\nSELECT\n    sig.event_time AS time,\n    'Node ' || sig.memory_node_id AS metric,\n    sig.memory_utilization_pct::double precision AS value\nFROM sig\nORDER BY 1\n"
         }
       ]
     },
@@ -1394,7 +1394,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 96
+        "y": 94
       },
       "fieldConfig": {
         "defaults": {
@@ -1439,7 +1439,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'memory_node_oom_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"id\"]/value/text()', ev.xml))[1]::text::bigint AS node_id,\n    (xpath('/*/data[@name=\"memory_node_id\"]/value/text()', ev.xml))[1]::text::bigint AS memory_node_id,\n    (xpath('/*/data[@name=\"memory_utilization_pct\"]/value/text()', ev.xml))[1]::text::bigint AS memory_utilization_pct,\n    (xpath('/*/data[@name=\"total_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_physical_memory_kb,\n    (xpath('/*/data[@name=\"available_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_physical_memory_kb,\n    (xpath('/*/data[@name=\"total_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_page_file_kb,\n    (xpath('/*/data[@name=\"available_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_page_file_kb,\n    (xpath('/*/data[@name=\"total_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"available_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"target_kb\"]/value/text()', ev.xml))[1]::text::bigint AS target_kb,\n    (xpath('/*/data[@name=\"reserved_kb\"]/value/text()', ev.xml))[1]::text::bigint AS reserved_kb,\n    (xpath('/*/data[@name=\"committed_kb\"]/value/text()', ev.xml))[1]::text::bigint AS committed_kb,\n    (xpath('/*/data[@name=\"awe_kb\"]/value/text()', ev.xml))[1]::text::bigint AS awe_kb,\n    (xpath('/*/data[@name=\"pages_kb\"]/value/text()', ev.xml))[1]::text::bigint AS pages_kb,\n    (xpath('/*/data[@name=\"failure\"]/text/text()', ev.xml))[1]::text AS failure_type,\n    (xpath('/*/data[@name=\"failure\"]/value/text()', ev.xml))[1]::text::bigint AS failure_value,\n    (xpath('/*/data[@name=\"resources\"]/value/text()', ev.xml))[1]::text::bigint AS resources,\n    (xpath('/*/data[@name=\"factor\"]/text/text()', ev.xml))[1]::text AS factor_text,\n    (xpath('/*/data[@name=\"factor\"]/value/text()', ev.xml))[1]::text::bigint AS factor_value,\n    (xpath('/*/data[@name=\"last_error\"]/value/text()', ev.xml))[1]::text::bigint AS last_error,\n    (xpath('/*/data[@name=\"pool_metadata_id\"]/value/text()', ev.xml))[1]::text::bigint AS pool_metadata_id,\n    (xpath('/*/data[@name=\"is_process_in_job\"]/value/text()', ev.xml))[1]::text AS is_process_in_job,\n    (xpath('/*/data[@name=\"is_system_physical_memory_high\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_high,\n    (xpath('/*/data[@name=\"is_system_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_virtual_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_virtual_memory_low\nFROM events ev\n)\nSELECT\n    sig.event_time AS time,\n    srv.name || ' - ' || s.label AS metric,\n    s.value / 1048576.0 AS value\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nCROSS JOIN LATERAL (VALUES\n    ('Target', sig.target_kb),\n    ('Committed', sig.committed_kb),\n    ('Total Page File', sig.total_page_file_kb),\n    ('Avail Page File', sig.available_page_file_kb)\n) AS s(label, value)\nORDER BY 1\n"
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'memory_node_oom_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"id\"]/value/text()', ev.xml))[1]::text::bigint AS node_id,\n    (xpath('/*/data[@name=\"memory_node_id\"]/value/text()', ev.xml))[1]::text::bigint AS memory_node_id,\n    (xpath('/*/data[@name=\"memory_utilization_pct\"]/value/text()', ev.xml))[1]::text::bigint AS memory_utilization_pct,\n    (xpath('/*/data[@name=\"total_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_physical_memory_kb,\n    (xpath('/*/data[@name=\"available_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_physical_memory_kb,\n    (xpath('/*/data[@name=\"total_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_page_file_kb,\n    (xpath('/*/data[@name=\"available_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_page_file_kb,\n    (xpath('/*/data[@name=\"total_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"available_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"target_kb\"]/value/text()', ev.xml))[1]::text::bigint AS target_kb,\n    (xpath('/*/data[@name=\"reserved_kb\"]/value/text()', ev.xml))[1]::text::bigint AS reserved_kb,\n    (xpath('/*/data[@name=\"committed_kb\"]/value/text()', ev.xml))[1]::text::bigint AS committed_kb,\n    (xpath('/*/data[@name=\"awe_kb\"]/value/text()', ev.xml))[1]::text::bigint AS awe_kb,\n    (xpath('/*/data[@name=\"pages_kb\"]/value/text()', ev.xml))[1]::text::bigint AS pages_kb,\n    (xpath('/*/data[@name=\"failure\"]/text/text()', ev.xml))[1]::text AS failure_type,\n    (xpath('/*/data[@name=\"failure\"]/value/text()', ev.xml))[1]::text::bigint AS failure_value,\n    (xpath('/*/data[@name=\"resources\"]/value/text()', ev.xml))[1]::text::bigint AS resources,\n    (xpath('/*/data[@name=\"factor\"]/text/text()', ev.xml))[1]::text AS factor_text,\n    (xpath('/*/data[@name=\"factor\"]/value/text()', ev.xml))[1]::text::bigint AS factor_value,\n    (xpath('/*/data[@name=\"last_error\"]/value/text()', ev.xml))[1]::text::bigint AS last_error,\n    (xpath('/*/data[@name=\"pool_metadata_id\"]/value/text()', ev.xml))[1]::text::bigint AS pool_metadata_id,\n    (xpath('/*/data[@name=\"is_process_in_job\"]/value/text()', ev.xml))[1]::text AS is_process_in_job,\n    (xpath('/*/data[@name=\"is_system_physical_memory_high\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_high,\n    (xpath('/*/data[@name=\"is_system_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_virtual_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_virtual_memory_low\nFROM events ev\n)\nSELECT\n    sig.event_time AS time,\n    s.label AS metric,\n    s.value / 1048576.0 AS value\nFROM sig\nCROSS JOIN LATERAL (VALUES\n    ('Target', sig.target_kb),\n    ('Committed', sig.committed_kb),\n    ('Total Page File', sig.total_page_file_kb),\n    ('Avail Page File', sig.available_page_file_kb)\n) AS s(label, value)\nORDER BY 1\n"
         }
       ]
     },
@@ -1455,7 +1455,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 104
+        "y": 102
       },
       "fieldConfig": {
         "defaults": {
@@ -1500,7 +1500,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'memory_node_oom_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"id\"]/value/text()', ev.xml))[1]::text::bigint AS node_id,\n    (xpath('/*/data[@name=\"memory_node_id\"]/value/text()', ev.xml))[1]::text::bigint AS memory_node_id,\n    (xpath('/*/data[@name=\"memory_utilization_pct\"]/value/text()', ev.xml))[1]::text::bigint AS memory_utilization_pct,\n    (xpath('/*/data[@name=\"total_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_physical_memory_kb,\n    (xpath('/*/data[@name=\"available_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_physical_memory_kb,\n    (xpath('/*/data[@name=\"total_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_page_file_kb,\n    (xpath('/*/data[@name=\"available_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_page_file_kb,\n    (xpath('/*/data[@name=\"total_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"available_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"target_kb\"]/value/text()', ev.xml))[1]::text::bigint AS target_kb,\n    (xpath('/*/data[@name=\"reserved_kb\"]/value/text()', ev.xml))[1]::text::bigint AS reserved_kb,\n    (xpath('/*/data[@name=\"committed_kb\"]/value/text()', ev.xml))[1]::text::bigint AS committed_kb,\n    (xpath('/*/data[@name=\"awe_kb\"]/value/text()', ev.xml))[1]::text::bigint AS awe_kb,\n    (xpath('/*/data[@name=\"pages_kb\"]/value/text()', ev.xml))[1]::text::bigint AS pages_kb,\n    (xpath('/*/data[@name=\"failure\"]/text/text()', ev.xml))[1]::text AS failure_type,\n    (xpath('/*/data[@name=\"failure\"]/value/text()', ev.xml))[1]::text::bigint AS failure_value,\n    (xpath('/*/data[@name=\"resources\"]/value/text()', ev.xml))[1]::text::bigint AS resources,\n    (xpath('/*/data[@name=\"factor\"]/text/text()', ev.xml))[1]::text AS factor_text,\n    (xpath('/*/data[@name=\"factor\"]/value/text()', ev.xml))[1]::text::bigint AS factor_value,\n    (xpath('/*/data[@name=\"last_error\"]/value/text()', ev.xml))[1]::text::bigint AS last_error,\n    (xpath('/*/data[@name=\"pool_metadata_id\"]/value/text()', ev.xml))[1]::text::bigint AS pool_metadata_id,\n    (xpath('/*/data[@name=\"is_process_in_job\"]/value/text()', ev.xml))[1]::text AS is_process_in_job,\n    (xpath('/*/data[@name=\"is_system_physical_memory_high\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_high,\n    (xpath('/*/data[@name=\"is_system_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_virtual_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_virtual_memory_low\nFROM events ev\n)\nSELECT\n    date_trunc('hour', sig.event_time) AS time,\n    srv.name AS metric,\n    COUNT(*)::double precision AS value\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nGROUP BY 1, 2\nORDER BY 1\n"
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'memory_node_oom_ring_buffer_recorded'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"id\"]/value/text()', ev.xml))[1]::text::bigint AS node_id,\n    (xpath('/*/data[@name=\"memory_node_id\"]/value/text()', ev.xml))[1]::text::bigint AS memory_node_id,\n    (xpath('/*/data[@name=\"memory_utilization_pct\"]/value/text()', ev.xml))[1]::text::bigint AS memory_utilization_pct,\n    (xpath('/*/data[@name=\"total_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_physical_memory_kb,\n    (xpath('/*/data[@name=\"available_physical_memory_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_physical_memory_kb,\n    (xpath('/*/data[@name=\"total_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_page_file_kb,\n    (xpath('/*/data[@name=\"available_page_file_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_page_file_kb,\n    (xpath('/*/data[@name=\"total_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS total_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"available_virtual_address_space_kb\"]/value/text()', ev.xml))[1]::text::bigint AS available_virtual_address_space_kb,\n    (xpath('/*/data[@name=\"target_kb\"]/value/text()', ev.xml))[1]::text::bigint AS target_kb,\n    (xpath('/*/data[@name=\"reserved_kb\"]/value/text()', ev.xml))[1]::text::bigint AS reserved_kb,\n    (xpath('/*/data[@name=\"committed_kb\"]/value/text()', ev.xml))[1]::text::bigint AS committed_kb,\n    (xpath('/*/data[@name=\"awe_kb\"]/value/text()', ev.xml))[1]::text::bigint AS awe_kb,\n    (xpath('/*/data[@name=\"pages_kb\"]/value/text()', ev.xml))[1]::text::bigint AS pages_kb,\n    (xpath('/*/data[@name=\"failure\"]/text/text()', ev.xml))[1]::text AS failure_type,\n    (xpath('/*/data[@name=\"failure\"]/value/text()', ev.xml))[1]::text::bigint AS failure_value,\n    (xpath('/*/data[@name=\"resources\"]/value/text()', ev.xml))[1]::text::bigint AS resources,\n    (xpath('/*/data[@name=\"factor\"]/text/text()', ev.xml))[1]::text AS factor_text,\n    (xpath('/*/data[@name=\"factor\"]/value/text()', ev.xml))[1]::text::bigint AS factor_value,\n    (xpath('/*/data[@name=\"last_error\"]/value/text()', ev.xml))[1]::text::bigint AS last_error,\n    (xpath('/*/data[@name=\"pool_metadata_id\"]/value/text()', ev.xml))[1]::text::bigint AS pool_metadata_id,\n    (xpath('/*/data[@name=\"is_process_in_job\"]/value/text()', ev.xml))[1]::text AS is_process_in_job,\n    (xpath('/*/data[@name=\"is_system_physical_memory_high\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_high,\n    (xpath('/*/data[@name=\"is_system_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_system_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_physical_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_physical_memory_low,\n    (xpath('/*/data[@name=\"is_process_virtual_memory_low\"]/value/text()', ev.xml))[1]::text AS is_process_virtual_memory_low\nFROM events ev\n)\nSELECT\n    date_trunc('hour', sig.event_time) AS time,\n    'OOM Events' AS metric,\n    COUNT(*)::double precision AS value\nFROM sig\nGROUP BY 1, 2\nORDER BY 1\n"
         }
       ]
     },
@@ -1516,7 +1516,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 104
+        "y": 102
       },
       "fieldConfig": {
         "defaults": {
@@ -1581,7 +1581,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 104
+        "y": 102
       },
       "fieldConfig": {
         "defaults": {
@@ -1646,7 +1646,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 108
+        "y": 106
       },
       "fieldConfig": {
         "defaults": {
@@ -1711,7 +1711,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 108
+        "y": 106
       },
       "fieldConfig": {
         "defaults": {
@@ -1776,7 +1776,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 112
+        "y": 110
       },
       "fieldConfig": {
         "defaults": {
@@ -1839,7 +1839,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 121
+        "y": 119
       },
       "panels": []
     },
@@ -1852,10 +1852,10 @@
         "uid": "darling"
       },
       "gridPos": {
-        "h": 6,
+        "h": 4,
         "w": 6,
         "x": 0,
-        "y": 122
+        "y": 120
       },
       "fieldConfig": {
         "defaults": {
@@ -1913,10 +1913,10 @@
         "uid": "darling"
       },
       "gridPos": {
-        "h": 6,
+        "h": 4,
         "w": 6,
         "x": 6,
-        "y": 122
+        "y": 120
       },
       "fieldConfig": {
         "defaults": {
@@ -1974,10 +1974,10 @@
         "uid": "darling"
       },
       "gridPos": {
-        "h": 6,
+        "h": 4,
         "w": 6,
         "x": 12,
-        "y": 122
+        "y": 120
       },
       "fieldConfig": {
         "defaults": {
@@ -2035,10 +2035,10 @@
         "uid": "darling"
       },
       "gridPos": {
-        "h": 6,
+        "h": 4,
         "w": 6,
         "x": 18,
-        "y": 122
+        "y": 120
       },
       "fieldConfig": {
         "defaults": {
@@ -2099,7 +2099,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 128
+        "y": 124
       },
       "fieldConfig": {
         "defaults": {
@@ -2144,7 +2144,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'wait_info'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"wait_type\"]/text/text()', ev.xml))[1]::text AS wait_type,\n    (xpath('/*/data[@name=\"duration\"]/value/text()', ev.xml))[1]::text::bigint AS duration_ms,\n    (xpath('/*/data[@name=\"signal_duration\"]/value/text()', ev.xml))[1]::text::bigint AS signal_duration_ms,\n    (xpath('/*/data[@name=\"wait_resource\"]/value/text()', ev.xml))[1]::text AS wait_resource,\n    (xpath('/*/action[@name=\"session_id\"]/value/text()', ev.xml))[1]::text::int AS session_id,\n    (xpath('/*/action[@name=\"sql_text\"]/value/text()', ev.xml))[1]::text AS query_text\nFROM events ev\n)\nSELECT\n    date_trunc('hour', sig.event_time) AS time,\n    srv.name AS metric,\n    COUNT(*)::double precision AS value\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nWHERE sig.session_id <> 0\n  AND sig.query_text IS NOT NULL AND sig.query_text <> ''\n  AND sig.query_text NOT ILIKE '%BACKUP%'\n  AND sig.duration_ms >= 500\n  AND sig.wait_type NOT IN ('ASYNC_IO_COMPLETION', 'AZURE_IMDS_VERSIONS', 'BROKER_EVENTHANDLER', 'BROKER_RECEIVE_WAITFOR', 'BROKER_TASK_STOP', 'BROKER_TO_FLUSH', 'BROKER_TRANSMITTER', 'CHECKPOINT_QUEUE', 'CHKPT', 'CLR_AUTO_EVENT', 'CLR_MANUAL_EVENT', 'CLR_SEMAPHORE', 'DBMIRROR_DBM_EVENT', 'DBMIRROR_DBM_MUTEX', 'DBMIRROR_EVENTS_QUEUE', 'DBMIRROR_SEND', 'DBMIRROR_WORKER_QUEUE', 'DBMIRRORING_CMD', 'DIRTY_PAGE_POLL', 'DISPATCHER_QUEUE_SEMAPHORE', 'FSAGENT', 'FT_IFTS_SCHEDULER_IDLE_WAIT', 'FT_IFTSHC_MUTEX', 'HADR_CLUSAPI_CALL', 'HADR_FILESTREAM_IOMGR_IOCOMPLETION', 'HADR_LOGCAPTURE_WAIT', 'HADR_NOTIFICATION_DEQUEUE', 'HADR_TIMER_TASK', 'HADR_WORK_QUEUE', 'KSOURCE_WAKEUP', 'LAZYWRITER_SLEEP', 'LOGMGR_QUEUE', 'MEMORY_ALLOCATION_EXT', 'ONDEMAND_TASK_QUEUE', 'PARALLEL_REDO_DRAIN_WORKER', 'PARALLEL_REDO_LOG_CACHE', 'PARALLEL_REDO_TRAN_LIST', 'PARALLEL_REDO_WORKER_SYNC', 'PARALLEL_REDO_WORKER_WAIT_WORK', 'PREEMPTIVE_OS_FLUSHFILEBUFFERS', 'PREEMPTIVE_XE_GETTARGETSTATE', 'PVS_PREALLOCATE', 'PWAIT_ALL_COMPONENTS_INITIALIZED', 'PWAIT_DIRECTLOGCONSUMER_GETNEXT', 'PWAIT_EXTENSIBILITY_CLEANUP_TASK', 'QDS_ASYNC_QUEUE', 'QDS_CLEANUP_STALE_QUERIES_TASK_MAIN_LOOP_SLEEP', 'QDS_PERSIST_TASK_MAIN_LOOP_SLEEP', 'QDS_SHUTDOWN_QUEUE', 'REDO_THREAD_PENDING_WORK', 'REQUEST_FOR_DEADLOCK_SEARCH', 'RESOURCE_QUEUE', 'SERVER_IDLE_CHECK', 'SLEEP_DBSTARTUP', 'SLEEP_DCOMSTARTUP', 'SLEEP_MASTERDBREADY', 'SLEEP_MASTERMDREADY', 'SLEEP_MASTERUPGRADED', 'SLEEP_MSDBSTARTUP', 'SLEEP_SYSTEMTASK', 'SLEEP_TEMPDBSTARTUP', 'SNI_HTTP_ACCEPT', 'SOS_WORK_DISPATCHER', 'SP_SERVER_DIAGNOSTICS_SLEEP', 'SQLTRACE_BUFFER_FLUSH', 'SQLTRACE_INCREMENTAL_FLUSH_SLEEP', 'SQLTRACE_WAIT_ENTRIES', 'UCS_SESSION_REGISTRATION', 'VDI_CLIENT_OTHER', 'WAIT_FOR_RESULTS', 'WAIT_XTP_CKPT_CLOSE', 'WAIT_XTP_HOST_WAIT', 'WAIT_XTP_OFFLINE_CKPT_NEW_LOG', 'WAIT_XTP_RECOVERY', 'WAITFOR', 'WAITFOR_TASKSHUTDOWN', 'XE_DISPATCHER_JOIN', 'XE_DISPATCHER_WAIT', 'XE_FILE_TARGET_TVF', 'XE_LIVE_TARGET_TVF', 'XE_TIMER_EVENT')\nGROUP BY 1, 2\nORDER BY 1\n"
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'wait_info'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    )\nSELECT\n    ev.server_id,\n    ev.event_time,\n    (xpath('/*/data[@name=\"wait_type\"]/text/text()', ev.xml))[1]::text AS wait_type,\n    (xpath('/*/data[@name=\"duration\"]/value/text()', ev.xml))[1]::text::bigint AS duration_ms,\n    (xpath('/*/data[@name=\"signal_duration\"]/value/text()', ev.xml))[1]::text::bigint AS signal_duration_ms,\n    (xpath('/*/data[@name=\"wait_resource\"]/value/text()', ev.xml))[1]::text AS wait_resource,\n    (xpath('/*/action[@name=\"session_id\"]/value/text()', ev.xml))[1]::text::int AS session_id,\n    (xpath('/*/action[@name=\"sql_text\"]/value/text()', ev.xml))[1]::text AS query_text\nFROM events ev\n)\nSELECT\n    date_trunc('hour', sig.event_time) AS time,\n    'Significant Waits' AS metric,\n    COUNT(*)::double precision AS value\nFROM sig\nWHERE sig.session_id <> 0\n  AND sig.query_text IS NOT NULL AND sig.query_text <> ''\n  AND sig.query_text NOT ILIKE '%BACKUP%'\n  AND sig.duration_ms >= 500\n  AND sig.wait_type NOT IN ('ASYNC_IO_COMPLETION', 'AZURE_IMDS_VERSIONS', 'BROKER_EVENTHANDLER', 'BROKER_RECEIVE_WAITFOR', 'BROKER_TASK_STOP', 'BROKER_TO_FLUSH', 'BROKER_TRANSMITTER', 'CHECKPOINT_QUEUE', 'CHKPT', 'CLR_AUTO_EVENT', 'CLR_MANUAL_EVENT', 'CLR_SEMAPHORE', 'DBMIRROR_DBM_EVENT', 'DBMIRROR_DBM_MUTEX', 'DBMIRROR_EVENTS_QUEUE', 'DBMIRROR_SEND', 'DBMIRROR_WORKER_QUEUE', 'DBMIRRORING_CMD', 'DIRTY_PAGE_POLL', 'DISPATCHER_QUEUE_SEMAPHORE', 'FSAGENT', 'FT_IFTS_SCHEDULER_IDLE_WAIT', 'FT_IFTSHC_MUTEX', 'HADR_CLUSAPI_CALL', 'HADR_FILESTREAM_IOMGR_IOCOMPLETION', 'HADR_LOGCAPTURE_WAIT', 'HADR_NOTIFICATION_DEQUEUE', 'HADR_TIMER_TASK', 'HADR_WORK_QUEUE', 'KSOURCE_WAKEUP', 'LAZYWRITER_SLEEP', 'LOGMGR_QUEUE', 'MEMORY_ALLOCATION_EXT', 'ONDEMAND_TASK_QUEUE', 'PARALLEL_REDO_DRAIN_WORKER', 'PARALLEL_REDO_LOG_CACHE', 'PARALLEL_REDO_TRAN_LIST', 'PARALLEL_REDO_WORKER_SYNC', 'PARALLEL_REDO_WORKER_WAIT_WORK', 'PREEMPTIVE_OS_FLUSHFILEBUFFERS', 'PREEMPTIVE_XE_GETTARGETSTATE', 'PVS_PREALLOCATE', 'PWAIT_ALL_COMPONENTS_INITIALIZED', 'PWAIT_DIRECTLOGCONSUMER_GETNEXT', 'PWAIT_EXTENSIBILITY_CLEANUP_TASK', 'QDS_ASYNC_QUEUE', 'QDS_CLEANUP_STALE_QUERIES_TASK_MAIN_LOOP_SLEEP', 'QDS_PERSIST_TASK_MAIN_LOOP_SLEEP', 'QDS_SHUTDOWN_QUEUE', 'REDO_THREAD_PENDING_WORK', 'REQUEST_FOR_DEADLOCK_SEARCH', 'RESOURCE_QUEUE', 'SERVER_IDLE_CHECK', 'SLEEP_DBSTARTUP', 'SLEEP_DCOMSTARTUP', 'SLEEP_MASTERDBREADY', 'SLEEP_MASTERMDREADY', 'SLEEP_MASTERUPGRADED', 'SLEEP_MSDBSTARTUP', 'SLEEP_SYSTEMTASK', 'SLEEP_TEMPDBSTARTUP', 'SNI_HTTP_ACCEPT', 'SOS_WORK_DISPATCHER', 'SP_SERVER_DIAGNOSTICS_SLEEP', 'SQLTRACE_BUFFER_FLUSH', 'SQLTRACE_INCREMENTAL_FLUSH_SLEEP', 'SQLTRACE_WAIT_ENTRIES', 'UCS_SESSION_REGISTRATION', 'VDI_CLIENT_OTHER', 'WAIT_FOR_RESULTS', 'WAIT_XTP_CKPT_CLOSE', 'WAIT_XTP_HOST_WAIT', 'WAIT_XTP_OFFLINE_CKPT_NEW_LOG', 'WAIT_XTP_RECOVERY', 'WAITFOR', 'WAITFOR_TASKSHUTDOWN', 'XE_DISPATCHER_JOIN', 'XE_DISPATCHER_WAIT', 'XE_FILE_TARGET_TVF', 'XE_LIVE_TARGET_TVF', 'XE_TIMER_EVENT')\nGROUP BY 1, 2\nORDER BY 1\n"
         }
       ]
     },
@@ -2160,7 +2160,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 136
+        "y": 132
       },
       "fieldConfig": {
         "defaults": {
@@ -2223,7 +2223,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 146
+        "y": 142
       },
       "panels": []
     },
@@ -2239,7 +2239,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 147
+        "y": 143
       },
       "fieldConfig": {
         "defaults": {
@@ -2304,7 +2304,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 147
+        "y": 143
       },
       "fieldConfig": {
         "defaults": {
@@ -2369,7 +2369,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 147
+        "y": 143
       },
       "fieldConfig": {
         "defaults": {
@@ -2430,7 +2430,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 147
+        "y": 143
       },
       "fieldConfig": {
         "defaults": {
@@ -2491,7 +2491,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 151
+        "y": 147
       },
       "fieldConfig": {
         "defaults": {
@@ -2536,7 +2536,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, ev.xml, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//queryProcessing', ev.xml)) AS node\n)\nSELECT\n    n.server_id,\n    n.event_time,\n    (xpath('/*/data[@name=\"state\"]/text/text()', n.xml))[1]::text AS state,\n    (xpath('/*/@maxWorkers', node))[1]::text::bigint AS max_workers,\n    (xpath('/*/@workersCreated', node))[1]::text::bigint AS workers_created,\n    (xpath('/*/@workersIdle', node))[1]::text::bigint AS workers_idle,\n    (xpath('/*/@tasksCompletedWithinInterval', node))[1]::text::bigint AS tasks_completed_within_interval,\n    (xpath('/*/@pendingTasks', node))[1]::text::bigint AS pending_tasks,\n    (xpath('/*/@oldestPendingTaskWaitingTime', node))[1]::text::bigint AS oldest_pending_task_waiting_time,\n    CASE WHEN (xpath('/*/@hasUnresolvableDeadlockOccurred', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@hasUnresolvableDeadlockOccurred', node))[1]::text IN ('0', 'false') THEN false END AS has_unresolvable_deadlock_occurred,\n    CASE WHEN (xpath('/*/@hasDeadlockedSchedulersOccurred', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@hasDeadlockedSchedulersOccurred', node))[1]::text IN ('0', 'false') THEN false END AS has_deadlocked_schedulers_occurred,\n    cardinality(xpath('/*/blockingTasks/blocked-process-report', n.node)) > 0 AS did_blocking_occur\nFROM nodes n\n)\nSELECT\n    sig.event_time AS time,\n    srv.name || ' - ' || s.label AS metric,\n    s.value::double precision AS value\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nCROSS JOIN LATERAL (VALUES\n    ('Workers Created', sig.workers_created),\n    ('Workers Idle', sig.workers_idle),\n    ('Max Workers', sig.max_workers)\n) AS s(label, value)\nWHERE sig.state = 'WARNING' AND sig.pending_tasks >= 10\nORDER BY 1\n"
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, ev.xml, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//queryProcessing', ev.xml)) AS node\n)\nSELECT\n    n.server_id,\n    n.event_time,\n    (xpath('/*/data[@name=\"state\"]/text/text()', n.xml))[1]::text AS state,\n    (xpath('/*/@maxWorkers', node))[1]::text::bigint AS max_workers,\n    (xpath('/*/@workersCreated', node))[1]::text::bigint AS workers_created,\n    (xpath('/*/@workersIdle', node))[1]::text::bigint AS workers_idle,\n    (xpath('/*/@tasksCompletedWithinInterval', node))[1]::text::bigint AS tasks_completed_within_interval,\n    (xpath('/*/@pendingTasks', node))[1]::text::bigint AS pending_tasks,\n    (xpath('/*/@oldestPendingTaskWaitingTime', node))[1]::text::bigint AS oldest_pending_task_waiting_time,\n    CASE WHEN (xpath('/*/@hasUnresolvableDeadlockOccurred', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@hasUnresolvableDeadlockOccurred', node))[1]::text IN ('0', 'false') THEN false END AS has_unresolvable_deadlock_occurred,\n    CASE WHEN (xpath('/*/@hasDeadlockedSchedulersOccurred', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@hasDeadlockedSchedulersOccurred', node))[1]::text IN ('0', 'false') THEN false END AS has_deadlocked_schedulers_occurred,\n    cardinality(xpath('/*/blockingTasks/blocked-process-report', n.node)) > 0 AS did_blocking_occur\nFROM nodes n\n)\nSELECT\n    sig.event_time AS time,\n    s.label AS metric,\n    s.value::double precision AS value\nFROM sig\nCROSS JOIN LATERAL (VALUES\n    ('Workers Created', sig.workers_created),\n    ('Workers Idle', sig.workers_idle),\n    ('Max Workers', sig.max_workers)\n) AS s(label, value)\nWHERE sig.state = 'WARNING' AND sig.pending_tasks >= 10\nORDER BY 1\n"
         }
       ]
     },
@@ -2552,7 +2552,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 151
+        "y": 147
       },
       "fieldConfig": {
         "defaults": {
@@ -2597,7 +2597,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, ev.xml, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//queryProcessing', ev.xml)) AS node\n)\nSELECT\n    n.server_id,\n    n.event_time,\n    (xpath('/*/data[@name=\"state\"]/text/text()', n.xml))[1]::text AS state,\n    (xpath('/*/@maxWorkers', node))[1]::text::bigint AS max_workers,\n    (xpath('/*/@workersCreated', node))[1]::text::bigint AS workers_created,\n    (xpath('/*/@workersIdle', node))[1]::text::bigint AS workers_idle,\n    (xpath('/*/@tasksCompletedWithinInterval', node))[1]::text::bigint AS tasks_completed_within_interval,\n    (xpath('/*/@pendingTasks', node))[1]::text::bigint AS pending_tasks,\n    (xpath('/*/@oldestPendingTaskWaitingTime', node))[1]::text::bigint AS oldest_pending_task_waiting_time,\n    CASE WHEN (xpath('/*/@hasUnresolvableDeadlockOccurred', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@hasUnresolvableDeadlockOccurred', node))[1]::text IN ('0', 'false') THEN false END AS has_unresolvable_deadlock_occurred,\n    CASE WHEN (xpath('/*/@hasDeadlockedSchedulersOccurred', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@hasDeadlockedSchedulersOccurred', node))[1]::text IN ('0', 'false') THEN false END AS has_deadlocked_schedulers_occurred,\n    cardinality(xpath('/*/blockingTasks/blocked-process-report', n.node)) > 0 AS did_blocking_occur\nFROM nodes n\n)\nSELECT\n    sig.event_time AS time,\n    srv.name || ' - ' || s.label AS metric,\n    s.value::double precision AS value\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nCROSS JOIN LATERAL (VALUES\n    ('Pending Tasks', sig.pending_tasks),\n    ('Oldest Pending Wait (ms)', sig.oldest_pending_task_waiting_time)\n) AS s(label, value)\nWHERE sig.state = 'WARNING' AND sig.pending_tasks >= 10\nORDER BY 1\n"
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, ev.xml, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//queryProcessing', ev.xml)) AS node\n)\nSELECT\n    n.server_id,\n    n.event_time,\n    (xpath('/*/data[@name=\"state\"]/text/text()', n.xml))[1]::text AS state,\n    (xpath('/*/@maxWorkers', node))[1]::text::bigint AS max_workers,\n    (xpath('/*/@workersCreated', node))[1]::text::bigint AS workers_created,\n    (xpath('/*/@workersIdle', node))[1]::text::bigint AS workers_idle,\n    (xpath('/*/@tasksCompletedWithinInterval', node))[1]::text::bigint AS tasks_completed_within_interval,\n    (xpath('/*/@pendingTasks', node))[1]::text::bigint AS pending_tasks,\n    (xpath('/*/@oldestPendingTaskWaitingTime', node))[1]::text::bigint AS oldest_pending_task_waiting_time,\n    CASE WHEN (xpath('/*/@hasUnresolvableDeadlockOccurred', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@hasUnresolvableDeadlockOccurred', node))[1]::text IN ('0', 'false') THEN false END AS has_unresolvable_deadlock_occurred,\n    CASE WHEN (xpath('/*/@hasDeadlockedSchedulersOccurred', node))[1]::text IN ('1', 'true') THEN true\n        WHEN (xpath('/*/@hasDeadlockedSchedulersOccurred', node))[1]::text IN ('0', 'false') THEN false END AS has_deadlocked_schedulers_occurred,\n    cardinality(xpath('/*/blockingTasks/blocked-process-report', n.node)) > 0 AS did_blocking_occur\nFROM nodes n\n)\nSELECT\n    sig.event_time AS time,\n    s.label AS metric,\n    s.value::double precision AS value\nFROM sig\nCROSS JOIN LATERAL (VALUES\n    ('Pending Tasks', sig.pending_tasks),\n    ('Oldest Pending Wait (ms)', sig.oldest_pending_task_waiting_time)\n) AS s(label, value)\nWHERE sig.state = 'WARNING' AND sig.pending_tasks >= 10\nORDER BY 1\n"
         }
       ]
     },
@@ -2613,7 +2613,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 159
+        "y": 155
       },
       "fieldConfig": {
         "defaults": {
@@ -2676,7 +2676,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 167
+        "y": 163
       },
       "panels": []
     },
@@ -2692,7 +2692,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 168
+        "y": 164
       },
       "fieldConfig": {
         "defaults": {
@@ -2737,7 +2737,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, ev.xml, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//ioSubsystem', ev.xml)) AS node\n),\npending AS (\n    SELECT\n        n.server_id,\n        n.event_time,\n        (xpath('/*/data[@name=\"state\"]/text/text()', n.xml))[1]::text AS state,\n        (xpath('/*/@ioLatchTimeouts', node))[1]::text::bigint AS io_latch_timeouts,\n        (xpath('/*/@intervalLongIos', node))[1]::text::bigint AS interval_long_ios,\n        (xpath('/*/@totalLongIos', node))[1]::text::bigint AS total_long_ios,\n        COALESCE((xpath('/*/@filePath', pr))[1]::text, 'N/A') AS file_path,\n        (xpath('/*/@duration', pr))[1]::text::bigint AS duration\n    FROM nodes n\n    CROSS JOIN LATERAL unnest(xpath('/*/longestPendingRequests/pendingRequest', n.node)) AS pr\n)\nSELECT\n    server_id, event_time, state, io_latch_timeouts, interval_long_ios, total_long_ios,\n    file_path,\n    SUM(duration) AS longest_pending_requests_duration_ms\nFROM pending\nWHERE duration IS NOT NULL\nGROUP BY server_id, event_time, state, io_latch_timeouts, interval_long_ios, total_long_ios, file_path\n)\nSELECT\n    sig.event_time AS time,\n    srv.name || ' - ' || s.label AS metric,\n    s.value::double precision AS value\nFROM sig\nJOIN config.config_monitored_servers AS srv ON srv.server_id = sig.server_id\nCROSS JOIN LATERAL (VALUES\n    ('I/O Latch Timeouts', sig.io_latch_timeouts),\n    ('Interval Long I/Os', sig.interval_long_ios)\n) AS s(label, value)\nWHERE sig.state = 'WARNING'\nORDER BY 1\n"
+          "rawSql": "\nWITH sig AS (\nWITH events AS (\n        SELECT e.server_id, e.event_time, e.event_xml::xml AS xml\n        FROM collect.v_system_health_events AS e\n        WHERE e.event_type = 'sp_server_diagnostics_component_result'\n          AND $__timeFilter(e.event_time)\n          AND e.server_id IN (${server:csv})\n          AND xml_is_well_formed_document(e.event_xml)\n    ),\nnodes AS (\n    SELECT ev.server_id, ev.event_time, ev.xml, node\n    FROM events ev\n    CROSS JOIN LATERAL unnest(xpath('//ioSubsystem', ev.xml)) AS node\n),\npending AS (\n    SELECT\n        n.server_id,\n        n.event_time,\n        (xpath('/*/data[@name=\"state\"]/text/text()', n.xml))[1]::text AS state,\n        (xpath('/*/@ioLatchTimeouts', node))[1]::text::bigint AS io_latch_timeouts,\n        (xpath('/*/@intervalLongIos', node))[1]::text::bigint AS interval_long_ios,\n        (xpath('/*/@totalLongIos', node))[1]::text::bigint AS total_long_ios,\n        COALESCE((xpath('/*/@filePath', pr))[1]::text, 'N/A') AS file_path,\n        (xpath('/*/@duration', pr))[1]::text::bigint AS duration\n    FROM nodes n\n    CROSS JOIN LATERAL unnest(xpath('/*/longestPendingRequests/pendingRequest', n.node)) AS pr\n)\nSELECT\n    server_id, event_time, state, io_latch_timeouts, interval_long_ios, total_long_ios,\n    file_path,\n    SUM(duration) AS longest_pending_requests_duration_ms\nFROM pending\nWHERE duration IS NOT NULL\nGROUP BY server_id, event_time, state, io_latch_timeouts, interval_long_ios, total_long_ios, file_path\n)\nSELECT\n    sig.event_time AS time,\n    s.label AS metric,\n    s.value::double precision AS value\nFROM sig\nCROSS JOIN LATERAL (VALUES\n    ('I/O Latch Timeouts', sig.io_latch_timeouts),\n    ('Interval Long I/Os', sig.interval_long_ios)\n) AS s(label, value)\nWHERE sig.state = 'WARNING'\nORDER BY 1\n"
         }
       ]
     },
@@ -2753,7 +2753,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 168
+        "y": 164
       },
       "fieldConfig": {
         "defaults": {
@@ -2816,7 +2816,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 176
+        "y": 172
       },
       "panels": []
     },
@@ -2832,7 +2832,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 177
+        "y": 173
       },
       "fieldConfig": {
         "defaults": {
@@ -2893,7 +2893,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 185
+        "y": 181
       },
       "fieldConfig": {
         "defaults": {

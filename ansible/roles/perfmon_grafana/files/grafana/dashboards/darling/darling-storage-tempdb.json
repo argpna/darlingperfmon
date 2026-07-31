@@ -1,0 +1,786 @@
+{
+  "uid": "darling-storage-tempdb",
+  "title": "Perfmon (Darling) - Storage & tempdb",
+  "tags": [
+    "perfmon-darling"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon-darling"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon (Darling) Dashboards",
+      "type": "dashboards",
+      "url": ""
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "finops-darling"
+      ],
+      "targetBlank": false,
+      "title": "All FinOps (Darling) Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Total Data File Size",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "decmbytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH latest AS (\n    SELECT DISTINCT ON (database_name, file_name)\n        database_name, file_name, file_type_desc, total_size_mb\n    FROM collect.v_database_size_stats\n    WHERE server_id IN (${server:csv})\n    ORDER BY database_name, file_name, collection_time DESC\n)\nSELECT COALESCE(SUM(total_size_mb), 0) AS v\nFROM latest\nWHERE upper(file_type_desc) <> 'LOG'\n"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Avg Read/Write Latency",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT CASE WHEN SUM(delta_reads + delta_writes) > 0\n    THEN SUM(delta_stall_read_ms + delta_stall_write_ms)::double precision\n         / SUM(delta_reads + delta_writes)\n    ELSE 0 END AS v\nFROM collect.v_file_io_stats\nWHERE collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '1 hour' AND server_id IN (${server:csv})\n"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "tempdb Allocated %",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT CASE WHEN (total_reserved_mb + unallocated_mb) > 0\n    THEN total_reserved_mb::double precision / (total_reserved_mb + unallocated_mb) * 100.0\n    ELSE 0 END AS v\nFROM collect.v_tempdb_stats\nWHERE server_id IN (${server:csv})\nORDER BY collection_time DESC\nLIMIT 1\n"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Worst-Latency File",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT database_name || '.' || file_name || ' - ' || to_char(round((avg_latency_ms)::numeric, 1), 'FM999999990.0') || ' ms' AS v\nFROM (\n    SELECT database_name, file_name,\n        CASE WHEN SUM(delta_reads + delta_writes) > 0\n            THEN SUM(delta_stall_read_ms + delta_stall_write_ms)::double precision\n                 / SUM(delta_reads + delta_writes)\n            ELSE 0 END AS avg_latency_ms\n    FROM collect.v_file_io_stats\n    WHERE collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '1 hour' AND server_id IN (${server:csv})\n    GROUP BY database_name, file_name\n) AS f\nORDER BY avg_latency_ms DESC\nLIMIT 1\n"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "row",
+      "title": "File I/O",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "panels": []
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Read Latency",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Read Latency (ms)"
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH top_files AS (\n\n    SELECT f.server_id, f.database_name, f.file_name\n    FROM collect.v_file_io_stats AS f\n    WHERE $__timeFilter(f.collection_time)\n      AND f.server_id IN (${server:csv})\n      AND (f.delta_reads > 0 OR f.delta_writes > 0)\n    GROUP BY f.server_id, f.database_name, f.file_name\n    ORDER BY SUM(f.delta_reads + f.delta_writes) DESC\n    LIMIT 10\n\n)\nSELECT\n    f.collection_time AS time,\n    f.database_name || '.' || f.file_name || s.suffix AS metric,\n    s.value AS value\nFROM collect.v_file_io_stats AS f\nJOIN top_files AS tf\n  ON tf.server_id = f.server_id\n AND tf.database_name = f.database_name\n AND tf.file_name = f.file_name\nCROSS JOIN LATERAL (VALUES\n    ('', CASE WHEN f.delta_reads > 0\n              THEN f.delta_stall_read_ms::double precision / f.delta_reads\n              ELSE 0 END),\n    (' (queued)', CASE WHEN f.delta_reads > 0\n                       THEN COALESCE(f.delta_stall_queued_read_ms, 0)::double precision / f.delta_reads\n                       ELSE 0 END)\n) AS s(suffix, value)\nWHERE $__timeFilter(f.collection_time)\n  AND f.server_id IN (${server:csv})\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Write Latency",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Write Latency (ms)"
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH top_files AS (\n\n    SELECT f.server_id, f.database_name, f.file_name\n    FROM collect.v_file_io_stats AS f\n    WHERE $__timeFilter(f.collection_time)\n      AND f.server_id IN (${server:csv})\n      AND (f.delta_reads > 0 OR f.delta_writes > 0)\n    GROUP BY f.server_id, f.database_name, f.file_name\n    ORDER BY SUM(f.delta_reads + f.delta_writes) DESC\n    LIMIT 10\n\n)\nSELECT\n    f.collection_time AS time,\n    f.database_name || '.' || f.file_name || s.suffix AS metric,\n    s.value AS value\nFROM collect.v_file_io_stats AS f\nJOIN top_files AS tf\n  ON tf.server_id = f.server_id\n AND tf.database_name = f.database_name\n AND tf.file_name = f.file_name\nCROSS JOIN LATERAL (VALUES\n    ('', CASE WHEN f.delta_writes > 0\n              THEN f.delta_stall_write_ms::double precision / f.delta_writes\n              ELSE 0 END),\n    (' (queued)', CASE WHEN f.delta_writes > 0\n                       THEN COALESCE(f.delta_stall_queued_write_ms, 0)::double precision / f.delta_writes\n                       ELSE 0 END)\n) AS s(suffix, value)\nWHERE $__timeFilter(f.collection_time)\n  AND f.server_id IN (${server:csv})\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Read Throughput",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Read Throughput (MB/s)"
+          },
+          "unit": "MBs"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH top_files AS (\n\n    SELECT f.server_id, f.database_name, f.file_name\n    FROM collect.v_file_io_stats AS f\n    WHERE $__timeFilter(f.collection_time)\n      AND f.server_id IN (${server:csv})\n      AND (f.delta_read_bytes > 0 OR f.delta_write_bytes > 0)\n    GROUP BY f.server_id, f.database_name, f.file_name\n    ORDER BY SUM(f.delta_read_bytes + f.delta_write_bytes) DESC\n    LIMIT 10\n\n),\nwindowed AS (\n    SELECT\n        f.collection_time,\n        f.database_name || '.' || f.file_name AS file_label,\n        f.delta_read_bytes AS moved_bytes,\n        EXTRACT(EPOCH FROM (f.collection_time - LAG(f.collection_time) OVER (\n            PARTITION BY f.server_id, f.database_name, f.file_name\n            ORDER BY f.collection_time))) AS interval_seconds\n    FROM collect.v_file_io_stats AS f\n    JOIN top_files AS tf\n      ON tf.server_id = f.server_id\n     AND tf.database_name = f.database_name\n     AND tf.file_name = f.file_name\n    WHERE $__timeFilter(f.collection_time)\n      AND f.server_id IN (${server:csv})\n)\nSELECT\n    collection_time AS time,\n    file_label AS metric,\n    moved_bytes::double precision / interval_seconds / 1048576.0 AS value\nFROM windowed\nWHERE interval_seconds > 0\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Write Throughput",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Write Throughput (MB/s)"
+          },
+          "unit": "MBs"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH top_files AS (\n\n    SELECT f.server_id, f.database_name, f.file_name\n    FROM collect.v_file_io_stats AS f\n    WHERE $__timeFilter(f.collection_time)\n      AND f.server_id IN (${server:csv})\n      AND (f.delta_read_bytes > 0 OR f.delta_write_bytes > 0)\n    GROUP BY f.server_id, f.database_name, f.file_name\n    ORDER BY SUM(f.delta_read_bytes + f.delta_write_bytes) DESC\n    LIMIT 10\n\n),\nwindowed AS (\n    SELECT\n        f.collection_time,\n        f.database_name || '.' || f.file_name AS file_label,\n        f.delta_write_bytes AS moved_bytes,\n        EXTRACT(EPOCH FROM (f.collection_time - LAG(f.collection_time) OVER (\n            PARTITION BY f.server_id, f.database_name, f.file_name\n            ORDER BY f.collection_time))) AS interval_seconds\n    FROM collect.v_file_io_stats AS f\n    JOIN top_files AS tf\n      ON tf.server_id = f.server_id\n     AND tf.database_name = f.database_name\n     AND tf.file_name = f.file_name\n    WHERE $__timeFilter(f.collection_time)\n      AND f.server_id IN (${server:csv})\n)\nSELECT\n    collection_time AS time,\n    file_label AS metric,\n    moved_bytes::double precision / interval_seconds / 1048576.0 AS value\nFROM windowed\nWHERE interval_seconds > 0\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "tempdb",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 23
+      },
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "tempdb Usage",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "MB"
+          },
+          "unit": "decmbytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    td.collection_time AS time,\n    s.series AS metric,\n    s.value AS value\nFROM collect.v_tempdb_stats AS td\nCROSS JOIN LATERAL (VALUES\n    ('User Objects', td.user_object_reserved_mb),\n    ('Internal Objects', td.internal_object_reserved_mb),\n    ('Version Store', td.version_store_reserved_mb)\n) AS s(series, value)\nWHERE $__timeFilter(td.collection_time)\n  AND td.server_id IN (${server:csv})\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "tempdb Allocated Size",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "Allocated MB"
+          },
+          "unit": "decmbytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    td.collection_time AS time,\n    'Allocated Size' AS metric,\n    td.total_reserved_mb + td.unallocated_mb AS value\nFROM collect.v_tempdb_stats AS td\nWHERE $__timeFilter(td.collection_time)\n  AND td.server_id IN (${server:csv})\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "tempdb File I/O Latency",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 33
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "tempdb File I/O Latency (ms)"
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    f.collection_time AS time,\n    f.file_name || s.suffix AS metric,\n    s.value AS value\nFROM collect.v_file_io_stats AS f\nCROSS JOIN LATERAL (VALUES\n    (' read', CASE WHEN f.delta_reads > 0\n                   THEN f.delta_stall_read_ms::double precision / f.delta_reads\n                   ELSE 0 END),\n    (' write', CASE WHEN f.delta_writes > 0\n                    THEN f.delta_stall_write_ms::double precision / f.delta_writes\n                    ELSE 0 END)\n) AS s(suffix, value)\nWHERE $__timeFilter(f.collection_time)\n  AND f.server_id IN (${server:csv})\n  AND f.database_name = 'tempdb'\nORDER BY 1\n"
+        }
+      ]
+    }
+  ]
+}

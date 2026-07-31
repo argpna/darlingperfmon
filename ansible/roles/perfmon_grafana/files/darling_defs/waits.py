@@ -1,4 +1,5 @@
-"""Wait Stats dashboard (Darling line).
+"""Wait Stats section (Darling line) - the Wait Stats half of the Wait Analysis dashboard
+(wait_analysis.py), plus the Wait Drill-Down nav-only dashboard it links to.
 
 Upstream ref: ViewerServerTab.Waits.cs / ViewerDataService.Waits.cs.
 
@@ -14,16 +15,14 @@ precedent - Correlated, Uncapturable, and Chain are not ported.
 from ._shared import (
     col_unit,
     collector,
-    dashboard,
     detail_dashboard,
-    flow,
     multi_filter,
     query_var,
     reset_id,
     server_filter,
     server_join,
     server_var,
-    stat,
+    stat_grid,
     subtab,
     table,
     target,
@@ -46,27 +45,22 @@ ORDER BY SUM(ws.delta_wait_time_ms) DESC
 def _trend_sql(metric_expr: str) -> str:
     """Per-collection trend for the selected wait types, capped at upstream's 20 series.
 
-    interval_seconds is the truncate-then-diff epoch idiom upstream uses, and the LAG is
-    partitioned per server so one server's gap cannot skew another's rate.
+    interval_seconds is the truncate-then-diff epoch idiom upstream uses. $server is
+    single-select, so the legend is just the wait type - no server label to disambiguate.
     """
     return f"""
 WITH ranked AS (
-    SELECT
-        ws.server_id,
-        srv.name AS server_label,
-        ws.wait_type
+    SELECT ws.server_id, ws.wait_type
     FROM {collector('wait_stats')} AS ws
-    {server_join('ws.server_id')}
     WHERE $__timeFilter(ws.collection_time)
       AND {server_filter('ws.server_id')}
       AND {multi_filter('ws.wait_type', 'wait_type')}
-    GROUP BY ws.server_id, srv.name, ws.wait_type
+    GROUP BY ws.server_id, ws.wait_type
     ORDER BY SUM(ws.delta_wait_time_ms) DESC
     LIMIT 20
 ),
 windowed AS (
     SELECT
-        r.server_label,
         ws.wait_type,
         ws.collection_time,
         ws.delta_wait_time_ms,
@@ -85,7 +79,7 @@ windowed AS (
 )
 SELECT
     collection_time AS time,
-    server_label || ' - ' || wait_type AS metric,
+    wait_type AS metric,
     {metric_expr} AS value
 FROM windowed
 ORDER BY 1
@@ -183,14 +177,23 @@ LIMIT 500
 """
 
 
-def waits():
-    """Build the Wait Stats dashboard."""
-    reset_id()
-    panels: list[dict] = []
+def wait_type_var():
+    """Build the $wait_type variable, shared by the Wait Stats section and its drill-down."""
+    return query_var(
+        "wait_type",
+        "Wait type",
+        _WAIT_TYPES_QUERY,
+        "Wait types collected over the window, heaviest first. All plots the top 20.",
+    )
 
-    flow(
+
+def wait_stats_section(panels: list[dict], y: int) -> int:
+    """Append the Wait Stats section (row header + grid) to the Wait Analysis dashboard.
+    Returns the y below it, for the caller's next section."""
+    return subtab(
         panels,
-        0,
+        "Wait Stats",
+        y,
         [
             (
                 24,
@@ -236,33 +239,25 @@ def waits():
                     axis_label="ms/sec",
                 ),
             ),
-            # Upstream ref: "Show Queries With This Wait" (ViewerServerTab.DrillDown.cs)
+            # Upstream ref: "Show Queries With This Wait" (ViewerServerTab.DrillDown.cs). A
+            # full-width stat_grid() banner rather than a small hand-placed tile stranded
+            # alone on its own row - the fix for this dashboard's named orphaned-stat issue.
             (
-                6,
+                24,
                 4,
-                lambda x, y, w, h: stat(
-                    "Query Snapshots ($wait_type)",
-                    x,
-                    y,
-                    w,
-                    h,
-                    _SNAPSHOT_COUNT_SQL,
-                    "short",
-                    thresholds(("blue", None)),
-                    links=[_WAIT_DRILL_DOWN_LINK],
+                stat_grid(
+                    [
+                        {
+                            "title": "Query Snapshots ($wait_type)",
+                            "sql": _SNAPSHOT_COUNT_SQL,
+                            "th": thresholds(("blue", None)),
+                        }
+                    ],
+                    cols=1,
                 ),
             ),
         ],
     )
-
-    wait_type_var = query_var(
-        "wait_type",
-        "Wait type",
-        _WAIT_TYPES_QUERY,
-        "Wait types collected over the window, heaviest first. All plots the top 20.",
-    )
-
-    return dashboard(uid("waits"), "Wait Stats", panels, [server_var(), wait_type_var])
 
 
 def wait_drill_down():

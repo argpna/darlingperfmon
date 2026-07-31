@@ -70,8 +70,8 @@
         "options": [],
         "refresh": 1,
         "hide": 0,
-        "multi": true,
-        "includeAll": true,
+        "multi": false,
+        "includeAll": false,
         "sort": 1,
         "description": "Monitored SQL Server instance, from Darling's fleet registry."
       },
@@ -100,6 +100,32 @@
         "includeAll": true,
         "sort": 0,
         "description": "Optional database filter, shared across every Queries sub-tab."
+      },
+      {
+        "name": "long_query_database",
+        "label": "Long Query Database",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "\nSELECT DISTINCT database_name\nFROM collect.long_query_completions\nWHERE server_id IN (${server:csv})\nORDER BY 1\n",
+        "definition": "\nSELECT DISTINCT database_name\nFROM collect.long_query_completions\nWHERE server_id IN (${server:csv})\nORDER BY 1\n",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "refresh": 2,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 0,
+        "description": "Optional database filter, scoped to the Long Queries section only."
       },
       {
         "name": "topn",
@@ -209,6 +235,193 @@
   "panels": [
     {
       "id": 1,
+      "type": "stat",
+      "title": "Active Queries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT COUNT(*) AS v\nFROM collect.v_query_snapshots AS qs\nWHERE qs.server_id IN (${server:csv})\n  AND $__timeFilter(qs.collection_time)\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR qs.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n  AND qs.query_text NOT LIKE 'WAITFOR%'\n"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Top CPU Consumer This Window",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH ranked AS (\n    SELECT sql_handle, database_name, SUM(delta_worker_time) AS total_cpu_us\n    FROM collect.v_query_stats\n    WHERE server_id IN (${server:csv})\n      AND $__timeFilter(collection_time)\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n    GROUP BY sql_handle, database_name\n    ORDER BY total_cpu_us DESC\n    LIMIT 1\n),\nmodule AS (\n    SELECT DISTINCT ON (sql_handle) sql_handle, object_name, schema_name, database_name\n    FROM collect.procedure_stats\n    WHERE server_id IN (${server:csv}) AND sql_handle IS NOT NULL AND sql_handle <> ''\n    ORDER BY sql_handle, collection_time DESC\n)\nSELECT COALESCE(m.database_name || '.' || m.schema_name || '.' || m.object_name,\n                 r.database_name || ' (ad hoc)')\n       || ' - ' || to_char(round((r.total_cpu_us / 1000.0)::numeric, 0), 'FM999999990') || ' ms' AS v\nFROM ranked r\nLEFT JOIN module m ON m.sql_handle = r.sql_handle\n"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Regressions Detected",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH baseline_performance AS (\n    SELECT server_id, database_name, query_id,\n        AVG(avg_cpu_time_us::double precision) / 1000.0 AS avg_cpu_time_ms\n    FROM collect.v_query_store_stats\n    WHERE server_id IN (${server:csv})\n      AND collection_time < $__timeFrom()\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n    GROUP BY server_id, database_name, query_id\n),\nrecent_performance AS (\n    SELECT server_id, database_name, query_id,\n        AVG(avg_cpu_time_us::double precision) / 1000.0 AS avg_cpu_time_ms\n    FROM collect.v_query_store_stats\n    WHERE server_id IN (${server:csv})\n      AND $__timeFilter(collection_time)\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n    GROUP BY server_id, database_name, query_id\n)\nSELECT COUNT(*) AS v\nFROM recent_performance AS r\nJOIN baseline_performance AS b\n  ON b.server_id = r.server_id AND b.database_name = r.database_name AND b.query_id = r.query_id\nWHERE (r.avg_cpu_time_ms - b.avg_cpu_time_ms) * 100.0 / NULLIF(b.avg_cpu_time_ms, 0) > 25\n"
+        }
+      ]
+    },
+    {
+      "id": 4,
       "type": "row",
       "title": "Performance Trends",
       "collapsed": false,
@@ -216,12 +429,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 4
       },
       "panels": []
     },
     {
-      "id": 2,
+      "id": 5,
       "type": "timeseries",
       "title": "Query Duration (elapsed ms/s)",
       "datasource": {
@@ -232,7 +445,7 @@
         "h": 8,
         "w": 6,
         "x": 0,
-        "y": 1
+        "y": 5
       },
       "fieldConfig": {
         "defaults": {
@@ -282,7 +495,7 @@
       ]
     },
     {
-      "id": 3,
+      "id": 6,
       "type": "timeseries",
       "title": "Procedure Duration (elapsed ms/s)",
       "datasource": {
@@ -293,7 +506,7 @@
         "h": 8,
         "w": 6,
         "x": 6,
-        "y": 1
+        "y": 5
       },
       "fieldConfig": {
         "defaults": {
@@ -343,7 +556,7 @@
       ]
     },
     {
-      "id": 4,
+      "id": 7,
       "type": "timeseries",
       "title": "Query Store Duration (elapsed ms/s)",
       "datasource": {
@@ -354,7 +567,7 @@
         "h": 8,
         "w": 6,
         "x": 12,
-        "y": 1
+        "y": 5
       },
       "fieldConfig": {
         "defaults": {
@@ -404,7 +617,7 @@
       ]
     },
     {
-      "id": 5,
+      "id": 8,
       "type": "timeseries",
       "title": "Execution Count (executions/s)",
       "datasource": {
@@ -415,7 +628,7 @@
         "h": 8,
         "w": 6,
         "x": 18,
-        "y": 1
+        "y": 5
       },
       "fieldConfig": {
         "defaults": {
@@ -465,7 +678,7 @@
       ]
     },
     {
-      "id": 6,
+      "id": 9,
       "type": "row",
       "title": "Active Queries",
       "collapsed": false,
@@ -473,12 +686,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 9
+        "y": 13
       },
       "panels": []
     },
     {
-      "id": 7,
+      "id": 10,
       "type": "timeseries",
       "title": "Active Sessions (hourly)",
       "datasource": {
@@ -489,7 +702,7 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 10
+        "y": 14
       },
       "fieldConfig": {
         "defaults": {
@@ -539,7 +752,7 @@
       ]
     },
     {
-      "id": 8,
+      "id": 11,
       "type": "table",
       "title": "Active queries (stored sp_WhoIsActive-style snapshots)",
       "datasource": {
@@ -550,7 +763,7 @@
         "h": 14,
         "w": 24,
         "x": 0,
-        "y": 16
+        "y": 20
       },
       "fieldConfig": {
         "defaults": {
@@ -606,7 +819,7 @@
       "description": "Historical snapshots from collect.query_snapshots, bound by the dashboard time range. Current Active Queries (live DMV query against the monitored server) is not portable here - see the module docstring."
     },
     {
-      "id": 9,
+      "id": 12,
       "type": "row",
       "title": "Top Queries by Duration",
       "collapsed": false,
@@ -614,12 +827,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 30
+        "y": 34
       },
       "panels": []
     },
     {
-      "id": 10,
+      "id": 13,
       "type": "timeseries",
       "title": "Total CPU trend (hourly, fixed metric)",
       "datasource": {
@@ -630,7 +843,7 @@
         "h": 6,
         "w": 16,
         "x": 0,
-        "y": 31
+        "y": 35
       },
       "fieldConfig": {
         "defaults": {
@@ -680,7 +893,7 @@
       ]
     },
     {
-      "id": 11,
+      "id": 14,
       "type": "table",
       "title": "CPU by database",
       "datasource": {
@@ -691,7 +904,7 @@
         "h": 6,
         "w": 8,
         "x": 16,
-        "y": 31
+        "y": 35
       },
       "fieldConfig": {
         "defaults": {
@@ -772,7 +985,7 @@
       ]
     },
     {
-      "id": 12,
+      "id": 15,
       "type": "table",
       "title": "Top queries by duration",
       "datasource": {
@@ -783,7 +996,7 @@
         "h": 16,
         "w": 24,
         "x": 0,
-        "y": 37
+        "y": 41
       },
       "fieldConfig": {
         "defaults": {
@@ -989,7 +1202,7 @@
       ]
     },
     {
-      "id": 13,
+      "id": 16,
       "type": "table",
       "title": "Comparison vs baseline ($comparison_baseline)",
       "datasource": {
@@ -1000,7 +1213,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 53
+        "y": 57
       },
       "fieldConfig": {
         "defaults": {
@@ -1084,7 +1297,7 @@
       "description": "Top 100 (by executions) queries in the current window unioned with the top 100 in the baseline window, full-outer-joined so NEW/GONE queries surface."
     },
     {
-      "id": 14,
+      "id": 17,
       "type": "row",
       "title": "Top Procedures by Duration",
       "collapsed": false,
@@ -1092,12 +1305,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 63
+        "y": 67
       },
       "panels": []
     },
     {
-      "id": 15,
+      "id": 18,
       "type": "timeseries",
       "title": "Total CPU trend (hourly, fixed metric)",
       "datasource": {
@@ -1108,7 +1321,7 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 64
+        "y": 68
       },
       "fieldConfig": {
         "defaults": {
@@ -1158,7 +1371,7 @@
       ]
     },
     {
-      "id": 16,
+      "id": 19,
       "type": "table",
       "title": "Top procedures by duration",
       "datasource": {
@@ -1169,7 +1382,7 @@
         "h": 14,
         "w": 24,
         "x": 0,
-        "y": 70
+        "y": 74
       },
       "fieldConfig": {
         "defaults": {
@@ -1255,7 +1468,7 @@
       ]
     },
     {
-      "id": 17,
+      "id": 20,
       "type": "table",
       "title": "Comparison vs baseline ($comparison_baseline)",
       "datasource": {
@@ -1266,7 +1479,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 84
+        "y": 88
       },
       "fieldConfig": {
         "defaults": {
@@ -1349,7 +1562,7 @@
       ]
     },
     {
-      "id": 18,
+      "id": 21,
       "type": "row",
       "title": "Query Store by Duration",
       "collapsed": false,
@@ -1357,12 +1570,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 94
+        "y": 98
       },
       "panels": []
     },
     {
-      "id": 19,
+      "id": 22,
       "type": "timeseries",
       "title": "Total CPU trend (hourly, fixed metric)",
       "datasource": {
@@ -1373,7 +1586,7 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 95
+        "y": 99
       },
       "fieldConfig": {
         "defaults": {
@@ -1423,7 +1636,7 @@
       ]
     },
     {
-      "id": 20,
+      "id": 23,
       "type": "table",
       "title": "Top queries by duration (Query Store)",
       "datasource": {
@@ -1434,7 +1647,7 @@
         "h": 16,
         "w": 24,
         "x": 0,
-        "y": 101
+        "y": 105
       },
       "fieldConfig": {
         "defaults": {
@@ -1553,7 +1766,7 @@
       "description": "replica_role is a GROUP BY key, not aggregated away, so a shared AG Query Store shows one row per replica role instead of blending primary and secondary workload."
     },
     {
-      "id": 21,
+      "id": 24,
       "type": "table",
       "title": "Comparison vs baseline ($comparison_baseline)",
       "datasource": {
@@ -1564,7 +1777,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 117
+        "y": 121
       },
       "fieldConfig": {
         "defaults": {
@@ -1647,7 +1860,7 @@
       ]
     },
     {
-      "id": 22,
+      "id": 25,
       "type": "row",
       "title": "Query Store Regressions",
       "collapsed": false,
@@ -1655,12 +1868,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 127
+        "y": 131
       },
       "panels": []
     },
     {
-      "id": 23,
+      "id": 26,
       "type": "table",
       "title": "Query Store regressions (recent vs unbounded baseline)",
       "datasource": {
@@ -1671,7 +1884,7 @@
         "h": 12,
         "w": 24,
         "x": 0,
-        "y": 128
+        "y": 132
       },
       "fieldConfig": {
         "defaults": {
@@ -1798,7 +2011,7 @@
       "description": "Baseline is every Query Store capture before the dashboard's window start (unbounded lookback, bounded in practice by raw retention); recent is the window itself. Only queries with >25% CPU regression are included (the upstream TVF's actual gate, not its doc comment's claim)."
     },
     {
-      "id": 24,
+      "id": 27,
       "type": "row",
       "title": "Query Heatmap",
       "collapsed": false,
@@ -1806,12 +2019,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 140
+        "y": 144
       },
       "panels": []
     },
     {
-      "id": 25,
+      "id": 28,
       "type": "heatmap",
       "title": "Query heatmap (${heatmap_metric} distribution over time)",
       "datasource": {
@@ -1822,7 +2035,7 @@
         "h": 12,
         "w": 16,
         "x": 0,
-        "y": 141
+        "y": 145
       },
       "options": {
         "calculate": false,
@@ -1895,7 +2108,7 @@
       "description": "Each cell = number of query executions in that metric bucket for the 5-minute window. Duration/CPU buckets are in ms; Reads/Writes in pages. Y-axis runs 0 (fastest/smallest) to 6 (slowest/largest). Raw-only - see the module docstring."
     },
     {
-      "id": 26,
+      "id": 29,
       "type": "table",
       "title": "Top query per bucket (${heatmap_metric}, by impact)",
       "datasource": {
@@ -1906,7 +2119,7 @@
         "h": 12,
         "w": 8,
         "x": 16,
-        "y": 141
+        "y": 145
       },
       "fieldConfig": {
         "defaults": {
@@ -1955,6 +2168,262 @@
         }
       ],
       "description": "Top query (by total_impact = metric_value * exec_count) in each bucket across the selected time range. Ordered highest bucket first to align with the heatmap Y-axis."
+    },
+    {
+      "id": 30,
+      "type": "row",
+      "title": "Long Queries",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 157
+      },
+      "panels": []
+    },
+    {
+      "id": 31,
+      "type": "table",
+      "title": "Trace Status",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 158
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Trace Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "ON": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "OFF": {
+                        "color": "red",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    srv.name AS \"Server\",\n    CASE WHEN COALESCE(\n        (SELECT s.enabled FROM config.config_collector_schedules AS s\n         WHERE s.collector_name = 'long_query_completions'\n           AND s.server_id = srv.server_id),\n        (SELECT s.enabled FROM config.config_collector_schedules AS s\n         WHERE s.collector_name = 'long_query_completions'\n           AND s.server_id IS NULL),\n        false\n    ) THEN 'ON' ELSE 'OFF' END AS \"Trace Status\"\nFROM config.config_monitored_servers AS srv\nWHERE srv.is_enabled\n  AND srv.server_id IN (${server:csv})\nORDER BY srv.name\n"
+        }
+      ],
+      "description": "Opt-in collector, defaults OFF. Enable it in the collector schedule config."
+    },
+    {
+      "id": 32,
+      "type": "table",
+      "title": "Long-Running Query Completions",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 16,
+        "w": 24,
+        "x": 0,
+        "y": 163
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Result"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Abort": {
+                        "color": "red",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Event Type"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "attention": {
+                        "color": "orange",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Duration"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Event Time",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    srv.name AS \"Server\",\n    lqc.event_time AS \"Event Time\",\n    lqc.event_type AS \"Event Type\",\n    lqc.duration_microseconds / 1000.0 AS \"Duration\",\n    lqc.cpu_time_microseconds / 1000.0 AS \"CPU\",\n    lqc.logical_reads AS \"Logical Reads\",\n    lqc.physical_reads AS \"Physical Reads\",\n    lqc.writes AS \"Writes\",\n    lqc.row_count AS \"Rows\",\n    lqc.result AS \"Result\",\n    lqc.database_name AS \"Database\",\n    lqc.object_name AS \"Object\",\n    lqc.statement_text AS \"Statement\",\n    lqc.session_id AS \"Session\",\n    lqc.client_app_name AS \"Application\",\n    lqc.server_principal_name AS \"Login\",\n    lqc.query_hash AS \"Query Hash\"\nFROM collect.long_query_completions AS lqc\nJOIN config.config_monitored_servers AS srv ON srv.server_id = lqc.server_id\nWHERE $__timeFilter(lqc.collection_time)\n  AND lqc.server_id IN (${server:csv})\n  AND (cardinality(ARRAY[${long_query_database:sqlstring}]::text[]) = 0 OR lqc.database_name = ANY(ARRAY[${long_query_database:sqlstring}]::text[]))\nORDER BY lqc.event_time DESC\nLIMIT 200\n"
+        }
+      ],
+      "description": "Attentions (cancels/timeouts) carry no duration - the event has none."
     }
   ]
 }

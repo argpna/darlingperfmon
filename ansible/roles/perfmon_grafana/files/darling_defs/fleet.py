@@ -322,7 +322,7 @@ FROM fleet
 ORDER BY fleet_score DESC""")
 
 _DRILLDOWN_URL = (
-    f"/d/{uid('daily-summary')}?${{__url_time_range}}"
+    f"/d/{uid('overview')}?${{__url_time_range}}"
     "&var-server=${__data.fields.server_id}"
 )
 
@@ -340,7 +340,7 @@ def fleet():
 
     overrides = [
         col_hidden("server_id"),
-        col_datalink("Server", "Open Daily Summary", _DRILLDOWN_URL),
+        col_datalink("Server", "Open Overview", _DRILLDOWN_URL),
         status_colors(
             "Status",
             {
@@ -377,7 +377,7 @@ def fleet():
             sort_by=[{"displayName": "Severity", "desc": True}],
             description=(
                 "One row per monitored server - click any column header to sort. "
-                "Click a server's name to open its Daily Summary."
+                "Click a server's name to open its Overview."
             ),
         )
     )

@@ -191,7 +191,7 @@ def object_sizes():
         "Object Sizes & Growth",
         panels,
         [
-            server_var(multi=False),
+            server_var(),
             text_var("database", "Database", "*"),
             custom_var(
                 "window",
