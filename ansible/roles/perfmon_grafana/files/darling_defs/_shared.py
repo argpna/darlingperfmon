@@ -17,6 +17,7 @@ from panel_kit import (  # noqa: E402
     col_hidden,
     col_thresholds,
     col_unit,
+    series_style,
     status_colors,
     text_var,
 )
@@ -582,6 +583,7 @@ __all__ = [
     "reset_id",
     "rollup",
     "row",
+    "series_style",
     "SERVER_REGISTRY",
     "server_filter",
     "server_join",

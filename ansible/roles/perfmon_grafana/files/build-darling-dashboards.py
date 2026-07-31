@@ -35,6 +35,7 @@ from darling_defs.fleet import fleet  # noqa: E402
 from darling_defs.latch_spinlock import latch_spinlock  # noqa: E402
 from darling_defs.long_queries import long_queries  # noqa: E402
 from darling_defs.memory import memory  # noqa: E402
+from darling_defs.overview import overview  # noqa: E402
 from darling_defs.perfmon import perfmon  # noqa: E402
 from darling_defs.queries import (  # noqa: E402
     procedure_history,
@@ -79,6 +80,7 @@ DASHBOARDS = [
     latch_spinlock,
     long_queries,
     memory,
+    overview,
     perfmon,
     procedure_history,
     queries,

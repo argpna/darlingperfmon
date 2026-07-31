@@ -45,6 +45,7 @@ class PanelKit:
         fill: int = 12,
         axis_label: str | None = None,
         description: str | None = None,
+        overrides: list[dict] | None = None,
     ) -> dict:
         """Build a timeseries panel."""
         custom = {
@@ -72,7 +73,7 @@ class PanelKit:
             "title": title,
             "datasource": self._ds,
             "gridPos": {"h": h, "w": w, "x": x, "y": y},
-            "fieldConfig": {"defaults": defaults, "overrides": []},
+            "fieldConfig": {"defaults": defaults, "overrides": overrides or []},
             "options": {
                 "legend": {
                     "displayMode": "list",
@@ -529,6 +530,48 @@ def col_datalinks(col, links):
             }
         ],
     }
+
+
+def series_style(
+    name,
+    color=None,
+    fill_below_to=None,
+    dash=False,
+    points=False,
+    line=False,
+    line_width=None,
+    hide_legend=False,
+    hide_tooltip=False,
+):
+    """Timeseries field override keyed by series name (the pivoted `metric` value) -
+    color, fillBelowTo pairing, dashed line, or points-only markers."""
+    properties = []
+    if color:
+        properties.append(
+            {"id": "color", "value": {"mode": "fixed", "fixedColor": color}}
+        )
+    if fill_below_to:
+        properties.append({"id": "custom.fillBelowTo", "value": fill_below_to})
+    if dash:
+        properties.append(
+            {"id": "custom.lineStyle", "value": {"fill": "dash", "dash": [10, 10]}}
+        )
+    if points:
+        properties.append({"id": "custom.drawStyle", "value": "points"})
+        properties.append({"id": "custom.pointSize", "value": 8})
+    elif line or fill_below_to or dash:
+        # Keep a band/mean series a line even on a bars=True panel.
+        properties.append({"id": "custom.drawStyle", "value": "line"})
+    if line_width is not None:
+        properties.append({"id": "custom.lineWidth", "value": line_width})
+    if hide_legend or hide_tooltip:
+        properties.append(
+            {
+                "id": "custom.hideFrom",
+                "value": {"legend": hide_legend, "tooltip": hide_tooltip, "viz": False},
+            }
+        )
+    return {"matcher": {"id": "byName", "options": name}, "properties": properties}
 
 
 def text_var(name, label, default):
