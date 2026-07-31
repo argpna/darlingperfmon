@@ -5,11 +5,17 @@ Upstream ref: ViewerServerTab.Waits.cs / ViewerDataService.Waits.cs.
 The upstream tab is a wait-type picker driving one chart with a two-option metric combo.
 The picker becomes $wait_type; the combo's options become their own panels, since a Grafana
 panel has no combo and showing both costs nothing.
+
+Upstream ref: WaitDrillDownWindow.xaml.cs. wait_drill_down() below only implements the
+Filtered path of WaitDrillDownHelper.Classify, matching dashboard_defs/wait_drill_down.py's
+precedent - Correlated, Uncapturable, and Chain are not ported.
 """
 
 from ._shared import (
+    col_unit,
     collector,
     dashboard,
+    detail_dashboard,
     flow,
     multi_filter,
     query_var,
@@ -17,7 +23,11 @@ from ._shared import (
     server_filter,
     server_join,
     server_var,
+    stat,
+    subtab,
+    table,
     target,
+    thresholds,
     timeseries,
     uid,
 )
@@ -100,6 +110,78 @@ _AVG_MS_PER_WAIT = """CASE
         ELSE 0
     END"""
 
+# Upstream ref: GetQuerySnapshotsByWaitTypeAsync (ViewerDataService.QuerySnapshots.cs)
+# No $database filter here - waits() has no $database var; wait_drill_down() adds its own.
+_SNAPSHOT_COUNT_SQL = f"""
+SELECT COUNT(*) AS "Query Snapshots"
+FROM {collector('query_snapshots')} AS qs
+WHERE $__timeFilter(qs.collection_time)
+  AND {server_filter('qs.server_id')}
+  AND {multi_filter('qs.wait_type', 'wait_type')}
+  AND qs.query_text NOT LIKE 'WAITFOR%'
+"""
+
+_WAIT_DRILL_DOWN_LINK = {
+    "title": "View Query Snapshots",
+    "url": "/d/darling-wait-drill-down?${__url_time_range}"
+    "&var-server=$server&var-wait_type=$wait_type",
+    "targetBlank": False,
+}
+
+_DATABASE_VAR_SQL = f"""
+SELECT DISTINCT qs.database_name
+FROM {collector('query_snapshots')} AS qs
+WHERE $__timeFilter(qs.collection_time) AND {server_filter('qs.server_id')}
+  AND qs.database_name IS NOT NULL
+ORDER BY 1
+"""
+
+_WAIT_DRILL_DOWN_SQL = f"""
+SELECT
+    srv.name AS "Server",
+    qs.collection_time AS "Collected",
+    qs.session_id AS "SPID",
+    qs.database_name AS "Database",
+    qs.login_name AS "Login",
+    qs.host_name AS "Host",
+    qs.program_name AS "Program",
+    qs.status AS "Status",
+    qs.elapsed_time_formatted AS "Elapsed",
+    qs.cpu_time_ms AS "CPU (ms)",
+    qs.logical_reads AS "Logical Reads",
+    qs.reads AS "Reads",
+    qs.writes AS "Writes",
+    qs.wait_type AS "Wait Type",
+    qs.wait_time_ms AS "Wait (ms)",
+    qs.wait_resource AS "Wait Resource",
+    qs.blocking_session_id AS "Blocking",
+    qs.dop AS "DOP",
+    qs.parallel_worker_count AS "Workers",
+    qs.granted_query_memory_gb AS "Memory (GB)",
+    qs.requested_memory_mb AS "Req Mem (MB)",
+    qs.used_memory_mb AS "Used Mem (MB)",
+    qs.max_used_memory_mb AS "Max Used Mem (MB)",
+    qs.tempdb_current_mb AS "tempdb Cur (MB)",
+    qs.tempdb_allocations_mb AS "tempdb Alloc (MB)",
+    qs.tran_log_used_mb AS "Tran Log (MB)",
+    qs.tran_start_time AS "Tran Start",
+    qs.request_id AS "Req ID",
+    qs.transaction_isolation_level AS "Isolation",
+    qs.open_transaction_count AS "Open Tran",
+    qs.percent_complete AS "% Done",
+    qs.query_hash AS "Query Hash",
+    qs.query_text AS "Query Text"
+FROM {collector('query_snapshots')} AS qs
+{server_join('qs.server_id')}
+WHERE $__timeFilter(qs.collection_time)
+  AND {server_filter('qs.server_id')}
+  AND {multi_filter('qs.wait_type', 'wait_type')}
+  AND {multi_filter('qs.database_name', 'database')}
+  AND qs.query_text NOT LIKE 'WAITFOR%'
+ORDER BY qs.collection_time DESC, qs.cpu_time_ms DESC
+LIMIT 500
+"""
+
 
 def waits():
     """Build the Wait Stats dashboard."""
@@ -154,6 +236,22 @@ def waits():
                     axis_label="ms/sec",
                 ),
             ),
+            # Upstream ref: "Show Queries With This Wait" (ViewerServerTab.DrillDown.cs)
+            (
+                6,
+                4,
+                lambda x, y, w, h: stat(
+                    "Query Snapshots ($wait_type)",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _SNAPSHOT_COUNT_SQL,
+                    "short",
+                    thresholds(("blue", None)),
+                    links=[_WAIT_DRILL_DOWN_LINK],
+                ),
+            ),
         ],
     )
 
@@ -165,3 +263,66 @@ def waits():
     )
 
     return dashboard(uid("waits"), "Wait Stats", panels, [server_var(), wait_type_var])
+
+
+def wait_drill_down():
+    """Query snapshots matching the selected wait type(s).
+
+    Reached from the Wait Stats dashboard's "Query Snapshots" linking stat tile.
+    """
+    reset_id()
+    panels: list[dict] = []
+
+    subtab(
+        panels,
+        "Query Snapshots",
+        0,
+        [
+            (
+                24,
+                16,
+                lambda x, y, w, h: table(
+                    "Query snapshots with the selected wait type",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _WAIT_DRILL_DOWN_SQL,
+                    overrides=[
+                        col_unit("CPU (ms)", "ms"),
+                        col_unit("Wait (ms)", "ms"),
+                    ],
+                    sort_by=[{"displayName": "Collected", "desc": True}],
+                    description=(
+                        "sp_WhoIsActive snapshots whose wait_type matches $wait_type, top "
+                        "500 by collection time then CPU. Only the Filtered classification "
+                        "is ported."
+                    ),
+                ),
+            ),
+        ],
+    )
+
+    database_var = query_var(
+        "database",
+        "Database",
+        _DATABASE_VAR_SQL,
+        "Databases seen in query snapshots over the window.",
+    )
+
+    return detail_dashboard(
+        uid("wait-drill-down"),
+        "Wait Drill-Down",
+        panels,
+        [
+            server_var(),
+            query_var(
+                "wait_type",
+                "Wait type",
+                _WAIT_TYPES_QUERY,
+                "Wait types collected over the window, heaviest first.",
+            ),
+            database_var,
+        ],
+        time_from="now-3h",
+    )

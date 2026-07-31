@@ -289,6 +289,74 @@
           "rawSql": "\nWITH ranked AS (\n    SELECT\n        ws.server_id,\n        srv.name AS server_label,\n        ws.wait_type\n    FROM collect.v_wait_stats AS ws\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = ws.server_id\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${wait_type:sqlstring}]::text[]) = 0 OR ws.wait_type = ANY(ARRAY[${wait_type:sqlstring}]::text[]))\n    GROUP BY ws.server_id, srv.name, ws.wait_type\n    ORDER BY SUM(ws.delta_wait_time_ms) DESC\n    LIMIT 20\n),\nwindowed AS (\n    SELECT\n        r.server_label,\n        ws.wait_type,\n        ws.collection_time,\n        ws.delta_wait_time_ms,\n        ws.delta_signal_wait_time_ms,\n        ws.delta_waiting_tasks,\n        EXTRACT(EPOCH FROM (date_trunc('second', ws.collection_time)\n            - date_trunc('second', LAG(ws.collection_time) OVER (\n                PARTITION BY ws.server_id, ws.wait_type\n                ORDER BY ws.collection_time)))) AS interval_seconds\n    FROM collect.v_wait_stats AS ws\n    JOIN ranked AS r\n      ON r.server_id = ws.server_id\n     AND r.wait_type = ws.wait_type\n    WHERE $__timeFilter(ws.collection_time)\n      AND ws.server_id IN (${server:csv})\n)\nSELECT\n    collection_time AS time,\n    server_label || ' - ' || wait_type AS metric,\n    CASE\n        WHEN interval_seconds > 0\n        THEN delta_signal_wait_time_ms::double precision / interval_seconds\n        ELSE 0\n    END AS value\nFROM windowed\nORDER BY 1\n"
         }
       ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Query Snapshots ($wait_type)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 19
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT COUNT(*) AS \"Query Snapshots\"\nFROM collect.v_query_snapshots AS qs\nWHERE $__timeFilter(qs.collection_time)\n  AND qs.server_id IN (${server:csv})\n  AND (cardinality(ARRAY[${wait_type:sqlstring}]::text[]) = 0 OR qs.wait_type = ANY(ARRAY[${wait_type:sqlstring}]::text[]))\n  AND qs.query_text NOT LIKE 'WAITFOR%'\n"
+        }
+      ],
+      "links": [
+        {
+          "title": "View Query Snapshots",
+          "url": "/d/darling-wait-drill-down?${__url_time_range}&var-server=$server&var-wait_type=$wait_type",
+          "targetBlank": false
+        }
+      ]
     }
   ]
 }

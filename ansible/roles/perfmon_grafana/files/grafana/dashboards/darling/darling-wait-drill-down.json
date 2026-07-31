@@ -1,0 +1,227 @@
+{
+  "uid": "darling-wait-drill-down",
+  "title": "Perfmon (Darling) - Wait Drill-Down",
+  "tags": [
+    "perfmon-darling-detail",
+    "nav-only"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "refresh": "",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon-darling"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon (Darling) Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      },
+      {
+        "name": "wait_type",
+        "label": "Wait type",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "\nSELECT ws.wait_type\nFROM collect.v_wait_stats AS ws\nWHERE $__timeFilter(ws.collection_time)\n  AND ws.server_id IN (${server:csv})\nGROUP BY ws.wait_type\nORDER BY SUM(ws.delta_wait_time_ms) DESC\n",
+        "definition": "\nSELECT ws.wait_type\nFROM collect.v_wait_stats AS ws\nWHERE $__timeFilter(ws.collection_time)\n  AND ws.server_id IN (${server:csv})\nGROUP BY ws.wait_type\nORDER BY SUM(ws.delta_wait_time_ms) DESC\n",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "refresh": 2,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 0,
+        "description": "Wait types collected over the window, heaviest first."
+      },
+      {
+        "name": "database",
+        "label": "Database",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "\nSELECT DISTINCT qs.database_name\nFROM collect.v_query_snapshots AS qs\nWHERE $__timeFilter(qs.collection_time) AND qs.server_id IN (${server:csv})\n  AND qs.database_name IS NOT NULL\nORDER BY 1\n",
+        "definition": "\nSELECT DISTINCT qs.database_name\nFROM collect.v_query_snapshots AS qs\nWHERE $__timeFilter(qs.collection_time) AND qs.server_id IN (${server:csv})\n  AND qs.database_name IS NOT NULL\nORDER BY 1\n",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "refresh": 2,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 0,
+        "description": "Databases seen in query snapshots over the window."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Query Snapshots",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Query snapshots with the selected wait type",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 16,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU (ms)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Wait (ms)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Collected",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    srv.name AS \"Server\",\n    qs.collection_time AS \"Collected\",\n    qs.session_id AS \"SPID\",\n    qs.database_name AS \"Database\",\n    qs.login_name AS \"Login\",\n    qs.host_name AS \"Host\",\n    qs.program_name AS \"Program\",\n    qs.status AS \"Status\",\n    qs.elapsed_time_formatted AS \"Elapsed\",\n    qs.cpu_time_ms AS \"CPU (ms)\",\n    qs.logical_reads AS \"Logical Reads\",\n    qs.reads AS \"Reads\",\n    qs.writes AS \"Writes\",\n    qs.wait_type AS \"Wait Type\",\n    qs.wait_time_ms AS \"Wait (ms)\",\n    qs.wait_resource AS \"Wait Resource\",\n    qs.blocking_session_id AS \"Blocking\",\n    qs.dop AS \"DOP\",\n    qs.parallel_worker_count AS \"Workers\",\n    qs.granted_query_memory_gb AS \"Memory (GB)\",\n    qs.requested_memory_mb AS \"Req Mem (MB)\",\n    qs.used_memory_mb AS \"Used Mem (MB)\",\n    qs.max_used_memory_mb AS \"Max Used Mem (MB)\",\n    qs.tempdb_current_mb AS \"tempdb Cur (MB)\",\n    qs.tempdb_allocations_mb AS \"tempdb Alloc (MB)\",\n    qs.tran_log_used_mb AS \"Tran Log (MB)\",\n    qs.tran_start_time AS \"Tran Start\",\n    qs.request_id AS \"Req ID\",\n    qs.transaction_isolation_level AS \"Isolation\",\n    qs.open_transaction_count AS \"Open Tran\",\n    qs.percent_complete AS \"% Done\",\n    qs.query_hash AS \"Query Hash\",\n    qs.query_text AS \"Query Text\"\nFROM collect.v_query_snapshots AS qs\nJOIN config.config_monitored_servers AS srv ON srv.server_id = qs.server_id\nWHERE $__timeFilter(qs.collection_time)\n  AND qs.server_id IN (${server:csv})\n  AND (cardinality(ARRAY[${wait_type:sqlstring}]::text[]) = 0 OR qs.wait_type = ANY(ARRAY[${wait_type:sqlstring}]::text[]))\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR qs.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n  AND qs.query_text NOT LIKE 'WAITFOR%'\nORDER BY qs.collection_time DESC, qs.cpu_time_ms DESC\nLIMIT 500\n"
+        }
+      ],
+      "description": "sp_WhoIsActive snapshots whose wait_type matches $wait_type, top 500 by collection time then CPU. Only the Filtered classification is ported - see the module docstring."
+    }
+  ]
+}

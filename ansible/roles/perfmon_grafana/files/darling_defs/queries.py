@@ -14,10 +14,13 @@ fixed-metric CPU trend use tiered().
 
 from ._shared import (
     CAGG_TIME_COL,
+    col_datalink,
     col_gauge_bar,
+    col_hidden,
     collector,
     custom_var,
     dashboard,
+    detail_dashboard,
     flow,
     heatmap,
     multi_filter,
@@ -31,6 +34,7 @@ from ._shared import (
     subtab,
     table,
     target,
+    text_var,
     tiered,
     timeseries,
     uid,
@@ -38,6 +42,48 @@ from ._shared import (
 
 _HOURLY_SECONDS = 3600.0
 _DAILY_SECONDS = 86400.0
+
+# Upstream ref: ViewerServerTab.History.cs (WireHistoryDrillDowns)
+# Double-click becomes a data link on the identity column; server_id travels as a hidden
+# column since $server is multi-select but each history window is single-server.
+_QUERY_HISTORY_LINK = col_datalink(
+    "Query Hash",
+    "View query history",
+    "/d/darling-query-stats-history?${__url_time_range}"
+    "&var-server=${__data.fields.server_id}"
+    "&var-database=${__data.fields.Database}"
+    '&var-query_hash=${__data.fields["Query Hash"]}',
+)
+
+_PROCEDURE_HISTORY_LINK = col_datalink(
+    "Procedure",
+    "View procedure history",
+    "/d/darling-procedure-history?${__url_time_range}"
+    "&var-server=${__data.fields.server_id}"
+    "&var-database=${__data.fields.Database}"
+    "&var-schema=${__data.fields.Schema}"
+    "&var-object_name=${__data.fields.Procedure}",
+)
+
+_QUERY_STORE_HISTORY_LINK = col_datalink(
+    "Query ID",
+    "View Query Store history",
+    "/d/darling-query-store-history?${__url_time_range}"
+    "&var-server=${__data.fields.server_id}"
+    "&var-database=${__data.fields.Database}"
+    '&var-query_id=${__data.fields["Query ID"]}'
+    '&var-plan_id=${__data.fields["Plan ID"]}',
+)
+
+_QUERY_STORE_REGRESSION_HISTORY_LINK = col_datalink(
+    "Query ID",
+    "View Query Store history",
+    "/d/darling-query-store-history?${__url_time_range}"
+    "&var-server=${__data.fields.server_id}"
+    "&var-database=${__data.fields.Database}"
+    '&var-query_id=${__data.fields["Query ID"]}'
+    "&var-plan_id=*",
+)
 
 _DATABASE_VAR_SQL = f"""
 SELECT DISTINCT database_name
@@ -331,6 +377,7 @@ module AS (
     WHERE rn = 1
 )
 SELECT
+    r.server_id AS "server_id",
     srv.name AS "Server",
     r.database_name AS "Database",
     COALESCE(m.database_name || '.' || m.schema_name || '.' || m.object_name, 'ad hoc') AS "Module",
@@ -528,6 +575,7 @@ ORDER BY "Duration Delta %" DESC NULLS LAST
 # Upstream ref: TopProceduresSql (ViewerDataService.ProcedureStats.cs).
 _TOP_PROCEDURES_SQL = f"""
 SELECT
+    MAX(ps.server_id) AS "server_id",
     srv.name AS "Server",
     ps.database_name AS "Database",
     ps.schema_name AS "Schema",
@@ -731,6 +779,7 @@ WITH ranked AS (
     LIMIT ${{topn}} + 5
 )
 SELECT
+    r.server_id AS "server_id",
     srv.name AS "Server",
     r.database_name AS "Database",
     r.query_id AS "Query ID",
@@ -934,6 +983,7 @@ recent_performance AS (
     GROUP BY server_id, database_name, query_id
 )
 SELECT
+    r.server_id AS "server_id",
     srv.name AS "Server",
     r.database_name AS "Database",
     r.query_id AS "Query ID",
@@ -1098,6 +1148,297 @@ ORDER BY bt.bucket_index DESC
 """
 
 
+# Upstream ref: ProcedureHistoryWindow.xaml.cs / QueryStatsHistoryWindow.xaml.cs /
+# QueryStoreHistoryWindow.xaml.cs, backed by ViewerDataService.ItemHistory.cs. All three honor
+# $__timeFilter (upstream's GetWindowUtc()) - unlike WaitDrillDownWindow's fixed +/-30min.
+def _identity_guard(var: str, col: str) -> str:
+    """Sentinel-guarded exact-match filter for a single-value identity key, same idiom as
+    the optional-filter convention - a cold arrival with no value yet reads as "no filter"
+    instead of erroring, same as blocking.py's deadlock_id guard."""
+    return (
+        f"(${{{var}:sqlstring}} = '*' OR ${{{var}:sqlstring}} = '' "
+        f"OR {col} = ${{{var}:sqlstring}})"
+    )
+
+
+_HISTORY_METRIC_OPTIONS = [
+    "Avg CPU (ms)",
+    "Avg Duration (ms)",
+    "Avg Reads",
+    "Executions (delta)",
+    "CPU (delta ms)",
+    "Reads (delta)",
+    "Spills (delta)",
+]
+
+
+def _history_metric_expr(prefix: str = "") -> str:
+    """CASE mapping shared by procedure/query history charts - both tables use the same
+    delta_* column names, so one expression serves both (see _shared.py's Darling delta_
+    column note)."""
+    p = prefix
+    return f"""CASE ${{history_metric:sqlstring}}
+        WHEN 'Avg CPU (ms)' THEN ({p}delta_worker_time / 1000.0) / NULLIF({p}delta_execution_count, 0)
+        WHEN 'Avg Duration (ms)' THEN ({p}delta_elapsed_time / 1000.0) / NULLIF({p}delta_execution_count, 0)
+        WHEN 'Avg Reads' THEN {p}delta_logical_reads::double precision / NULLIF({p}delta_execution_count, 0)
+        WHEN 'Executions (delta)' THEN {p}delta_execution_count::double precision
+        WHEN 'CPU (delta ms)' THEN {p}delta_worker_time / 1000.0
+        WHEN 'Reads (delta)' THEN {p}delta_logical_reads::double precision
+        WHEN 'Spills (delta)' THEN {p}delta_spills::double precision
+        ELSE ({p}delta_worker_time / 1000.0) / NULLIF({p}delta_execution_count, 0)
+    END"""
+
+
+# Upstream ref: ProcStatsHistorySql (ViewerDataService.ItemHistory.cs)
+# procedure_stats has no sample_interval_seconds column, so it's derived via LAG() in-query.
+_PROCEDURE_HISTORY_WHERE = f"""
+{server_filter('ps.server_id')}
+  AND {_identity_guard('database', 'ps.database_name')}
+  AND {_identity_guard('schema', 'ps.schema_name')}
+  AND {_identity_guard('object_name', 'ps.object_name')}
+  AND $__timeFilter(ps.collection_time)
+"""
+
+_PROCEDURE_HISTORY_SQL = f"""
+SELECT
+    ps.collection_time AS "Collection Time",
+    ps.last_execution_time AS "Last Execution",
+    ps.cached_time AS "Cached Time",
+    ps.object_type AS "Object Type",
+    ps.delta_execution_count AS "Exec Delta",
+    ps.execution_count AS "Total Executions",
+    ps.delta_worker_time / 1000.0 AS "CPU Delta (ms)",
+    ps.delta_elapsed_time / 1000.0 AS "Duration Delta (ms)",
+    (ps.delta_worker_time / 1000.0) / NULLIF(ps.delta_execution_count, 0) AS "Avg CPU (ms)",
+    (ps.delta_elapsed_time / 1000.0) / NULLIF(ps.delta_execution_count, 0) AS "Avg Duration (ms)",
+    ps.total_worker_time / 1000.0 AS "Total CPU (ms)",
+    ps.total_elapsed_time / 1000.0 AS "Total Duration (ms)",
+    ps.delta_logical_reads AS "Logical Reads",
+    ps.delta_logical_reads::double precision / NULLIF(ps.delta_execution_count, 0) AS "Avg Reads",
+    ps.total_logical_reads AS "Total Logical Reads",
+    ps.delta_logical_writes AS "Writes",
+    ps.delta_logical_writes::double precision / NULLIF(ps.delta_execution_count, 0) AS "Avg Writes",
+    ps.total_logical_writes AS "Total Writes",
+    ps.delta_physical_reads AS "Physical Reads",
+    ps.delta_physical_reads::double precision / NULLIF(ps.delta_execution_count, 0) AS "Avg Phys Reads",
+    ps.total_physical_reads AS "Total Phys Reads",
+    ps.delta_spills AS "Spills",
+    ps.delta_spills::double precision / NULLIF(ps.delta_execution_count, 0) AS "Avg Spills",
+    ps.total_spills AS "Total Spills",
+    ps.min_worker_time / 1000.0 AS "Min CPU (ms)",
+    ps.max_worker_time / 1000.0 AS "Max CPU (ms)",
+    ps.min_elapsed_time / 1000.0 AS "Min Duration (ms)",
+    ps.max_elapsed_time / 1000.0 AS "Max Duration (ms)",
+    ps.min_logical_reads AS "Min Reads",
+    ps.max_logical_reads AS "Max Reads",
+    ps.min_physical_reads AS "Min Phys Reads",
+    ps.max_physical_reads AS "Max Phys Reads",
+    ps.min_logical_writes AS "Min Writes",
+    ps.max_logical_writes AS "Max Writes",
+    ps.min_spills AS "Min Spills",
+    ps.max_spills AS "Max Spills",
+    CAST(EXTRACT(EPOCH FROM (date_trunc('second', ps.collection_time)
+        - date_trunc('second', LAG(ps.collection_time) OVER (ORDER BY ps.collection_time))))
+        AS bigint) AS "Interval (sec)",
+    ps.sql_handle AS "SQL Handle",
+    ps.plan_handle AS "Plan Handle"
+FROM {collector('procedure_stats')} AS ps
+WHERE {_PROCEDURE_HISTORY_WHERE}
+ORDER BY ps.collection_time
+"""
+
+_PROCEDURE_HISTORY_CHART_SQL = f"""
+SELECT
+    ps.collection_time AS time,
+    {_history_metric_expr('ps.')} AS value
+FROM {collector('procedure_stats')} AS ps
+WHERE {_PROCEDURE_HISTORY_WHERE}
+ORDER BY 1
+"""
+
+
+# Upstream ref: QueryStatsHistorySql (ViewerDataService.ItemHistory.cs)
+_QUERY_STATS_HISTORY_WHERE = f"""
+{server_filter('qs.server_id')}
+  AND {_identity_guard('database', 'qs.database_name')}
+  AND {_identity_guard('query_hash', 'qs.query_hash')}
+  AND $__timeFilter(qs.collection_time)
+"""
+
+_QUERY_STATS_HISTORY_SQL = f"""
+SELECT
+    qs.collection_time AS "Collection Time",
+    qs.last_execution_time AS "Last Execution",
+    qs.creation_time AS "Creation Time",
+    qs.delta_execution_count AS "Exec Delta",
+    qs.execution_count AS "Total Executions",
+    qs.delta_worker_time / 1000.0 AS "CPU Delta (ms)",
+    qs.delta_elapsed_time / 1000.0 AS "Duration Delta (ms)",
+    (qs.delta_worker_time / 1000.0) / NULLIF(qs.delta_execution_count, 0) AS "Avg CPU (ms)",
+    (qs.delta_elapsed_time / 1000.0) / NULLIF(qs.delta_execution_count, 0) AS "Avg Duration (ms)",
+    qs.total_worker_time / 1000.0 AS "Total CPU (ms)",
+    qs.total_elapsed_time / 1000.0 AS "Total Duration (ms)",
+    qs.delta_logical_reads AS "Logical Reads",
+    qs.delta_logical_reads::double precision / NULLIF(qs.delta_execution_count, 0) AS "Avg Reads",
+    qs.total_logical_reads AS "Total Logical Reads",
+    qs.delta_rows AS "Rows",
+    qs.delta_rows::double precision / NULLIF(qs.delta_execution_count, 0) AS "Avg Rows",
+    qs.total_rows AS "Total Rows",
+    qs.delta_logical_writes AS "Writes",
+    qs.delta_logical_writes::double precision / NULLIF(qs.delta_execution_count, 0) AS "Avg Writes",
+    qs.total_logical_writes AS "Total Writes",
+    qs.delta_physical_reads AS "Physical Reads",
+    qs.delta_physical_reads::double precision / NULLIF(qs.delta_execution_count, 0) AS "Avg Phys Reads",
+    qs.total_physical_reads AS "Total Phys Reads",
+    qs.delta_spills AS "Spills",
+    qs.total_spills AS "Total Spills",
+    qs.min_worker_time / 1000.0 AS "Min CPU (ms)",
+    qs.max_worker_time / 1000.0 AS "Max CPU (ms)",
+    qs.min_elapsed_time / 1000.0 AS "Min Duration (ms)",
+    qs.max_elapsed_time / 1000.0 AS "Max Duration (ms)",
+    qs.min_dop AS "Min DOP",
+    qs.max_dop AS "Max DOP",
+    qs.min_physical_reads AS "Min Phys Reads",
+    qs.max_physical_reads AS "Max Phys Reads",
+    qs.min_rows AS "Min Rows",
+    qs.max_rows AS "Max Rows",
+    qs.min_spills AS "Min Spills",
+    qs.max_spills AS "Max Spills",
+    qs.min_grant_kb AS "Min Grant (KB)",
+    qs.max_grant_kb AS "Max Grant (KB)",
+    qs.min_used_grant_kb AS "Min Used Grant (KB)",
+    qs.max_used_grant_kb AS "Max Used Grant (KB)",
+    qs.min_ideal_grant_kb AS "Min Ideal Grant (KB)",
+    qs.max_ideal_grant_kb AS "Max Ideal Grant (KB)",
+    qs.min_reserved_threads AS "Min Reserved Threads",
+    qs.max_reserved_threads AS "Max Reserved Threads",
+    qs.min_used_threads AS "Min Used Threads",
+    qs.max_used_threads AS "Max Used Threads",
+    qs.total_clr_time / 1000.0 AS "Total CLR (ms)",
+    qs.sample_interval_seconds AS "Interval (sec)",
+    qs.sql_handle AS "SQL Handle",
+    qs.plan_handle AS "Plan Handle",
+    qs.query_hash AS "Query Hash",
+    qs.query_plan_hash AS "Plan Hash",
+    qs.query_text AS "Query Text"
+FROM {collector('query_stats')} AS qs
+WHERE {_QUERY_STATS_HISTORY_WHERE}
+ORDER BY qs.collection_time
+"""
+
+_QUERY_STATS_HISTORY_CHART_SQL = f"""
+SELECT
+    qs.collection_time AS time,
+    {_history_metric_expr('qs.')} AS value
+FROM {collector('query_stats')} AS qs
+WHERE {_QUERY_STATS_HISTORY_WHERE}
+ORDER BY 1
+"""
+
+
+# Upstream ref: QueryStoreHistorySql (ViewerDataService.ItemHistory.cs) - query-scoped, not
+# plan-filtered. plan_id is optional; Query Store Regressions has no single plan_id and
+# passes "*".
+_QUERY_STORE_HISTORY_WHERE = f"""
+{server_filter('qsd.server_id')}
+  AND {_identity_guard('database', 'qsd.database_name')}
+  AND {_identity_guard('query_id', 'qsd.query_id::text')}
+  AND {_identity_guard('plan_id', 'qsd.plan_id::text')}
+  AND $__timeFilter(qsd.collection_time)
+"""
+
+_QUERY_STORE_HISTORY_SQL = f"""
+SELECT
+    qsd.collection_time AS "Collection Time",
+    qsd.plan_id AS "Plan ID",
+    qsd.execution_type_desc AS "Exec Type",
+    qsd.first_execution_time AS "First Execution",
+    qsd.last_execution_time AS "Last Execution",
+    qsd.module_name AS "Module",
+    qsd.execution_count AS "Executions",
+    qsd.execution_count * qsd.avg_duration_us / 1000.0 AS "Total Duration (ms)",
+    qsd.avg_duration_us / 1000.0 AS "Avg Duration (ms)",
+    qsd.min_duration_us / 1000.0 AS "Min Duration (ms)",
+    qsd.max_duration_us / 1000.0 AS "Max Duration (ms)",
+    qsd.execution_count * qsd.avg_cpu_time_us / 1000.0 AS "Total CPU (ms)",
+    qsd.avg_cpu_time_us / 1000.0 AS "Avg CPU (ms)",
+    qsd.min_cpu_time_us / 1000.0 AS "Min CPU (ms)",
+    qsd.max_cpu_time_us / 1000.0 AS "Max CPU (ms)",
+    qsd.avg_clr_time_us / 1000.0 AS "Avg CLR (ms)",
+    qsd.min_clr_time_us / 1000.0 AS "Min CLR (ms)",
+    qsd.max_clr_time_us / 1000.0 AS "Max CLR (ms)",
+    qsd.avg_logical_io_reads AS "Avg Reads",
+    qsd.min_logical_io_reads AS "Min Reads",
+    qsd.max_logical_io_reads AS "Max Reads",
+    qsd.avg_logical_io_writes AS "Avg Writes",
+    qsd.min_logical_io_writes AS "Min Writes",
+    qsd.max_logical_io_writes AS "Max Writes",
+    qsd.avg_log_bytes_used / 1048576.0 AS "Avg Log (MB)",
+    qsd.min_log_bytes_used / 1048576.0 AS "Min Log (MB)",
+    qsd.max_log_bytes_used / 1048576.0 AS "Max Log (MB)",
+    qsd.avg_physical_io_reads AS "Avg Phys Reads",
+    qsd.min_physical_io_reads AS "Min Phys Reads",
+    qsd.max_physical_io_reads AS "Max Phys Reads",
+    qsd.avg_num_physical_io_reads AS "Avg Num Phys Reads",
+    qsd.min_num_physical_io_reads AS "Min Num Phys Reads",
+    qsd.max_num_physical_io_reads AS "Max Num Phys Reads",
+    qsd.avg_rowcount AS "Avg Rows",
+    qsd.min_rowcount AS "Min Rows",
+    qsd.max_rowcount AS "Max Rows",
+    qsd.avg_query_max_used_memory * 8.0 / 1024.0 AS "Avg Mem (MB)",
+    qsd.min_query_max_used_memory * 8.0 / 1024.0 AS "Min Mem (MB)",
+    qsd.max_query_max_used_memory * 8.0 / 1024.0 AS "Max Mem (MB)",
+    qsd.avg_tempdb_space_used * 8.0 / 1024.0 AS "Avg tempdb (MB)",
+    qsd.min_tempdb_space_used * 8.0 / 1024.0 AS "Min tempdb (MB)",
+    qsd.max_tempdb_space_used * 8.0 / 1024.0 AS "Max tempdb (MB)",
+    qsd.min_dop AS "Min DOP",
+    qsd.max_dop AS "Max DOP",
+    qsd.plan_type AS "Plan Type",
+    qsd.is_forced_plan AS "Forced",
+    qsd.force_failure_count AS "Force Failures",
+    qsd.last_force_failure_reason AS "Last Failure Reason",
+    qsd.plan_forcing_type AS "Forcing Type",
+    qsd.compatibility_level AS "Compat Level",
+    qsd.query_hash AS "Query Hash",
+    qsd.query_plan_hash AS "Query Plan Hash"
+FROM {collector('query_store_stats')} AS qsd
+WHERE {_QUERY_STORE_HISTORY_WHERE}
+ORDER BY qsd.collection_time
+"""
+
+_QUERY_STORE_HISTORY_METRIC_OPTIONS = [
+    "Avg CPU (ms)",
+    "Avg Duration (ms)",
+    "Avg Reads",
+    "Avg Rows",
+    "Executions",
+    "Total CPU (ms)",
+    "Total Duration (ms)",
+]
+
+_QUERY_STORE_HISTORY_METRIC_EXPR = """CASE ${qs_history_metric:sqlstring}
+    WHEN 'Avg CPU (ms)' THEN qsd.avg_cpu_time_us / 1000.0
+    WHEN 'Avg Duration (ms)' THEN qsd.avg_duration_us / 1000.0
+    WHEN 'Avg Reads' THEN qsd.avg_logical_io_reads::double precision
+    WHEN 'Avg Rows' THEN qsd.avg_rowcount::double precision
+    WHEN 'Executions' THEN qsd.execution_count::double precision
+    WHEN 'Total CPU (ms)' THEN qsd.execution_count * qsd.avg_cpu_time_us / 1000.0
+    WHEN 'Total Duration (ms)' THEN qsd.execution_count * qsd.avg_duration_us / 1000.0
+    ELSE qsd.avg_duration_us / 1000.0
+END"""
+
+# One series per plan_id, matching UpdateChart's per-plan grouping.
+_QUERY_STORE_HISTORY_CHART_SQL = f"""
+SELECT
+    qsd.collection_time AS time,
+    'Plan ' || qsd.plan_id AS metric,
+    {_QUERY_STORE_HISTORY_METRIC_EXPR} AS value
+FROM {collector('query_store_stats')} AS qsd
+WHERE {_QUERY_STORE_HISTORY_WHERE}
+ORDER BY 1
+"""
+
+
 def queries():
     """Build the Queries dashboard."""
     reset_id()
@@ -1248,6 +1589,8 @@ def queries():
                     h,
                     _TOP_QUERIES_SQL,
                     overrides=[
+                        col_hidden("server_id"),
+                        _QUERY_HISTORY_LINK,
                         col_gauge_bar("Executions", max_val=None, unit="short"),
                         col_gauge_bar("Total CPU (ms)", max_val=None, unit="ms"),
                         col_gauge_bar("Total Duration (ms)", max_val=None, unit="ms"),
@@ -1317,6 +1660,7 @@ def queries():
                     w,
                     h,
                     _TOP_PROCEDURES_SQL,
+                    overrides=[col_hidden("server_id"), _PROCEDURE_HISTORY_LINK],
                     sort_by=[{"displayName": "Total Duration (ms)", "desc": True}],
                 ),
             ),
@@ -1379,7 +1723,9 @@ def queries():
                     h,
                     _QUERY_STORE_SQL,
                     overrides=[
-                        status_colors("Forced", {"true": "blue", "false": "text"})
+                        col_hidden("server_id"),
+                        _QUERY_STORE_HISTORY_LINK,
+                        status_colors("Forced", {"true": "blue", "false": "text"}),
                     ],
                     sort_by=[{"displayName": "Total Duration (ms)", "desc": True}],
                     description="replica_role is a GROUP BY key, not aggregated away, so a "
@@ -1427,6 +1773,8 @@ def queries():
                     h,
                     _QUERY_STORE_REGRESSIONS_SQL,
                     overrides=[
+                        col_hidden("server_id"),
+                        _QUERY_STORE_REGRESSION_HISTORY_LINK,
                         status_colors(
                             "Severity",
                             {
@@ -1435,7 +1783,7 @@ def queries():
                                 "MEDIUM": "yellow",
                                 "LOW": "green",
                             },
-                        )
+                        ),
                     ],
                     sort_by=[{"displayName": "Duration Regression %", "desc": True}],
                     description="Baseline is every Query Store capture before the dashboard's "
@@ -1518,6 +1866,200 @@ def queries():
                     "Execution Count",
                 ],
                 "Per-execution metric the Query Heatmap buckets rows by.",
+            ),
+        ],
+    )
+
+
+def procedure_history():
+    """Per-collection history for one procedure, reached from the Top Procedures grid."""
+    reset_id()
+    panels: list[dict] = []
+
+    y = subtab(
+        panels,
+        "History",
+        0,
+        [
+            (
+                24,
+                8,
+                lambda x, y, w, h: timeseries(
+                    "${history_metric} over time",
+                    x,
+                    y,
+                    w,
+                    h,
+                    [target(_PROCEDURE_HISTORY_CHART_SQL)],
+                ),
+            ),
+        ],
+    )
+    subtab(
+        panels,
+        "History Grid",
+        y,
+        [
+            (
+                24,
+                16,
+                lambda x, y, w, h: table(
+                    "Procedure history",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _PROCEDURE_HISTORY_SQL,
+                    sort_by=[{"displayName": "Collection Time", "desc": True}],
+                ),
+            ),
+        ],
+    )
+
+    return detail_dashboard(
+        uid("procedure-history"),
+        "Procedure History",
+        panels,
+        [
+            server_var(),
+            text_var("database", "Database", "*"),
+            text_var("schema", "Schema", "*"),
+            text_var("object_name", "Procedure", "*"),
+            custom_var(
+                "history_metric",
+                "Chart Metric",
+                _HISTORY_METRIC_OPTIONS,
+                "Metric the trend chart plots.",
+            ),
+        ],
+    )
+
+
+def query_stats_history():
+    """Per-collection history for one query hash, reached from the Top Queries grid."""
+    reset_id()
+    panels: list[dict] = []
+
+    y = subtab(
+        panels,
+        "History",
+        0,
+        [
+            (
+                24,
+                8,
+                lambda x, y, w, h: timeseries(
+                    "${history_metric} over time",
+                    x,
+                    y,
+                    w,
+                    h,
+                    [target(_QUERY_STATS_HISTORY_CHART_SQL)],
+                ),
+            ),
+        ],
+    )
+    subtab(
+        panels,
+        "History Grid",
+        y,
+        [
+            (
+                24,
+                16,
+                lambda x, y, w, h: table(
+                    "Query history",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _QUERY_STATS_HISTORY_SQL,
+                    sort_by=[{"displayName": "Collection Time", "desc": True}],
+                ),
+            ),
+        ],
+    )
+
+    return detail_dashboard(
+        uid("query-stats-history"),
+        "Query History",
+        panels,
+        [
+            server_var(),
+            text_var("database", "Database", "*"),
+            text_var("query_hash", "Query Hash", "*"),
+            custom_var(
+                "history_metric",
+                "Chart Metric",
+                _HISTORY_METRIC_OPTIONS,
+                "Metric the trend chart plots.",
+            ),
+        ],
+    )
+
+
+def query_store_history():
+    """Per-collection Query Store history for one query. Query-scoped, not plan-filtered."""
+    reset_id()
+    panels: list[dict] = []
+
+    y = subtab(
+        panels,
+        "History",
+        0,
+        [
+            (
+                24,
+                8,
+                lambda x, y, w, h: timeseries(
+                    "${qs_history_metric} over time (one series per plan)",
+                    x,
+                    y,
+                    w,
+                    h,
+                    [target(_QUERY_STORE_HISTORY_CHART_SQL)],
+                ),
+            ),
+        ],
+    )
+    subtab(
+        panels,
+        "History Grid",
+        y,
+        [
+            (
+                24,
+                16,
+                lambda x, y, w, h: table(
+                    "Query Store history",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _QUERY_STORE_HISTORY_SQL,
+                    overrides=[
+                        status_colors("Forced", {"true": "blue", "false": "text"})
+                    ],
+                    sort_by=[{"displayName": "Collection Time", "desc": True}],
+                ),
+            ),
+        ],
+    )
+
+    return detail_dashboard(
+        uid("query-store-history"),
+        "Query Store History",
+        panels,
+        [
+            server_var(),
+            text_var("database", "Database", "*"),
+            text_var("query_id", "Query ID", "*"),
+            text_var("plan_id", "Plan ID", "*"),
+            custom_var(
+                "qs_history_metric",
+                "Chart Metric",
+                _QUERY_STORE_HISTORY_METRIC_OPTIONS,
+                "Metric the trend chart plots.",
             ),
         ],
     )

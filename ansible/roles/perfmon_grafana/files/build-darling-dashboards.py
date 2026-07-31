@@ -22,7 +22,10 @@ from darling_defs.availability_groups import (  # noqa: E402
     availability_groups,
 )
 from darling_defs.blocking import blocking, deadlock_detail  # noqa: E402
-from darling_defs.collection_health import collection_health  # noqa: E402
+from darling_defs.collection_health import (  # noqa: E402
+    collection_health,
+    collection_log_detail,
+)
 from darling_defs.config_changes import config_changes  # noqa: E402
 from darling_defs.configuration import configuration  # noqa: E402
 from darling_defs.cpu import cpu  # noqa: E402
@@ -33,12 +36,17 @@ from darling_defs.latch_spinlock import latch_spinlock  # noqa: E402
 from darling_defs.long_queries import long_queries  # noqa: E402
 from darling_defs.memory import memory  # noqa: E402
 from darling_defs.perfmon import perfmon  # noqa: E402
-from darling_defs.queries import queries  # noqa: E402
+from darling_defs.queries import (  # noqa: E402
+    procedure_history,
+    queries,
+    query_stats_history,
+    query_store_history,
+)
 from darling_defs.running_jobs import running_jobs  # noqa: E402
 from darling_defs.session_stats import session_stats  # noqa: E402
 from darling_defs.system_events import system_events  # noqa: E402
 from darling_defs.tempdb import tempdb  # noqa: E402
-from darling_defs.waits import waits  # noqa: E402
+from darling_defs.waits import wait_drill_down, waits  # noqa: E402
 from darling_defs.finops.application_connections import (  # noqa: E402
     application_connections,
 )
@@ -61,6 +69,7 @@ DASHBOARDS = [
     blocking,
     deadlock_detail,
     collection_health,
+    collection_log_detail,
     config_changes,
     configuration,
     cpu,
@@ -71,11 +80,15 @@ DASHBOARDS = [
     long_queries,
     memory,
     perfmon,
+    procedure_history,
     queries,
+    query_stats_history,
+    query_store_history,
     running_jobs,
     session_stats,
     system_events,
     tempdb,
+    wait_drill_down,
     waits,
     # FinOps: one dashboard per upstream FinOps sub-tab, plus the two Storage Growth
     # drill-down levels (object_sizes, index_usage) reached from its data links.

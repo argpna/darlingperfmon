@@ -1,0 +1,322 @@
+{
+  "uid": "darling-procedure-history",
+  "title": "Perfmon (Darling) - Procedure History",
+  "tags": [
+    "perfmon-darling-detail",
+    "nav-only"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "refresh": "",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon-darling"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon (Darling) Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      },
+      {
+        "name": "database",
+        "label": "Database",
+        "type": "textbox",
+        "current": {
+          "text": "*",
+          "value": "*"
+        },
+        "options": [
+          {
+            "text": "*",
+            "value": "*"
+          }
+        ],
+        "hide": 0
+      },
+      {
+        "name": "schema",
+        "label": "Schema",
+        "type": "textbox",
+        "current": {
+          "text": "*",
+          "value": "*"
+        },
+        "options": [
+          {
+            "text": "*",
+            "value": "*"
+          }
+        ],
+        "hide": 0
+      },
+      {
+        "name": "object_name",
+        "label": "Procedure",
+        "type": "textbox",
+        "current": {
+          "text": "*",
+          "value": "*"
+        },
+        "options": [
+          {
+            "text": "*",
+            "value": "*"
+          }
+        ],
+        "hide": 0
+      },
+      {
+        "name": "history_metric",
+        "label": "Chart Metric",
+        "type": "custom",
+        "query": "Avg CPU (ms),Avg Duration (ms),Avg Reads,Executions (delta),CPU (delta ms),Reads (delta),Spills (delta)",
+        "current": {
+          "text": "Avg CPU (ms)",
+          "value": "Avg CPU (ms)"
+        },
+        "options": [
+          {
+            "text": "Avg CPU (ms)",
+            "value": "Avg CPU (ms)",
+            "selected": true
+          },
+          {
+            "text": "Avg Duration (ms)",
+            "value": "Avg Duration (ms)",
+            "selected": false
+          },
+          {
+            "text": "Avg Reads",
+            "value": "Avg Reads",
+            "selected": false
+          },
+          {
+            "text": "Executions (delta)",
+            "value": "Executions (delta)",
+            "selected": false
+          },
+          {
+            "text": "CPU (delta ms)",
+            "value": "CPU (delta ms)",
+            "selected": false
+          },
+          {
+            "text": "Reads (delta)",
+            "value": "Reads (delta)",
+            "selected": false
+          },
+          {
+            "text": "Spills (delta)",
+            "value": "Spills (delta)",
+            "selected": false
+          }
+        ],
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "description": "Metric the trend chart plots."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "History",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "${history_metric} over time",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    ps.collection_time AS time,\n    CASE ${history_metric:sqlstring}\n        WHEN 'Avg CPU (ms)' THEN (ps.delta_worker_time / 1000.0) / NULLIF(ps.delta_execution_count, 0)\n        WHEN 'Avg Duration (ms)' THEN (ps.delta_elapsed_time / 1000.0) / NULLIF(ps.delta_execution_count, 0)\n        WHEN 'Avg Reads' THEN ps.delta_logical_reads::double precision / NULLIF(ps.delta_execution_count, 0)\n        WHEN 'Executions (delta)' THEN ps.delta_execution_count::double precision\n        WHEN 'CPU (delta ms)' THEN ps.delta_worker_time / 1000.0\n        WHEN 'Reads (delta)' THEN ps.delta_logical_reads::double precision\n        WHEN 'Spills (delta)' THEN ps.delta_spills::double precision\n        ELSE (ps.delta_worker_time / 1000.0) / NULLIF(ps.delta_execution_count, 0)\n    END AS value\nFROM collect.procedure_stats AS ps\nWHERE \nps.server_id IN (${server:csv})\n  AND (${database:sqlstring} = '*' OR ${database:sqlstring} = '' OR ps.database_name = ${database:sqlstring})\n  AND (${schema:sqlstring} = '*' OR ${schema:sqlstring} = '' OR ps.schema_name = ${schema:sqlstring})\n  AND (${object_name:sqlstring} = '*' OR ${object_name:sqlstring} = '' OR ps.object_name = ${object_name:sqlstring})\n  AND $__timeFilter(ps.collection_time)\n\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "row",
+      "title": "History Grid",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "panels": []
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Procedure history",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 16,
+        "w": 24,
+        "x": 0,
+        "y": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Collection Time",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    ps.collection_time AS \"Collection Time\",\n    ps.last_execution_time AS \"Last Execution\",\n    ps.cached_time AS \"Cached Time\",\n    ps.object_type AS \"Object Type\",\n    ps.delta_execution_count AS \"Exec Delta\",\n    ps.execution_count AS \"Total Executions\",\n    ps.delta_worker_time / 1000.0 AS \"CPU Delta (ms)\",\n    ps.delta_elapsed_time / 1000.0 AS \"Duration Delta (ms)\",\n    (ps.delta_worker_time / 1000.0) / NULLIF(ps.delta_execution_count, 0) AS \"Avg CPU (ms)\",\n    (ps.delta_elapsed_time / 1000.0) / NULLIF(ps.delta_execution_count, 0) AS \"Avg Duration (ms)\",\n    ps.total_worker_time / 1000.0 AS \"Total CPU (ms)\",\n    ps.total_elapsed_time / 1000.0 AS \"Total Duration (ms)\",\n    ps.delta_logical_reads AS \"Logical Reads\",\n    ps.delta_logical_reads::double precision / NULLIF(ps.delta_execution_count, 0) AS \"Avg Reads\",\n    ps.total_logical_reads AS \"Total Logical Reads\",\n    ps.delta_logical_writes AS \"Writes\",\n    ps.delta_logical_writes::double precision / NULLIF(ps.delta_execution_count, 0) AS \"Avg Writes\",\n    ps.total_logical_writes AS \"Total Writes\",\n    ps.delta_physical_reads AS \"Physical Reads\",\n    ps.delta_physical_reads::double precision / NULLIF(ps.delta_execution_count, 0) AS \"Avg Phys Reads\",\n    ps.total_physical_reads AS \"Total Phys Reads\",\n    ps.delta_spills AS \"Spills\",\n    ps.delta_spills::double precision / NULLIF(ps.delta_execution_count, 0) AS \"Avg Spills\",\n    ps.total_spills AS \"Total Spills\",\n    ps.min_worker_time / 1000.0 AS \"Min CPU (ms)\",\n    ps.max_worker_time / 1000.0 AS \"Max CPU (ms)\",\n    ps.min_elapsed_time / 1000.0 AS \"Min Duration (ms)\",\n    ps.max_elapsed_time / 1000.0 AS \"Max Duration (ms)\",\n    ps.min_logical_reads AS \"Min Reads\",\n    ps.max_logical_reads AS \"Max Reads\",\n    ps.min_physical_reads AS \"Min Phys Reads\",\n    ps.max_physical_reads AS \"Max Phys Reads\",\n    ps.min_logical_writes AS \"Min Writes\",\n    ps.max_logical_writes AS \"Max Writes\",\n    ps.min_spills AS \"Min Spills\",\n    ps.max_spills AS \"Max Spills\",\n    CAST(EXTRACT(EPOCH FROM (date_trunc('second', ps.collection_time)\n        - date_trunc('second', LAG(ps.collection_time) OVER (ORDER BY ps.collection_time))))\n        AS bigint) AS \"Interval (sec)\",\n    ps.sql_handle AS \"SQL Handle\",\n    ps.plan_handle AS \"Plan Handle\"\nFROM collect.procedure_stats AS ps\nWHERE \nps.server_id IN (${server:csv})\n  AND (${database:sqlstring} = '*' OR ${database:sqlstring} = '' OR ps.database_name = ${database:sqlstring})\n  AND (${schema:sqlstring} = '*' OR ${schema:sqlstring} = '' OR ps.schema_name = ${schema:sqlstring})\n  AND (${object_name:sqlstring} = '*' OR ${object_name:sqlstring} = '' OR ps.object_name = ${object_name:sqlstring})\n  AND $__timeFilter(ps.collection_time)\n\nORDER BY ps.collection_time\n"
+        }
+      ]
+    }
+  ]
+}

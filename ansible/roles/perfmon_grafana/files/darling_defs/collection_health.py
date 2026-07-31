@@ -5,13 +5,19 @@ CollectorHealthClassifier (PerformanceMonitor.Common), CollectorScheduleDefaults
 
 The tab's "Purge Now" button is not ported: it enqueues a control command for the service to
 run, and Grafana only reads the store.
+
+Upstream ref: CollectionLogWindow.xaml.cs. collection_log_detail() below reads a hard-coded
+trailing 168 hours, not $__timeFilter like the rest of this line - matches upstream's own quirk.
 """
 
 from ._shared import (
+    col_datalink,
+    col_hidden,
     collector,
     col_thresholds,
     col_unit,
     dashboard,
+    detail_dashboard,
     reset_id,
     server_filter,
     server_join,
@@ -21,6 +27,7 @@ from ._shared import (
     subtab,
     table,
     target,
+    text_var,
     thresholds,
     timeseries,
     uid,
@@ -177,6 +184,7 @@ a AS (
     LEFT JOIN cadence c ON c.collector_name = agg.collector_name
 )
 SELECT
+    a.server_id AS "server_id",
     srv.name AS "Server",
     a.collector_name AS "Collector",
     {_HEALTH_STATUS} AS "Status",
@@ -244,6 +252,50 @@ ORDER BY 1
 """
 
 
+_COLLECTOR_LOG_LINK = col_datalink(
+    "Collector",
+    "View collection log for this collector",
+    "/d/darling-collection-log-detail?${__url_time_range}"
+    "&var-server=${__data.fields.server_id}"
+    "&var-collector_name=${__data.fields.Collector}",
+)
+
+# Upstream ref: GetCollectionLogByCollectorAsync (ViewerDataService.CollectionHealth.cs)
+_COLLECTOR_LOG_WINDOW = "(now() AT TIME ZONE 'UTC') - INTERVAL '168 hours'"
+
+_COLLECTOR_LOG_WHERE = f"""
+{server_filter('cl.server_id')}
+  AND (${{collector_name:sqlstring}} = '*' OR ${{collector_name:sqlstring}} = ''
+       OR cl.collector_name = ${{collector_name:sqlstring}})
+  AND cl.collection_time >= {_COLLECTOR_LOG_WINDOW}
+"""
+
+# Upstream ref: CollectionLogWindow_Loaded
+_COLLECTOR_LOG_SUMMARY_SQL = f"""
+SELECT
+    COUNT(*) AS "Total Runs",
+    SUM(CASE WHEN cl.status = 'SUCCESS' THEN 1 ELSE 0 END) AS "Success",
+    SUM(CASE WHEN cl.status = 'ERROR' THEN 1 ELSE 0 END) AS "Errors",
+    AVG(cl.duration_ms) FILTER (WHERE cl.status = 'SUCCESS') AS "Avg Duration"
+FROM {collector('collection_log')} AS cl
+WHERE {_COLLECTOR_LOG_WHERE}
+"""
+
+_COLLECTOR_LOG_SQL = f"""
+SELECT
+    cl.collection_time AS "Time",
+    cl.status AS "Status",
+    cl.rows_collected AS "Rows",
+    cl.duration_ms AS "Duration",
+    cl.sql_duration_ms AS "SQL Duration",
+    cl.duckdb_duration_ms AS "Store Duration",
+    cl.error_message AS "Error"
+FROM {collector('collection_log')} AS cl
+WHERE {_COLLECTOR_LOG_WHERE}
+ORDER BY cl.collection_time DESC
+"""
+
+
 def collection_health():
     """Build the Collection Health dashboard."""
     reset_id()
@@ -279,6 +331,8 @@ def collection_health():
                     h,
                     _HEALTH_SQL,
                     overrides=[
+                        col_hidden("server_id"),
+                        _COLLECTOR_LOG_LINK,
                         status_colors("Status", _HEALTH_COLORS),
                         col_unit("Avg Duration", "ms"),
                         col_unit("Fail %", "percent"),
@@ -357,4 +411,116 @@ def collection_health():
 
     return dashboard(
         uid("collection-health"), "Collection Health", panels, [server_var()]
+    )
+
+
+def collection_log_detail():
+    """Collection log for one collector, reached from the Health Summary grid's Collector
+    column. Fixed trailing 168h window - see the module docstring."""
+    reset_id()
+    panels: list[dict] = []
+
+    stat_grid_row_h = 4
+    subtab(
+        panels,
+        "Collector Log",
+        0,
+        [
+            (
+                6,
+                stat_grid_row_h,
+                lambda x, y, w, h: stat(
+                    "Total Runs",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _COLLECTOR_LOG_SUMMARY_SQL,
+                    "short",
+                    thresholds(("text", None)),
+                    fields="/^Total Runs$/",
+                ),
+            ),
+            (
+                6,
+                stat_grid_row_h,
+                lambda x, y, w, h: stat(
+                    "Success",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _COLLECTOR_LOG_SUMMARY_SQL,
+                    "short",
+                    thresholds(("green", None)),
+                    fields="/^Success$/",
+                ),
+            ),
+            (
+                6,
+                stat_grid_row_h,
+                lambda x, y, w, h: stat(
+                    "Errors",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _COLLECTOR_LOG_SUMMARY_SQL,
+                    "short",
+                    thresholds(("green", None), ("red", 1)),
+                    fields="/^Errors$/",
+                ),
+            ),
+            (
+                6,
+                stat_grid_row_h,
+                lambda x, y, w, h: stat(
+                    "Avg Duration",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _COLLECTOR_LOG_SUMMARY_SQL,
+                    "ms",
+                    thresholds(("text", None)),
+                    fields="/^Avg Duration$/",
+                ),
+            ),
+            (
+                24,
+                14,
+                lambda x, y, w, h: table(
+                    "Collection runs - $collector_name (trailing 168h)",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _COLLECTOR_LOG_SQL,
+                    overrides=[
+                        status_colors(
+                            "Status",
+                            {
+                                "SUCCESS": "green",
+                                "SKIPPED": "text",
+                                "YIELDED": "yellow",
+                                "PERMISSIONS": "purple",
+                                "ERROR": "red",
+                            },
+                        ),
+                        col_unit("Duration", "ms"),
+                        col_unit("SQL Duration", "ms"),
+                        col_unit("Store Duration", "ms"),
+                    ],
+                    sort_by=[{"displayName": "Time", "desc": True}],
+                ),
+            ),
+        ],
+    )
+
+    return detail_dashboard(
+        uid("collection-log-detail"),
+        "Collection Log Detail",
+        panels,
+        [server_var(), text_var("collector_name", "Collector", "*")],
+        time_from="now-7d",
     )

@@ -1,0 +1,494 @@
+{
+  "uid": "darling-collection-log-detail",
+  "title": "Perfmon (Darling) - Collection Log Detail",
+  "tags": [
+    "perfmon-darling-detail",
+    "nav-only"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "refresh": "",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon-darling"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon (Darling) Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      },
+      {
+        "name": "collector_name",
+        "label": "Collector",
+        "type": "textbox",
+        "current": {
+          "text": "*",
+          "value": "*"
+        },
+        "options": [
+          {
+            "text": "*",
+            "value": "*"
+          }
+        ],
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Collector Log",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Total Runs",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^Total Runs$/",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    COUNT(*) AS \"Total Runs\",\n    SUM(CASE WHEN cl.status = 'SUCCESS' THEN 1 ELSE 0 END) AS \"Success\",\n    SUM(CASE WHEN cl.status = 'ERROR' THEN 1 ELSE 0 END) AS \"Errors\",\n    AVG(cl.duration_ms) FILTER (WHERE cl.status = 'SUCCESS') AS \"Avg Duration\"\nFROM collect.v_collection_log AS cl\nWHERE \ncl.server_id IN (${server:csv})\n  AND (${collector_name:sqlstring} = '*' OR ${collector_name:sqlstring} = ''\n       OR cl.collector_name = ${collector_name:sqlstring})\n  AND cl.collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '168 hours'\n\n"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Success",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^Success$/",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    COUNT(*) AS \"Total Runs\",\n    SUM(CASE WHEN cl.status = 'SUCCESS' THEN 1 ELSE 0 END) AS \"Success\",\n    SUM(CASE WHEN cl.status = 'ERROR' THEN 1 ELSE 0 END) AS \"Errors\",\n    AVG(cl.duration_ms) FILTER (WHERE cl.status = 'SUCCESS') AS \"Avg Duration\"\nFROM collect.v_collection_log AS cl\nWHERE \ncl.server_id IN (${server:csv})\n  AND (${collector_name:sqlstring} = '*' OR ${collector_name:sqlstring} = ''\n       OR cl.collector_name = ${collector_name:sqlstring})\n  AND cl.collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '168 hours'\n\n"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Errors",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^Errors$/",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    COUNT(*) AS \"Total Runs\",\n    SUM(CASE WHEN cl.status = 'SUCCESS' THEN 1 ELSE 0 END) AS \"Success\",\n    SUM(CASE WHEN cl.status = 'ERROR' THEN 1 ELSE 0 END) AS \"Errors\",\n    AVG(cl.duration_ms) FILTER (WHERE cl.status = 'SUCCESS') AS \"Avg Duration\"\nFROM collect.v_collection_log AS cl\nWHERE \ncl.server_id IN (${server:csv})\n  AND (${collector_name:sqlstring} = '*' OR ${collector_name:sqlstring} = ''\n       OR cl.collector_name = ${collector_name:sqlstring})\n  AND cl.collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '168 hours'\n\n"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Avg Duration",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^Avg Duration$/",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    COUNT(*) AS \"Total Runs\",\n    SUM(CASE WHEN cl.status = 'SUCCESS' THEN 1 ELSE 0 END) AS \"Success\",\n    SUM(CASE WHEN cl.status = 'ERROR' THEN 1 ELSE 0 END) AS \"Errors\",\n    AVG(cl.duration_ms) FILTER (WHERE cl.status = 'SUCCESS') AS \"Avg Duration\"\nFROM collect.v_collection_log AS cl\nWHERE \ncl.server_id IN (${server:csv})\n  AND (${collector_name:sqlstring} = '*' OR ${collector_name:sqlstring} = ''\n       OR cl.collector_name = ${collector_name:sqlstring})\n  AND cl.collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '168 hours'\n\n"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Collection runs - $collector_name (trailing 168h)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "SUCCESS": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "SKIPPED": {
+                        "color": "text",
+                        "index": 1
+                      },
+                      "YIELDED": {
+                        "color": "yellow",
+                        "index": 2
+                      },
+                      "PERMISSIONS": {
+                        "color": "purple",
+                        "index": 3
+                      },
+                      "ERROR": {
+                        "color": "red",
+                        "index": 4
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Duration"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "SQL Duration"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Store Duration"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Time",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    cl.collection_time AS \"Time\",\n    cl.status AS \"Status\",\n    cl.rows_collected AS \"Rows\",\n    cl.duration_ms AS \"Duration\",\n    cl.sql_duration_ms AS \"SQL Duration\",\n    cl.duckdb_duration_ms AS \"Store Duration\",\n    cl.error_message AS \"Error\"\nFROM collect.v_collection_log AS cl\nWHERE \ncl.server_id IN (${server:csv})\n  AND (${collector_name:sqlstring} = '*' OR ${collector_name:sqlstring} = ''\n       OR cl.collector_name = ${collector_name:sqlstring})\n  AND cl.collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '168 hours'\n\nORDER BY cl.collection_time DESC\n"
+        }
+      ]
+    }
+  ]
+}
