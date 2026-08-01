@@ -7,6 +7,7 @@ ServerHealthBands.cs (ServerHealthClassifier).
 from ._shared import (
     collector,
     col_datalink,
+    col_datalinks,
     col_hidden,
     col_thresholds,
     dashboard,
@@ -249,9 +250,7 @@ fleet AS (
 def _fleet_query(select_sql: str) -> str:
     return f"{_FLEET_CTE}\n{select_sql}"
 
-
-# FleetRollup's header tiles - one query per panel, Grafana can't share a target.
-_SUMMARY_TILES = (
+_BAND_TILES = (
     ("Servers", "COUNT(*)", thresholds(("blue", None))),
     (
         "Healthy",
@@ -273,22 +272,15 @@ _SUMMARY_TILES = (
         "COUNT(*) FILTER (WHERE fleet_band = 'Offline')",
         thresholds(("green", None), ("text", 1)),
     ),
-    (
-        "Blocking events (1h)",
-        "COALESCE(SUM(blocking_count), 0)",
-        thresholds(("green", None), ("yellow", 1)),
-    ),
-    (
-        "Deadlocks (1h)",
-        "COALESCE(SUM(deadlock_count), 0)",
-        thresholds(("green", None), ("red", 1)),
-    ),
-    (
-        "Collection failures",
-        "COUNT(*) FILTER (WHERE failing_collector_count > 0)",
-        thresholds(("green", None), ("red", 1)),
-    ),
 )
+
+
+def _row_widths(n: int, total: int = 24) -> list[int]:
+    """Split total grid units across n tiles as evenly as possible (some tiles get one
+    extra unit rather than leaving a ragged gap at the row's end)."""
+    base, rem = divmod(total, n)
+    return [base + 1 if i < rem else base for i in range(n)]
+
 
 _TABLE_SQL = _fleet_query("""SELECT
     server_name AS "Server",
@@ -326,17 +318,110 @@ _DRILLDOWN_URL = (
     "&var-server=${__data.fields.server_id}"
 )
 
+_CPU_REASON = (
+    "CASE WHEN cpu_severity <> 'Healthy' "
+    "THEN 'CPU ' || ROUND(cpu_total_pct::numeric, 0) || '%' END"
+)
+_THREADS_REASON = (
+    "CASE "
+    "WHEN starved_requests > 0 THEN 'Threads starved (' || starved_requests || ')' "
+    "WHEN runnable_waiting >= 20 THEN 'Threads queued (' || runnable_waiting || ')' "
+    "WHEN threads_severity <> 'Healthy' THEN 'Threads low' "
+    "END"
+)
+_MEMORY_REASON = (
+    "CASE "
+    "WHEN memory_forced_count > 0 THEN 'Memory ' || memory_forced_count || ' forced' "
+    "WHEN memory_timeout_count > 0 THEN 'Memory ' || memory_timeout_count || ' timeouts' "
+    "WHEN memory_waiter_count > 0 THEN 'Memory ' || memory_waiter_count || ' waiters' "
+    "END"
+)
+_BLOCKING_REASON = "CASE WHEN blocking_severity <> 'Healthy' THEN 'Blocking ' || blocking_count END"
+_DEADLOCK_REASON = "CASE WHEN deadlock_severity <> 'Healthy' THEN 'Deadlocks ' || deadlock_count END"
+_COLLECTOR_REASON = (
+    "CASE WHEN collector_severity <> 'Healthy' "
+    "THEN 'Collectors failing (' || failing_collector_count || ')' END"
+)
+
+_STALE_REASON = "CASE WHEN freshness = 'Stale' THEN 'collection stale' END"
+
+_REASON_SQL = f"""CASE
+    WHEN freshness = 'Offline' THEN 'Offline - no recent collection'
+    WHEN freshness = 'NeverCollected' THEN 'Awaiting first collection'
+    ELSE COALESCE(NULLIF(concat_ws(', ', {_CPU_REASON}, {_THREADS_REASON}, {_MEMORY_REASON},
+        {_BLOCKING_REASON}, {_DEADLOCK_REASON}, {_COLLECTOR_REASON}, {_STALE_REASON}), ''),
+        'Needs attention')
+END"""
+
+_CPU_MEM_URL = (
+    f"/d/{uid('cpu-memory-sessions')}?${{__url_time_range}}"
+    "&var-server=${__data.fields.server_id}"
+)
+_BLOCKING_URL = (
+    f"/d/{uid('blocking-deadlocks')}?${{__url_time_range}}"
+    "&var-server=${__data.fields.server_id}"
+)
+_COLLECTION_URL = (
+    f"/d/{uid('collection-health')}?${{__url_time_range}}"
+    "&var-server=${__data.fields.server_id}"
+)
+
+_WORST_COUNT = 5
+
+_NEEDS_ATTENTION_SQL = _fleet_query(f"""SELECT
+    server_name AS "Server",
+    server_id,
+    fleet_band AS "Severity",
+    {_REASON_SQL} AS "Reason",
+    'Open' AS "Links"
+FROM fleet
+WHERE fleet_band <> 'Healthy'
+ORDER BY fleet_score DESC
+LIMIT {_WORST_COUNT}""")
+
 
 def fleet():
     """Build the Fleet dashboard: fleet-wide summary tiles + one sortable per-server table."""
     panels: list[dict] = []
 
     x = 0
-    tile_w = 24 // len(_SUMMARY_TILES)
-    for title, expr, th in _SUMMARY_TILES:
+    for (title, expr, th), w in zip(_BAND_TILES, _row_widths(len(_BAND_TILES))):
         sql = _fleet_query(f"SELECT {expr} AS value FROM fleet")
-        panels.append(stat(title, x, 0, tile_w, 4, sql, "short", th))
-        x += tile_w
+        panels.append(stat(title, x, 0, w, 4, sql, "short", th))
+        x += w
+
+    panels.append(
+        table(
+            "Needs Attention",
+            0,
+            4,
+            24,
+            7,
+            _NEEDS_ATTENTION_SQL,
+            overrides=[
+                col_hidden("server_id"),
+                col_datalink("Server", "Open Overview", _DRILLDOWN_URL),
+                status_colors(
+                    "Severity", {"Critical": "red", "Warning": "yellow", "Offline": "text"}
+                ),
+                col_datalinks(
+                    "Links",
+                    [
+                        ("Open CPU, Memory & Sessions", _CPU_MEM_URL),
+                        ("Open Blocking & Deadlocks", _BLOCKING_URL),
+                        ("Open Collection Health", _COLLECTION_URL),
+                    ],
+                ),
+            ],
+            description=(
+                "Worst-first, capped at the "
+                f"{_WORST_COUNT} servers needing attention most (see the Critical/Warning "
+                "tiles above and the full Fleet health table below for the rest). Empty when "
+                "every monitored server is healthy. Click Links to pick a destination dashboard "
+                "for the reasons named in this row."
+            ),
+        )
+    )
 
     overrides = [
         col_hidden("server_id"),
@@ -369,7 +454,7 @@ def fleet():
         table(
             "Fleet health",
             0,
-            4,
+            11,
             24,
             18,
             _TABLE_SQL,
