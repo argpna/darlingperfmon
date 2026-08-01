@@ -5,11 +5,11 @@ ServerHealthBands.cs (ServerHealthClassifier).
 """
 
 from ._shared import (
+    HEALTH_STATUS_COLORS,
     collector,
     col_datalink,
     col_datalinks,
     col_hidden,
-    col_thresholds,
     dashboard,
     server_filter,
     server_var,
@@ -24,6 +24,8 @@ from .collection_health import _CADENCE_TABLE, _HEALTH_AGG, _HEALTH_STATUS
 # ServerHealthThresholds: stale = 2x the 1-min collector cadence, offline = 15 min.
 _STALE_MINUTES = 2
 _OFFLINE_MINUTES = 15
+
+_NOT_FRESH = f"(m.last_collection_time IS NULL OR m.minutes_since_collection > {_STALE_MINUTES})"
 
 # GetServerSummaryAsync's window: a fixed trailing hour, not the dashboard's time range.
 _WINDOW = "(now() AT TIME ZONE 'UTC') - INTERVAL '1 hour'"
@@ -172,26 +174,31 @@ scored AS (
             WHEN m.minutes_since_collection > {_STALE_MINUTES} THEN 'Stale'
             ELSE 'Fresh'
         END AS freshness,
-        /* Per-metric severity - ServerHealthClassifier.*Severity thresholds. */
-        CASE WHEN m.cpu_pct IS NULL THEN 'Unknown'
+        /* Per-metric severity - ServerHealthClassifier.*Severity thresholds. Every branch
+           gates on {_NOT_FRESH} first (see its comment above). */
+        CASE WHEN {_NOT_FRESH} OR m.cpu_pct IS NULL THEN 'Unknown'
              WHEN m.cpu_total_pct >= 95 THEN 'Critical'
              WHEN m.cpu_total_pct >= 80 THEN 'Warning'
              ELSE 'Healthy' END AS cpu_severity,
-        CASE WHEN m.total_threads IS NULL THEN 'Unknown'
+        CASE WHEN {_NOT_FRESH} OR m.total_threads IS NULL THEN 'Unknown'
              WHEN m.starved_requests > 0 THEN 'Critical'
              WHEN m.runnable_waiting >= 20 THEN 'Warning'
              WHEN m.total_threads > 0 AND m.available_threads < m.total_threads * 0.10
                  THEN 'Warning'
              ELSE 'Healthy' END AS threads_severity,
-        CASE WHEN m.memory_waiter_count > 0 OR m.memory_timeout_count > 0
+        CASE WHEN {_NOT_FRESH} THEN 'Unknown'
+             WHEN m.memory_waiter_count > 0 OR m.memory_timeout_count > 0
                   OR m.memory_forced_count > 0
              THEN 'Critical' ELSE 'Healthy' END AS memory_severity,
-        CASE WHEN m.max_blocking_wait_ms / 1000.0 >= 60 OR m.blocking_count >= 5 THEN 'Critical'
+        CASE WHEN {_NOT_FRESH} THEN 'Unknown'
+             WHEN m.max_blocking_wait_ms / 1000.0 >= 60 OR m.blocking_count >= 5 THEN 'Critical'
              WHEN m.max_blocking_wait_ms / 1000.0 >= 10 OR m.blocking_count >= 2 THEN 'Warning'
              WHEN m.blocking_count > 0 THEN 'Warning'
              ELSE 'Healthy' END AS blocking_severity,
-        CASE WHEN m.deadlock_count > 0 THEN 'Critical' ELSE 'Healthy' END AS deadlock_severity,
-        CASE WHEN m.failing_collector_count > 0 THEN 'Warning' ELSE 'Healthy' END
+        CASE WHEN {_NOT_FRESH} THEN 'Unknown'
+             WHEN m.deadlock_count > 0 THEN 'Critical' ELSE 'Healthy' END AS deadlock_severity,
+        CASE WHEN {_NOT_FRESH} THEN 'Unknown'
+             WHEN m.failing_collector_count > 0 THEN 'Warning' ELSE 'Healthy' END
             AS collector_severity
     FROM metrics m
 ),
@@ -291,25 +298,14 @@ _TABLE_SQL = _fleet_query("""SELECT
         WHEN freshness = 'Stale' THEN 'Stale'
         ELSE 'Online'
     END AS "Status",
-    ROUND(cpu_total_pct::numeric, 0) AS "CPU %",
-    ROUND(cpu_pct::numeric, 0) AS "SQL CPU %",
-    available_threads AS "Threads Available",
-    total_threads AS "Threads Total",
-    runnable_waiting AS "Runnable (waiting CPU)",
-    starved_requests AS "Starved (no thread)",
-    ROUND((total_server_memory_mb / 1024.0)::numeric, 1) AS "Total Memory GB",
-    ROUND((buffer_pool_mb / 1024.0)::numeric, 1) AS "Buffer Pool GB",
-    ROUND((memory_granted_mb / 1024.0)::numeric, 1) AS "Granted Memory GB",
-    memory_waiter_count AS "Grant Waiters",
-    memory_timeout_count AS "Grant Timeouts",
-    memory_forced_count AS "Forced Grants",
-    blocking_count AS "Blocking",
-    ROUND((max_blocking_wait_ms / 1000.0)::numeric, 1) AS "Max Block (s)",
-    deadlock_count AS "Deadlocks",
-    healthy_collector_count AS "Collectors Healthy",
-    failing_collector_count AS "Collectors Failing",
-    last_collection_time AS "Last Collection",
-    fleet_score AS "Severity"
+    fleet_band AS "Severity",
+    cpu_severity AS "CPU",
+    threads_severity AS "Threads",
+    memory_severity AS "Memory",
+    blocking_severity AS "Blocking",
+    deadlock_severity AS "Deadlocks",
+    collector_severity AS "Collectors",
+    last_collection_time AS "Last Collection"
 FROM fleet
 ORDER BY fleet_score DESC""")
 
@@ -319,27 +315,30 @@ _DRILLDOWN_URL = (
 )
 
 _CPU_REASON = (
-    "CASE WHEN cpu_severity <> 'Healthy' "
+    "CASE WHEN cpu_severity IN ('Critical', 'Warning') "
     "THEN 'CPU ' || ROUND(cpu_total_pct::numeric, 0) || '%' END"
 )
 _THREADS_REASON = (
-    "CASE "
+    "CASE WHEN threads_severity IN ('Critical', 'Warning') THEN CASE "
     "WHEN starved_requests > 0 THEN 'Threads starved (' || starved_requests || ')' "
     "WHEN runnable_waiting >= 20 THEN 'Threads queued (' || runnable_waiting || ')' "
-    "WHEN threads_severity <> 'Healthy' THEN 'Threads low' "
+    "ELSE 'Threads low' END "
     "END"
 )
 _MEMORY_REASON = (
-    "CASE "
+    "CASE WHEN memory_severity = 'Critical' THEN CASE "
     "WHEN memory_forced_count > 0 THEN 'Memory ' || memory_forced_count || ' forced' "
     "WHEN memory_timeout_count > 0 THEN 'Memory ' || memory_timeout_count || ' timeouts' "
     "WHEN memory_waiter_count > 0 THEN 'Memory ' || memory_waiter_count || ' waiters' "
-    "END"
+    "END END"
 )
-_BLOCKING_REASON = "CASE WHEN blocking_severity <> 'Healthy' THEN 'Blocking ' || blocking_count END"
-_DEADLOCK_REASON = "CASE WHEN deadlock_severity <> 'Healthy' THEN 'Deadlocks ' || deadlock_count END"
+_BLOCKING_REASON = (
+    "CASE WHEN blocking_severity IN ('Critical', 'Warning') "
+    "THEN 'Blocking ' || blocking_count END"
+)
+_DEADLOCK_REASON = "CASE WHEN deadlock_severity = 'Critical' THEN 'Deadlocks ' || deadlock_count END"
 _COLLECTOR_REASON = (
-    "CASE WHEN collector_severity <> 'Healthy' "
+    "CASE WHEN collector_severity = 'Warning' "
     "THEN 'Collectors failing (' || failing_collector_count || ')' END"
 )
 
@@ -423,6 +422,8 @@ def fleet():
         )
     )
 
+    indicator_colors = {**HEALTH_STATUS_COLORS, "Healthy": "transparent"}
+
     overrides = [
         col_hidden("server_id"),
         col_datalink("Server", "Open Overview", _DRILLDOWN_URL),
@@ -435,19 +436,19 @@ def fleet():
                 "Awaiting first collection": "text",
             },
         ),
-        col_thresholds("CPU %", ("green", None), ("yellow", 80), ("red", 95)),
-        col_thresholds("Runnable (waiting CPU)", ("green", None), ("yellow", 20)),
-        col_thresholds("Starved (no thread)", ("green", None), ("red", 1)),
-        col_thresholds("Grant Waiters", ("green", None), ("red", 1)),
-        col_thresholds("Grant Timeouts", ("green", None), ("red", 1)),
-        col_thresholds("Forced Grants", ("green", None), ("red", 1)),
-        col_thresholds("Blocking", ("green", None), ("yellow", 2), ("red", 5)),
-        col_thresholds("Max Block (s)", ("green", None), ("yellow", 10), ("red", 60)),
-        col_thresholds("Deadlocks", ("transparent", None), ("red", 1)),
-        col_thresholds("Collectors Failing", ("transparent", None), ("red", 1)),
-        col_thresholds(
-            "Severity", ("transparent", None), ("yellow", 2000), ("red", 3000)
-        ),
+        status_colors("Severity", {**indicator_colors, "Offline": "text"}),
+        status_colors("CPU", indicator_colors),
+        col_datalink("CPU", "Open CPU, Memory & Sessions", _CPU_MEM_URL),
+        status_colors("Threads", indicator_colors),
+        col_datalink("Threads", "Open CPU, Memory & Sessions", _CPU_MEM_URL),
+        status_colors("Memory", indicator_colors),
+        col_datalink("Memory", "Open CPU, Memory & Sessions", _CPU_MEM_URL),
+        status_colors("Blocking", indicator_colors),
+        col_datalink("Blocking", "Open Blocking & Deadlocks", _BLOCKING_URL),
+        status_colors("Deadlocks", indicator_colors),
+        col_datalink("Deadlocks", "Open Blocking & Deadlocks", _BLOCKING_URL),
+        status_colors("Collectors", indicator_colors),
+        col_datalink("Collectors", "Open Collection Health", _COLLECTION_URL),
     ]
 
     panels.append(
@@ -459,10 +460,10 @@ def fleet():
             18,
             _TABLE_SQL,
             overrides=overrides,
-            sort_by=[{"displayName": "Severity", "desc": True}],
             description=(
-                "One row per monitored server - click any column header to sort. "
-                "Click a server's name to open its Overview."
+                "One row per monitored server, worst-first. Click a domain indicator to open "
+                "the dashboard with that data; the raw numbers behind each indicator live "
+                "there, not here. Click a server's name to open its Overview."
             ),
         )
     )
