@@ -1226,7 +1226,7 @@
     {
       "id": 13,
       "type": "row",
-      "title": "History",
+      "title": "Anomalies",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -1238,6 +1238,117 @@
     },
     {
       "id": 14,
+      "type": "table",
+      "title": "Anomalies",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 41
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "target_url"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Start Time"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Show Active Queries at This Time",
+                    "url": "/d/darling-queries?${__data.fields.target_url}&var-server=$server",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Start Time",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\n\nSELECT\n    'SQL CPU' AS \"Metric\",\n    start_time AS \"Start Time\",\n    CASE\n        WHEN EXTRACT(EPOCH FROM (end_time - start_time)) * 1000 < 1000 THEN to_char(EXTRACT(EPOCH FROM (end_time - start_time)) * 1000, 'FM999,999,999,990') || ' ms'\n        WHEN EXTRACT(EPOCH FROM (end_time - start_time)) * 1000 < 60000 THEN to_char(round(((EXTRACT(EPOCH FROM (end_time - start_time)) * 1000) / 1000.0)::numeric, 1), 'FM999999990.0') || ' s'\n        ELSE to_char(round(((EXTRACT(EPOCH FROM (end_time - start_time)) * 1000) / 60000.0)::numeric, 1), 'FM999999990.0') || ' min'\n    END AS \"Duration\",\n    to_char(round((peak_value)::numeric, 1), 'FM999999990.0') || '%' AS \"Peak Value\",\n    'from=' || (EXTRACT(EPOCH FROM (start_time - INTERVAL '5 minutes')) * 1000)::bigint\n        || '&to=' || (EXTRACT(EPOCH FROM (end_time + INTERVAL '5 minutes')) * 1000)::bigint\n        AS \"target_url\"\nFROM (\nWITH samples AS (\nSELECT\n    cpu.sample_time\n        - INTERVAL '15 minutes'\n          * ROUND(EXTRACT(EPOCH FROM (\n                MAX(cpu.sample_time) OVER (PARTITION BY cpu.server_id, cpu.collection_time)\n                - cpu.collection_time\n            )) / 900.0)::double precision AS time,\n    cpu.sqlserver_cpu_utilization AS sql_cpu,\n    cpu.sqlserver_cpu_utilization + COALESCE(cpu.other_process_cpu_utilization, 0) AS total_cpu\nFROM collect.v_cpu_utilization_stats AS cpu\nWHERE $__timeFilter(cpu.collection_time)\n  AND cpu.server_id IN (${server:csv})\n),\n\nref AS (\n    SELECT $__timeFrom()::timestamp AS ref_time\n),\nbuckets AS (\n    \nSELECT\n    EXTRACT(HOUR FROM collection_time)::int AS hour_of_day,\n    EXTRACT(DOW FROM collection_time)::int AS day_of_week,\n    SUM(cpu_sum)::double precision / NULLIF(SUM(cpu_count), 0) AS mean_val,\n    sqrt(GREATEST(\n        (SUM(cpu_sumsq) - POWER(SUM(cpu_sum), 2)::double precision / NULLIF(SUM(cpu_count), 0))\n        / NULLIF(SUM(cpu_count) - 1, 0), 0)) AS stddev_val,\n    SUM(cpu_count) AS sample_count,\n    COUNT(DISTINCT collection_time::date) AS distinct_days\nFROM collect.cpu_utilization_baseline, ref\nWHERE server_id IN (${server:csv})\nAND   collection_time >= ref.ref_time - INTERVAL '30 days'\nAND   collection_time <  ref.ref_time\nGROUP BY 1, 2\n\n),\ntarget AS (\n    SELECT EXTRACT(HOUR FROM ref_time)::int AS hour_of_day,\n           EXTRACT(DOW FROM ref_time)::int AS day_of_week\n    FROM ref\n),\nfull_bucket AS (\n    SELECT b.mean_val, b.stddev_val, b.sample_count\n    FROM buckets b, target t\n    WHERE b.hour_of_day = t.hour_of_day AND b.day_of_week = t.day_of_week\n),\nhour_mean AS (\n    SELECT\n        SUM(b.mean_val * b.sample_count) / NULLIF(SUM(b.sample_count), 0) AS grand_mean,\n        SUM(b.sample_count) AS sample_count\n    FROM buckets b, target t\n    WHERE b.hour_of_day = t.hour_of_day\n),\nhour_bucket AS (\n    SELECT\n        hm.grand_mean AS mean_val,\n        CASE WHEN hm.sample_count > 1 THEN sqrt(GREATEST(SUM(\n            (b.stddev_val * b.stddev_val) * GREATEST(b.sample_count - 1, 0)\n            + b.sample_count * (b.mean_val - hm.grand_mean) * (b.mean_val - hm.grand_mean)\n        ) / (hm.sample_count - 1), 0)) ELSE 0 END AS stddev_val,\n        hm.sample_count\n    FROM buckets b, target t, hour_mean hm\n    WHERE b.hour_of_day = t.hour_of_day\n    GROUP BY hm.grand_mean, hm.sample_count\n),\nflat_mean AS (\n    SELECT\n        SUM(b.mean_val * b.sample_count) / NULLIF(SUM(b.sample_count), 0) AS grand_mean,\n        SUM(b.sample_count) AS sample_count\n    FROM buckets b\n),\nflat_bucket AS (\n    SELECT\n        fm.grand_mean AS mean_val,\n        CASE WHEN fm.sample_count > 1 THEN sqrt(GREATEST(SUM(\n            (b.stddev_val * b.stddev_val) * GREATEST(b.sample_count - 1, 0)\n            + b.sample_count * (b.mean_val - fm.grand_mean) * (b.mean_val - fm.grand_mean)\n        ) / (fm.sample_count - 1), 0)) ELSE 0 END AS stddev_val,\n        fm.sample_count\n    FROM buckets b, flat_mean fm\n    GROUP BY fm.grand_mean, fm.sample_count\n),\nselected AS (\n    SELECT\n        CASE\n            WHEN (SELECT sample_count FROM full_bucket) >= 10 THEN (SELECT mean_val FROM full_bucket)\n            WHEN (SELECT sample_count FROM hour_bucket) >= 10 THEN (SELECT mean_val FROM hour_bucket)\n            WHEN (SELECT sample_count FROM flat_bucket) >= 3 THEN (SELECT mean_val FROM flat_bucket)\n        END AS mean_val,\n        CASE\n            WHEN (SELECT sample_count FROM full_bucket) >= 10 THEN (SELECT stddev_val FROM full_bucket)\n            WHEN (SELECT sample_count FROM hour_bucket) >= 10 THEN (SELECT stddev_val FROM hour_bucket)\n            WHEN (SELECT sample_count FROM flat_bucket) >= 3 THEN (SELECT stddev_val FROM flat_bucket)\n        END AS stddev_val,\n        CASE\n            WHEN (SELECT sample_count FROM full_bucket) >= 10 THEN (SELECT sample_count FROM full_bucket)\n            WHEN (SELECT sample_count FROM hour_bucket) >= 10 THEN (SELECT sample_count FROM hour_bucket)\n            WHEN (SELECT sample_count FROM flat_bucket) >= 3 THEN (SELECT sample_count FROM flat_bucket)\n        END AS sample_count\n),\nbaseline AS (\n    SELECT\n        mean_val,\n        CASE\n            WHEN sample_count IS NULL THEN NULL\n            WHEN mean_val = 0 AND COALESCE(stddev_val, 0) <= 0 THEN 0\n            ELSE GREATEST(stddev_val, mean_val * 0.01, 5.0)\n        END AS effective_stddev,\n        sample_count\n    FROM selected\n),\nbounds AS (\n    SELECT\n        mean_val,\n        mean_val + 2 * effective_stddev AS upper_val,\n        GREATEST(0, mean_val - 2 * effective_stddev) AS lower_val\n    FROM baseline\n    WHERE sample_count > 0 AND effective_stddev > 0\n),\nflagged AS (\n    SELECT s.time, s.sql_cpu AS value,\n        CASE WHEN (s.sql_cpu > b.upper_val AND s.sql_cpu >= 10)\n                  OR s.sql_cpu < b.lower_val\n             THEN 1 ELSE 0 END AS is_anomaly\n    FROM samples s, bounds b\n),\nislands AS (\n    SELECT time, value, is_anomaly,\n        SUM(CASE WHEN is_anomaly = 0 THEN 1 ELSE 0 END) OVER (ORDER BY time) AS grp\n    FROM flagged\n)\nSELECT MIN(time) AS start_time, MAX(time) AS end_time, MAX(value) AS peak_value\nFROM islands\nWHERE is_anomaly = 1\nGROUP BY grp\n) AS events\n\nUNION ALL\n\nSELECT\n    'Wait ms/sec' AS \"Metric\",\n    start_time AS \"Start Time\",\n    CASE\n        WHEN EXTRACT(EPOCH FROM (end_time - start_time)) * 1000 < 1000 THEN to_char(EXTRACT(EPOCH FROM (end_time - start_time)) * 1000, 'FM999,999,999,990') || ' ms'\n        WHEN EXTRACT(EPOCH FROM (end_time - start_time)) * 1000 < 60000 THEN to_char(round(((EXTRACT(EPOCH FROM (end_time - start_time)) * 1000) / 1000.0)::numeric, 1), 'FM999999990.0') || ' s'\n        ELSE to_char(round(((EXTRACT(EPOCH FROM (end_time - start_time)) * 1000) / 60000.0)::numeric, 1), 'FM999999990.0') || ' min'\n    END AS \"Duration\",\n    to_char(round((peak_value)::numeric, 0), 'FM999999990') || ' ms/sec' AS \"Peak Value\",\n    'from=' || (EXTRACT(EPOCH FROM (start_time - INTERVAL '5 minutes')) * 1000)::bigint\n        || '&to=' || (EXTRACT(EPOCH FROM (end_time + INTERVAL '5 minutes')) * 1000)::bigint\n        AS \"target_url\"\nFROM (\nWITH samples AS (\nWITH per_collection AS (\n    SELECT\n        collection_time,\n        SUM(delta_wait_time_ms) AS total_delta_ms,\n        EXTRACT(EPOCH FROM (date_trunc('second', collection_time)\n            - date_trunc('second', LAG(collection_time) OVER (ORDER BY collection_time)))) AS interval_seconds\n    FROM collect.v_wait_stats\n    WHERE $__timeFilter(collection_time)\n      AND server_id IN (${server:csv})\n    GROUP BY collection_time\n)\nSELECT\n    collection_time AS time,\n    CASE WHEN interval_seconds > 0 THEN total_delta_ms::double precision / interval_seconds ELSE 0 END AS value\nFROM per_collection\n),\n\nref AS (\n    SELECT $__timeFrom()::timestamp AS ref_time\n),\nbuckets AS (\n    \nWITH per_collection AS (\n    SELECT\n        collection_time,\n        total_wait_ms::double precision AS total_wait_ms,\n        EXTRACT(EPOCH FROM (date_trunc('second', collection_time)\n            - date_trunc('second', LAG(collection_time) OVER (ORDER BY collection_time)))) AS interval_sec\n    FROM collect.wait_stats_baseline, ref\n    WHERE server_id IN (${server:csv})\n    AND   collection_time >= ref.ref_time - INTERVAL '30 days'\n    AND   collection_time <  ref.ref_time\n),\nwith_rate AS (\n    SELECT collection_time,\n           CASE WHEN interval_sec > 0 THEN total_wait_ms / interval_sec ELSE 0 END AS ms_per_sec\n    FROM per_collection\n    WHERE interval_sec IS NOT NULL\n),\nwith_lag AS (\n    SELECT collection_time, ms_per_sec,\n           COALESCE(LAG(ms_per_sec) OVER (ORDER BY collection_time), 0) AS prior_ms_per_sec\n    FROM with_rate\n)\nSELECT\n    EXTRACT(HOUR FROM collection_time)::int AS hour_of_day,\n    EXTRACT(DOW FROM collection_time)::int AS day_of_week,\n    AVG(ms_per_sec) AS mean_val,\n    COALESCE(STDDEV_SAMP(ms_per_sec), 0) AS stddev_val,\n    COUNT(*) AS sample_count,\n    COUNT(DISTINCT collection_time::date) AS distinct_days\nFROM with_lag\nWHERE NOT (ms_per_sec = 0 AND prior_ms_per_sec > 100)\nGROUP BY 1, 2\n\n),\ntarget AS (\n    SELECT EXTRACT(HOUR FROM ref_time)::int AS hour_of_day,\n           EXTRACT(DOW FROM ref_time)::int AS day_of_week\n    FROM ref\n),\nfull_bucket AS (\n    SELECT b.mean_val, b.stddev_val, b.sample_count\n    FROM buckets b, target t\n    WHERE b.hour_of_day = t.hour_of_day AND b.day_of_week = t.day_of_week\n),\nhour_mean AS (\n    SELECT\n        SUM(b.mean_val * b.sample_count) / NULLIF(SUM(b.sample_count), 0) AS grand_mean,\n        SUM(b.sample_count) AS sample_count\n    FROM buckets b, target t\n    WHERE b.hour_of_day = t.hour_of_day\n),\nhour_bucket AS (\n    SELECT\n        hm.grand_mean AS mean_val,\n        CASE WHEN hm.sample_count > 1 THEN sqrt(GREATEST(SUM(\n            (b.stddev_val * b.stddev_val) * GREATEST(b.sample_count - 1, 0)\n            + b.sample_count * (b.mean_val - hm.grand_mean) * (b.mean_val - hm.grand_mean)\n        ) / (hm.sample_count - 1), 0)) ELSE 0 END AS stddev_val,\n        hm.sample_count\n    FROM buckets b, target t, hour_mean hm\n    WHERE b.hour_of_day = t.hour_of_day\n    GROUP BY hm.grand_mean, hm.sample_count\n),\nflat_mean AS (\n    SELECT\n        SUM(b.mean_val * b.sample_count) / NULLIF(SUM(b.sample_count), 0) AS grand_mean,\n        SUM(b.sample_count) AS sample_count\n    FROM buckets b\n),\nflat_bucket AS (\n    SELECT\n        fm.grand_mean AS mean_val,\n        CASE WHEN fm.sample_count > 1 THEN sqrt(GREATEST(SUM(\n            (b.stddev_val * b.stddev_val) * GREATEST(b.sample_count - 1, 0)\n            + b.sample_count * (b.mean_val - fm.grand_mean) * (b.mean_val - fm.grand_mean)\n        ) / (fm.sample_count - 1), 0)) ELSE 0 END AS stddev_val,\n        fm.sample_count\n    FROM buckets b, flat_mean fm\n    GROUP BY fm.grand_mean, fm.sample_count\n),\nselected AS (\n    SELECT\n        CASE\n            WHEN (SELECT sample_count FROM full_bucket) >= 10 THEN (SELECT mean_val FROM full_bucket)\n            WHEN (SELECT sample_count FROM hour_bucket) >= 10 THEN (SELECT mean_val FROM hour_bucket)\n            WHEN (SELECT sample_count FROM flat_bucket) >= 3 THEN (SELECT mean_val FROM flat_bucket)\n        END AS mean_val,\n        CASE\n            WHEN (SELECT sample_count FROM full_bucket) >= 10 THEN (SELECT stddev_val FROM full_bucket)\n            WHEN (SELECT sample_count FROM hour_bucket) >= 10 THEN (SELECT stddev_val FROM hour_bucket)\n            WHEN (SELECT sample_count FROM flat_bucket) >= 3 THEN (SELECT stddev_val FROM flat_bucket)\n        END AS stddev_val,\n        CASE\n            WHEN (SELECT sample_count FROM full_bucket) >= 10 THEN (SELECT sample_count FROM full_bucket)\n            WHEN (SELECT sample_count FROM hour_bucket) >= 10 THEN (SELECT sample_count FROM hour_bucket)\n            WHEN (SELECT sample_count FROM flat_bucket) >= 3 THEN (SELECT sample_count FROM flat_bucket)\n        END AS sample_count\n),\nbaseline AS (\n    SELECT\n        mean_val,\n        CASE\n            WHEN sample_count IS NULL THEN NULL\n            WHEN mean_val = 0 AND COALESCE(stddev_val, 0) <= 0 THEN 0\n            ELSE GREATEST(stddev_val, mean_val * 0.01, 0.0)\n        END AS effective_stddev,\n        sample_count\n    FROM selected\n),\nbounds AS (\n    SELECT\n        mean_val,\n        mean_val + 2 * effective_stddev AS upper_val,\n        GREATEST(0, mean_val - 2 * effective_stddev) AS lower_val\n    FROM baseline\n    WHERE sample_count > 0 AND effective_stddev > 0\n),\nflagged AS (\n    SELECT s.time, s.value AS value,\n        CASE WHEN (s.value > b.upper_val AND s.value >= 100)\n                  OR s.value < b.lower_val\n             THEN 1 ELSE 0 END AS is_anomaly\n    FROM samples s, bounds b\n),\nislands AS (\n    SELECT time, value, is_anomaly,\n        SUM(CASE WHEN is_anomaly = 0 THEN 1 ELSE 0 END) OVER (ORDER BY time) AS grp\n    FROM flagged\n)\nSELECT MIN(time) AS start_time, MAX(time) AS end_time, MAX(value) AS peak_value\nFROM islands\nWHERE is_anomaly = 1\nGROUP BY grp\n) AS events\n\nUNION ALL\n\nSELECT\n    'I/O Latency' AS \"Metric\",\n    start_time AS \"Start Time\",\n    CASE\n        WHEN EXTRACT(EPOCH FROM (end_time - start_time)) * 1000 < 1000 THEN to_char(EXTRACT(EPOCH FROM (end_time - start_time)) * 1000, 'FM999,999,999,990') || ' ms'\n        WHEN EXTRACT(EPOCH FROM (end_time - start_time)) * 1000 < 60000 THEN to_char(round(((EXTRACT(EPOCH FROM (end_time - start_time)) * 1000) / 1000.0)::numeric, 1), 'FM999999990.0') || ' s'\n        ELSE to_char(round(((EXTRACT(EPOCH FROM (end_time - start_time)) * 1000) / 60000.0)::numeric, 1), 'FM999999990.0') || ' min'\n    END AS \"Duration\",\n    to_char(round((peak_value)::numeric, 1), 'FM999999990.0') || ' ms' AS \"Peak Value\",\n    'from=' || (EXTRACT(EPOCH FROM (start_time - INTERVAL '5 minutes')) * 1000)::bigint\n        || '&to=' || (EXTRACT(EPOCH FROM (end_time + INTERVAL '5 minutes')) * 1000)::bigint\n        AS \"target_url\"\nFROM (\nWITH samples AS (\nWITH top_files AS (\n    SELECT database_name, file_name\n    FROM collect.v_file_io_stats\n    WHERE $__timeFilter(collection_time)\n      AND server_id IN (${server:csv})\n      AND (delta_reads > 0 OR delta_writes > 0)\n    GROUP BY database_name, file_name\n    ORDER BY SUM(delta_reads + delta_writes) DESC\n    LIMIT 10\n),\nper_file AS (\n    SELECT\n        f.collection_time,\n        CASE WHEN SUM(f.delta_reads) > 0\n             THEN SUM(f.delta_stall_read_ms::double precision) / SUM(f.delta_reads)\n             ELSE 0 END AS avg_read_latency_ms\n    FROM collect.v_file_io_stats AS f\n    JOIN top_files tf ON tf.database_name = f.database_name AND tf.file_name = f.file_name\n    WHERE $__timeFilter(f.collection_time)\n      AND f.server_id IN (${server:csv})\n    GROUP BY f.collection_time, f.database_name, f.file_name\n)\nSELECT collection_time AS time, AVG(avg_read_latency_ms) AS value\nFROM per_file\nGROUP BY collection_time\n),\n\nref AS (\n    SELECT $__timeFrom()::timestamp AS ref_time\n),\nbuckets AS (\n    \nSELECT\n    EXTRACT(HOUR FROM collection_time)::int AS hour_of_day,\n    EXTRACT(DOW FROM collection_time)::int AS day_of_week,\n    SUM(ratio_sum) / NULLIF(SUM(ratio_count), 0) AS mean_val,\n    sqrt(GREATEST(\n        (SUM(ratio_sumsq) - POWER(SUM(ratio_sum), 2) / NULLIF(SUM(ratio_count), 0))\n        / NULLIF(SUM(ratio_count) - 1, 0), 0)) AS stddev_val,\n    SUM(row_count) AS sample_count,\n    COUNT(DISTINCT collection_time::date) AS distinct_days\nFROM collect.file_io_baseline, ref\nWHERE server_id IN (${server:csv})\nAND   collection_time >= ref.ref_time - INTERVAL '30 days'\nAND   collection_time <  ref.ref_time\nGROUP BY 1, 2\n\n),\ntarget AS (\n    SELECT EXTRACT(HOUR FROM ref_time)::int AS hour_of_day,\n           EXTRACT(DOW FROM ref_time)::int AS day_of_week\n    FROM ref\n),\nfull_bucket AS (\n    SELECT b.mean_val, b.stddev_val, b.sample_count\n    FROM buckets b, target t\n    WHERE b.hour_of_day = t.hour_of_day AND b.day_of_week = t.day_of_week\n),\nhour_mean AS (\n    SELECT\n        SUM(b.mean_val * b.sample_count) / NULLIF(SUM(b.sample_count), 0) AS grand_mean,\n        SUM(b.sample_count) AS sample_count\n    FROM buckets b, target t\n    WHERE b.hour_of_day = t.hour_of_day\n),\nhour_bucket AS (\n    SELECT\n        hm.grand_mean AS mean_val,\n        CASE WHEN hm.sample_count > 1 THEN sqrt(GREATEST(SUM(\n            (b.stddev_val * b.stddev_val) * GREATEST(b.sample_count - 1, 0)\n            + b.sample_count * (b.mean_val - hm.grand_mean) * (b.mean_val - hm.grand_mean)\n        ) / (hm.sample_count - 1), 0)) ELSE 0 END AS stddev_val,\n        hm.sample_count\n    FROM buckets b, target t, hour_mean hm\n    WHERE b.hour_of_day = t.hour_of_day\n    GROUP BY hm.grand_mean, hm.sample_count\n),\nflat_mean AS (\n    SELECT\n        SUM(b.mean_val * b.sample_count) / NULLIF(SUM(b.sample_count), 0) AS grand_mean,\n        SUM(b.sample_count) AS sample_count\n    FROM buckets b\n),\nflat_bucket AS (\n    SELECT\n        fm.grand_mean AS mean_val,\n        CASE WHEN fm.sample_count > 1 THEN sqrt(GREATEST(SUM(\n            (b.stddev_val * b.stddev_val) * GREATEST(b.sample_count - 1, 0)\n            + b.sample_count * (b.mean_val - fm.grand_mean) * (b.mean_val - fm.grand_mean)\n        ) / (fm.sample_count - 1), 0)) ELSE 0 END AS stddev_val,\n        fm.sample_count\n    FROM buckets b, flat_mean fm\n    GROUP BY fm.grand_mean, fm.sample_count\n),\nselected AS (\n    SELECT\n        CASE\n            WHEN (SELECT sample_count FROM full_bucket) >= 10 THEN (SELECT mean_val FROM full_bucket)\n            WHEN (SELECT sample_count FROM hour_bucket) >= 10 THEN (SELECT mean_val FROM hour_bucket)\n            WHEN (SELECT sample_count FROM flat_bucket) >= 3 THEN (SELECT mean_val FROM flat_bucket)\n        END AS mean_val,\n        CASE\n            WHEN (SELECT sample_count FROM full_bucket) >= 10 THEN (SELECT stddev_val FROM full_bucket)\n            WHEN (SELECT sample_count FROM hour_bucket) >= 10 THEN (SELECT stddev_val FROM hour_bucket)\n            WHEN (SELECT sample_count FROM flat_bucket) >= 3 THEN (SELECT stddev_val FROM flat_bucket)\n        END AS stddev_val,\n        CASE\n            WHEN (SELECT sample_count FROM full_bucket) >= 10 THEN (SELECT sample_count FROM full_bucket)\n            WHEN (SELECT sample_count FROM hour_bucket) >= 10 THEN (SELECT sample_count FROM hour_bucket)\n            WHEN (SELECT sample_count FROM flat_bucket) >= 3 THEN (SELECT sample_count FROM flat_bucket)\n        END AS sample_count\n),\nbaseline AS (\n    SELECT\n        mean_val,\n        CASE\n            WHEN sample_count IS NULL THEN NULL\n            WHEN mean_val = 0 AND COALESCE(stddev_val, 0) <= 0 THEN 0\n            ELSE GREATEST(stddev_val, mean_val * 0.01, 2.5)\n        END AS effective_stddev,\n        sample_count\n    FROM selected\n),\nbounds AS (\n    SELECT\n        mean_val,\n        mean_val + 2 * effective_stddev AS upper_val,\n        GREATEST(0, mean_val - 2 * effective_stddev) AS lower_val\n    FROM baseline\n    WHERE sample_count > 0 AND effective_stddev > 0\n),\nflagged AS (\n    SELECT s.time, s.value AS value,\n        CASE WHEN (s.value > b.upper_val AND s.value >= 2)\n                  OR s.value < b.lower_val\n             THEN 1 ELSE 0 END AS is_anomaly\n    FROM samples s, bounds b\n),\nislands AS (\n    SELECT time, value, is_anomaly,\n        SUM(CASE WHEN is_anomaly = 0 THEN 1 ELSE 0 END) OVER (ORDER BY time) AS grp\n    FROM flagged\n)\nSELECT MIN(time) AS start_time, MAX(time) AS end_time, MAX(value) AS peak_value\nFROM islands\nWHERE is_anomaly = 1\nGROUP BY grp\n) AS events\n\nORDER BY \"Start Time\" DESC\n"
+        }
+      ],
+      "description": "One row per contiguous baseline-anomaly event across the CPU, Wait ms/sec, and I/O Latency lanes above (Blocking has no baseline anomaly marker - see _blocking_lane_sql). Click Start Time to open Query Performance's Active Queries at that event's window, padded +/-5 minutes."
+    },
+    {
+      "id": 15,
+      "type": "row",
+      "title": "History",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 49
+      },
+      "panels": []
+    },
+    {
+      "id": 16,
       "type": "state-timeline",
       "title": "Performance Calendar",
       "datasource": {
@@ -1248,7 +1359,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 41
+        "y": 50
       },
       "fieldConfig": {
         "defaults": {
@@ -1323,7 +1434,7 @@
       "description": "Composite daily health, one band per day. A day with no collection at all is absent rather than banded."
     },
     {
-      "id": 15,
+      "id": 17,
       "type": "table",
       "title": "Daily Detail",
       "datasource": {
@@ -1334,7 +1445,7 @@
         "h": 14,
         "w": 24,
         "x": 0,
-        "y": 48
+        "y": 57
       },
       "fieldConfig": {
         "defaults": {

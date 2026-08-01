@@ -6,28 +6,18 @@ Upstream ref: CorrelatedTimelineLanesControl.xaml(.cs), ViewerDataService.Cpu.cs
 PerformanceMonitor.Analysis.Baselines.BaselineMath/BaselineBucket, DailySummarySql.RangeSql
 / RangeSqlFor (Darling.Storage), ViewerServerTab.DailySummary.cs, DailyHealthBandCalculator
 (PerformanceMonitor.Common).
-
-$server is single-select (the suite default) - a baseline band's fillBelowTo pairing needs
-an exact, statically-known partner series name, so it could not have worked with a
-multi-select variable resolving to an arbitrary number of series at query time regardless.
-
-Not ported: the "Show Active Queries at This Time" right-click drill-down - Grafana
-timeseries panels have no per-point click event.
-
-History section: upstream renders a month heatmap of composite daily health and opens a
-day-detail panel on click. Grafana has no month-grid calendar, so the heatmap becomes a
-state timeline banded by the same composite verdict, and the day detail becomes a row per
-day in the table below it - every signal the detail panel shows is a column, visible for
-all days at once instead of one at a time.
 """
 
 from ._shared import (
     HEALTH_STATUS_COLORS,
+    col_datalink,
+    col_hidden,
     col_thresholds,
     col_unit,
     collector,
     dashboard,
     duration_ms,
+    fixed,
     flow,
     n0,
     reset_id,
@@ -473,6 +463,88 @@ SELECT time, 'I/O ms' AS metric, value FROM samples
 ORDER BY 1
 """
 
+_ANOMALY_PAD = "5 minutes"
+
+
+def _anomaly_islands_sql(
+    samples_sql: str, value_col: str, buckets_sql: str, abs_floor: float, min_anomaly: float
+) -> str:
+    """Group one lane's flagged anomaly samples into contiguous events, one row per event:
+    (start_time, end_time, peak_value). A non-anomalous sample breaks the run, so a run of
+    consecutive flagged samples with no unflagged sample between them is one event regardless
+    of collection cadence.
+    """
+    ctes = _baseline_ctes(buckets_sql, abs_floor)
+    return f"""
+WITH samples AS ({samples_sql}),
+{ctes},
+flagged AS (
+    SELECT s.time, s.{value_col} AS value,
+        CASE WHEN (s.{value_col} > b.upper_val AND s.{value_col} >= {min_anomaly})
+                  OR s.{value_col} < b.lower_val
+             THEN 1 ELSE 0 END AS is_anomaly
+    FROM samples s, bounds b
+),
+islands AS (
+    SELECT time, value, is_anomaly,
+        SUM(CASE WHEN is_anomaly = 0 THEN 1 ELSE 0 END) OVER (ORDER BY time) AS grp
+    FROM flagged
+)
+SELECT MIN(time) AS start_time, MAX(time) AS end_time, MAX(value) AS peak_value
+FROM islands
+WHERE is_anomaly = 1
+GROUP BY grp
+"""
+
+
+def _anomaly_row_sql(metric_label: str, islands_sql: str, peak_expr: str) -> str:
+    """One UNION branch of the Anomalies table. peak_value is MAX(value) over the event -
+    the worst reading for the common "spike" case (CPU/wait/latency running high); a "dip"
+    event (value < lower_val) instead shows its least-low point, a minor approximation
+    accepted for now since spikes dominate this data set. target_url carries only the
+    padded from/to (the part that has to be computed in SQL) - $server is filled in by
+    Grafana's own client-side substitution on the link template, like every other link here.
+    """
+    return f"""
+SELECT
+    '{metric_label}' AS "Metric",
+    start_time AS "Start Time",
+    {duration_ms("EXTRACT(EPOCH FROM (end_time - start_time)) * 1000")} AS "Duration",
+    {peak_expr} AS "Peak Value",
+    'from=' || (EXTRACT(EPOCH FROM (start_time - INTERVAL '{_ANOMALY_PAD}')) * 1000)::bigint
+        || '&to=' || (EXTRACT(EPOCH FROM (end_time + INTERVAL '{_ANOMALY_PAD}')) * 1000)::bigint
+        AS "target_url"
+FROM ({islands_sql}) AS events
+"""
+
+
+_ANOMALIES_SQL = f"""
+{_anomaly_row_sql(
+    "SQL CPU",
+    _anomaly_islands_sql(_CPU_SAMPLES_SQL, "sql_cpu", _CPU_BUCKETS_SQL, 5.0, 10),
+    fixed("peak_value", 1) + " || '%'",
+)}
+UNION ALL
+{_anomaly_row_sql(
+    "Wait ms/sec",
+    _anomaly_islands_sql(_WAIT_LANE_DATA_SQL, "value", _WAIT_BUCKETS_SQL, 0.0, 100),
+    fixed("peak_value", 0) + " || ' ms/sec'",
+)}
+UNION ALL
+{_anomaly_row_sql(
+    "I/O Latency",
+    _anomaly_islands_sql(_FILE_IO_DATA_SQL, "value", _FILE_IO_BUCKETS_SQL, 2.5, 2),
+    fixed("peak_value", 1) + " || ' ms'",
+)}
+ORDER BY "Start Time" DESC
+"""
+
+_ANOMALY_DRILL = col_datalink(
+    "Start Time",
+    "Show Active Queries at This Time",
+    "/d/darling-queries?${__data.fields.target_url}&var-server=$server",
+)
+
 
 # Stat row. Upstream ref: server_inventory.py's _VERSION_DISPLAY/_UPTIME for the same
 # ServerPropertyRow computed columns, re-derived here scoped to one server instead of the
@@ -604,17 +676,12 @@ _STAT_ROW = [
     },
 ]
 
-# History section (absorbed from the former Daily Summary dashboard). DailyHealthThresholds
-# .Default - the one place to retune how red or green a month reads.
 _HIGH_CPU_CRITICAL = 6
 _HIGH_CPU_WARNING = 1
 _BLOCKING_CRITICAL = 11
 _BLOCKING_WARNING = 1
 _ALERT_WARNING = 1
 
-# The DailyHealthBand enum values, so the calendar's numeric bands read as upstream's.
-# NoData has no branch: every row the aggregate returns came off the day spine, so upstream
-# sets HasData true for all of them and a day with no collection is simply absent.
 _DAILY_STATES = [(1, "Healthy", "green"), (2, "Warning", "yellow"), (3, "Critical", "red")]
 
 # Upstream ref: DailyHealthBandCalculator.Classify - severity is first-match-wins.
@@ -952,6 +1019,35 @@ def overview():
                     unit="ms",
                     axis_label="ms",
                     overrides=_BAND_OVERRIDES,
+                ),
+            ),
+        ],
+    )
+
+    y = subtab(
+        panels,
+        "Anomalies",
+        y,
+        [
+            (
+                24,
+                8,
+                lambda x, y, w, h: table(
+                    "Anomalies",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _ANOMALIES_SQL,
+                    overrides=[col_hidden("target_url"), _ANOMALY_DRILL],
+                    sort_by=[{"displayName": "Start Time", "desc": True}],
+                    description=(
+                        "One row per contiguous baseline-anomaly event across the CPU, "
+                        "Wait ms/sec, and I/O Latency lanes above (Blocking has no baseline "
+                        "anomaly marker - see _blocking_lane_sql). Click Start Time to open "
+                        "Query Performance's Active Queries at that event's window, padded "
+                        "+/-5 minutes."
+                    ),
                 ),
             ),
         ],
