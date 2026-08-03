@@ -1029,26 +1029,8 @@
             },
             "properties": [
               {
-                "id": "min",
-                "value": 0
-              },
-              {
                 "id": "unit",
                 "value": "short"
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "blue"
-                }
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "gauge",
-                  "mode": "basic"
-                }
               }
             ]
           },
@@ -1059,26 +1041,8 @@
             },
             "properties": [
               {
-                "id": "min",
-                "value": 0
-              },
-              {
                 "id": "unit",
                 "value": "ms"
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "blue"
-                }
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "gauge",
-                  "mode": "basic"
-                }
               }
             ]
           },
@@ -1089,26 +1053,8 @@
             },
             "properties": [
               {
-                "id": "min",
-                "value": 0
-              },
-              {
                 "id": "unit",
                 "value": "ms"
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "blue"
-                }
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "gauge",
-                  "mode": "basic"
-                }
               }
             ]
           },
@@ -1119,26 +1065,8 @@
             },
             "properties": [
               {
-                "id": "min",
-                "value": 0
-              },
-              {
                 "id": "unit",
                 "value": "short"
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "blue"
-                }
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "gauge",
-                  "mode": "basic"
-                }
               }
             ]
           }
@@ -1979,7 +1907,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "\nWITH baseline_performance AS (\n    SELECT\n        server_id, database_name, query_id,\n        AVG(avg_duration_us::double precision) / 1000.0 AS avg_duration_ms,\n        AVG(avg_cpu_time_us::double precision) / 1000.0 AS avg_cpu_time_ms,\n        AVG(avg_logical_io_reads::double precision) AS avg_logical_io_reads,\n        SUM(execution_count)::bigint AS exec_count,\n        COUNT(DISTINCT plan_id)::int AS plan_count\n    FROM collect.v_query_store_stats\n    WHERE server_id IN (${server:csv})\n      AND collection_time < $__timeFrom()\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n    GROUP BY server_id, database_name, query_id\n),\nrecent_performance AS (\n    SELECT\n        server_id, database_name, query_id,\n        MAX(query_text) AS query_text_sample,\n        AVG(avg_duration_us::double precision) / 1000.0 AS avg_duration_ms,\n        AVG(avg_cpu_time_us::double precision) / 1000.0 AS avg_cpu_time_ms,\n        AVG(avg_logical_io_reads::double precision) AS avg_logical_io_reads,\n        SUM(execution_count)::bigint AS exec_count,\n        COUNT(DISTINCT plan_id)::int AS plan_count,\n        MAX(last_execution_time) AS last_execution_time\n    FROM collect.v_query_store_stats\n    WHERE server_id IN (${server:csv})\n      AND $__timeFilter(collection_time)\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n    GROUP BY server_id, database_name, query_id\n)\nSELECT\n    r.server_id AS \"server_id\",\n    srv.name AS \"Server\",\n    r.database_name AS \"Database\",\n    r.query_id AS \"Query ID\",\n    b.avg_duration_ms AS \"Baseline Duration (ms)\",\n    r.avg_duration_ms AS \"Recent Duration (ms)\",\n    (r.avg_duration_ms - b.avg_duration_ms) * 100.0 / NULLIF(b.avg_duration_ms, 0) AS \"Duration Regression %\",\n    b.avg_cpu_time_ms AS \"Baseline CPU (ms)\",\n    r.avg_cpu_time_ms AS \"Recent CPU (ms)\",\n    (r.avg_cpu_time_ms - b.avg_cpu_time_ms) * 100.0 / NULLIF(b.avg_cpu_time_ms, 0) AS \"CPU Regression %\",\n    b.avg_logical_io_reads AS \"Baseline Reads\",\n    r.avg_logical_io_reads AS \"Recent Reads\",\n    (r.avg_logical_io_reads - b.avg_logical_io_reads) * 100.0 / NULLIF(b.avg_logical_io_reads, 0) AS \"IO Regression %\",\n    (r.avg_duration_ms - b.avg_duration_ms) * r.exec_count AS \"Total Impact (ms)\",\n    b.exec_count AS \"Base Execs\",\n    r.exec_count AS \"Recent Execs\",\n    b.plan_count AS \"Base Plans\",\n    r.plan_count AS \"Recent Plans\",\n    CASE\n        WHEN (r.avg_duration_ms - b.avg_duration_ms) * 100.0 / NULLIF(b.avg_duration_ms, 0) > 100 THEN 'CRITICAL'\n        WHEN (r.avg_duration_ms - b.avg_duration_ms) * 100.0 / NULLIF(b.avg_duration_ms, 0) > 50 THEN 'HIGH'\n        WHEN (r.avg_duration_ms - b.avg_duration_ms) * 100.0 / NULLIF(b.avg_duration_ms, 0) > 25 THEN 'MEDIUM'\n        ELSE 'LOW'\n    END AS \"Severity\",\n    r.query_text_sample AS \"Query Text\",\n    r.last_execution_time AS \"Last Execution\"\nFROM recent_performance AS r\nJOIN baseline_performance AS b\n  ON b.server_id = r.server_id AND b.database_name = r.database_name AND b.query_id = r.query_id\nJOIN config.config_monitored_servers AS srv ON srv.server_id = r.server_id\nWHERE (r.avg_cpu_time_ms - b.avg_cpu_time_ms) * 100.0 / NULLIF(b.avg_cpu_time_ms, 0) > 25\nORDER BY \"Total Impact (ms)\" DESC\nLIMIT 50\n"
+          "rawSql": "\nWITH baseline_performance AS (\n    SELECT\n        server_id, database_name, query_id,\n        AVG(avg_duration_us::double precision) / 1000.0 AS avg_duration_ms,\n        AVG(avg_cpu_time_us::double precision) / 1000.0 AS avg_cpu_time_ms,\n        AVG(avg_logical_io_reads::double precision) AS avg_logical_io_reads,\n        SUM(execution_count)::bigint AS exec_count,\n        COUNT(DISTINCT plan_id)::int AS plan_count\n    FROM collect.v_query_store_stats\n    WHERE server_id IN (${server:csv})\n      AND collection_time < $__timeFrom()\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n    GROUP BY server_id, database_name, query_id\n),\nrecent_performance AS (\n    SELECT\n        server_id, database_name, query_id,\n        MAX(query_text) AS query_text_sample,\n        AVG(avg_duration_us::double precision) / 1000.0 AS avg_duration_ms,\n        AVG(avg_cpu_time_us::double precision) / 1000.0 AS avg_cpu_time_ms,\n        AVG(avg_logical_io_reads::double precision) AS avg_logical_io_reads,\n        SUM(execution_count)::bigint AS exec_count,\n        COUNT(DISTINCT plan_id)::int AS plan_count,\n        MAX(last_execution_time) AS last_execution_time\n    FROM collect.v_query_store_stats\n    WHERE server_id IN (${server:csv})\n      AND $__timeFilter(collection_time)\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n    GROUP BY server_id, database_name, query_id\n)\nSELECT\n    r.server_id AS \"server_id\",\n    srv.name AS \"Server\",\n    r.database_name AS \"Database\",\n    CASE\n        WHEN (r.avg_duration_ms - b.avg_duration_ms) * 100.0 / NULLIF(b.avg_duration_ms, 0) > 100 THEN 'CRITICAL'\n        WHEN (r.avg_duration_ms - b.avg_duration_ms) * 100.0 / NULLIF(b.avg_duration_ms, 0) > 50 THEN 'HIGH'\n        WHEN (r.avg_duration_ms - b.avg_duration_ms) * 100.0 / NULLIF(b.avg_duration_ms, 0) > 25 THEN 'MEDIUM'\n        ELSE 'LOW'\n    END AS \"Severity\",\n    r.query_id AS \"Query ID\",\n    b.avg_duration_ms AS \"Baseline Duration (ms)\",\n    r.avg_duration_ms AS \"Recent Duration (ms)\",\n    (r.avg_duration_ms - b.avg_duration_ms) * 100.0 / NULLIF(b.avg_duration_ms, 0) AS \"Duration Regression %\",\n    b.avg_cpu_time_ms AS \"Baseline CPU (ms)\",\n    r.avg_cpu_time_ms AS \"Recent CPU (ms)\",\n    (r.avg_cpu_time_ms - b.avg_cpu_time_ms) * 100.0 / NULLIF(b.avg_cpu_time_ms, 0) AS \"CPU Regression %\",\n    b.avg_logical_io_reads AS \"Baseline Reads\",\n    r.avg_logical_io_reads AS \"Recent Reads\",\n    (r.avg_logical_io_reads - b.avg_logical_io_reads) * 100.0 / NULLIF(b.avg_logical_io_reads, 0) AS \"IO Regression %\",\n    (r.avg_duration_ms - b.avg_duration_ms) * r.exec_count AS \"Total Impact (ms)\",\n    b.exec_count AS \"Base Execs\",\n    r.exec_count AS \"Recent Execs\",\n    b.plan_count AS \"Base Plans\",\n    r.plan_count AS \"Recent Plans\",\n    r.query_text_sample AS \"Query Text\",\n    r.last_execution_time AS \"Last Execution\"\nFROM recent_performance AS r\nJOIN baseline_performance AS b\n  ON b.server_id = r.server_id AND b.database_name = r.database_name AND b.query_id = r.query_id\nJOIN config.config_monitored_servers AS srv ON srv.server_id = r.server_id\nWHERE (r.avg_cpu_time_ms - b.avg_cpu_time_ms) * 100.0 / NULLIF(b.avg_cpu_time_ms, 0) > 25\nORDER BY \"Total Impact (ms)\" DESC\nLIMIT 50\n"
         }
       ],
       "description": "Baseline is every Query Store capture before the dashboard's window start (unbounded lookback, bounded in practice by raw retention); recent is the window itself. Only queries with >25% CPU regression are included (the upstream TVF's actual gate, not its doc comment's claim)."

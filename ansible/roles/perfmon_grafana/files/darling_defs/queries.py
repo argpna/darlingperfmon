@@ -1117,6 +1117,12 @@ SELECT
     r.server_id AS "server_id",
     srv.name AS "Server",
     r.database_name AS "Database",
+    CASE
+        WHEN (r.avg_duration_ms - b.avg_duration_ms) * 100.0 / NULLIF(b.avg_duration_ms, 0) > 100 THEN 'CRITICAL'
+        WHEN (r.avg_duration_ms - b.avg_duration_ms) * 100.0 / NULLIF(b.avg_duration_ms, 0) > 50 THEN 'HIGH'
+        WHEN (r.avg_duration_ms - b.avg_duration_ms) * 100.0 / NULLIF(b.avg_duration_ms, 0) > 25 THEN 'MEDIUM'
+        ELSE 'LOW'
+    END AS "Severity",
     r.query_id AS "Query ID",
     b.avg_duration_ms AS "Baseline Duration (ms)",
     r.avg_duration_ms AS "Recent Duration (ms)",
@@ -1132,12 +1138,6 @@ SELECT
     r.exec_count AS "Recent Execs",
     b.plan_count AS "Base Plans",
     r.plan_count AS "Recent Plans",
-    CASE
-        WHEN (r.avg_duration_ms - b.avg_duration_ms) * 100.0 / NULLIF(b.avg_duration_ms, 0) > 100 THEN 'CRITICAL'
-        WHEN (r.avg_duration_ms - b.avg_duration_ms) * 100.0 / NULLIF(b.avg_duration_ms, 0) > 50 THEN 'HIGH'
-        WHEN (r.avg_duration_ms - b.avg_duration_ms) * 100.0 / NULLIF(b.avg_duration_ms, 0) > 25 THEN 'MEDIUM'
-        ELSE 'LOW'
-    END AS "Severity",
     r.query_text_sample AS "Query Text",
     r.last_execution_time AS "Last Execution"
 FROM recent_performance AS r
@@ -1726,10 +1726,10 @@ def queries():
                     overrides=[
                         col_hidden("server_id"),
                         _QUERY_HISTORY_LINK,
-                        col_gauge_bar("Executions", max_val=None, unit="short"),
-                        col_gauge_bar("Total CPU (ms)", max_val=None, unit="ms"),
-                        col_gauge_bar("Total Duration (ms)", max_val=None, unit="ms"),
-                        col_gauge_bar("Total Reads", max_val=None, unit="short"),
+                        col_unit("Executions", "short"),
+                        col_unit("Total CPU (ms)", "ms"),
+                        col_unit("Total Duration (ms)", "ms"),
+                        col_unit("Total Reads", "short"),
                     ],
                     sort_by=[{"displayName": "Total Duration (ms)", "desc": True}],
                 ),
