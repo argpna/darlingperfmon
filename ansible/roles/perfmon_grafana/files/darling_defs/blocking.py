@@ -208,7 +208,7 @@ ORDER BY 1
 
 # Upstream ref: UpdateBlockingStatsSummary (ViewerServerTab.Blocking.cs) - durations are
 # event-weighted (total / event count), not a mean of per-minute averages.
-_BLOCKING_STATS_SUMMARY = [
+_BLOCKING_STATS_SUMMARY_DURATION = [
     {
         "title": "Blocking Events",
         "sql": f"""
@@ -244,6 +244,9 @@ _BLOCKING_STATS_SUMMARY = [
         "unit": "ms",
         "th": thresholds(("green", None), ("red", 30000)),
     },
+]
+
+_BLOCKING_STATS_SUMMARY_DEADLOCK = [
     {
         "title": "Deadlocks",
         "sql": f"""
@@ -628,7 +631,8 @@ def blocking():
                     unit="ms",
                 ),
             ),
-            (24, 4, stat_grid(_BLOCKING_STATS_SUMMARY, cols=7)),
+            (12, 4, stat_grid(_BLOCKING_STATS_SUMMARY_DURATION, cols=4)),
+            (12, 4, stat_grid(_BLOCKING_STATS_SUMMARY_DEADLOCK, cols=3)),
         ],
     )
 

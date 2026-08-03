@@ -102,32 +102,6 @@
         "description": "Optional database filter, shared across every Queries sub-tab."
       },
       {
-        "name": "long_query_database",
-        "label": "Long Query Database",
-        "type": "query",
-        "datasource": {
-          "type": "grafana-postgresql-datasource",
-          "uid": "darling"
-        },
-        "query": "\nSELECT DISTINCT database_name\nFROM collect.long_query_completions\nWHERE server_id IN (${server:csv})\nORDER BY 1\n",
-        "definition": "\nSELECT DISTINCT database_name\nFROM collect.long_query_completions\nWHERE server_id IN (${server:csv})\nORDER BY 1\n",
-        "current": {
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
-        },
-        "options": [],
-        "refresh": 2,
-        "hide": 0,
-        "multi": true,
-        "includeAll": true,
-        "sort": 0,
-        "description": "Optional database filter, scoped to the Long Queries section only."
-      },
-      {
         "name": "topn",
         "label": "Top N",
         "type": "custom",
@@ -332,7 +306,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "/.*/",
           "values": false
         },
         "colorMode": "background",
@@ -710,10 +684,10 @@
             "mode": "palette-classic"
           },
           "custom": {
-            "drawStyle": "line",
+            "drawStyle": "bars",
             "lineInterpolation": "smooth",
             "lineWidth": 1,
-            "fillOpacity": 12,
+            "fillOpacity": 80,
             "showPoints": "never",
             "spanNulls": true,
             "stacking": {
@@ -834,7 +808,7 @@
     {
       "id": 13,
       "type": "timeseries",
-      "title": "Total CPU trend (hourly, fixed metric)",
+      "title": "Total CPU trend (hourly)",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "darling"
@@ -851,10 +825,10 @@
             "mode": "palette-classic"
           },
           "custom": {
-            "drawStyle": "line",
+            "drawStyle": "bars",
             "lineInterpolation": "smooth",
             "lineWidth": 1,
-            "fillOpacity": 12,
+            "fillOpacity": 80,
             "showPoints": "never",
             "spanNulls": true,
             "stacking": {
@@ -1197,7 +1171,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "\nWITH ranked AS (\n    SELECT\n        qs.server_id,\n        qs.database_name,\n        qs.query_hash,\n        MAX(qs.last_execution_time) AS last_execution_time,\n        MAX(qs.creation_time) AS creation_time,\n        SUM(qs.delta_execution_count)::bigint AS total_executions,\n        SUM(qs.delta_worker_time)::bigint AS total_cpu_us,\n        SUM(qs.delta_elapsed_time)::bigint AS total_elapsed_us,\n        SUM(qs.delta_logical_reads)::bigint AS total_reads,\n        SUM(qs.delta_rows)::bigint AS total_rows,\n        SUM(qs.delta_logical_writes)::bigint AS total_writes,\n        SUM(qs.delta_physical_reads)::bigint AS total_physical_reads,\n        SUM(qs.delta_spills)::bigint AS total_spills,\n        MIN(qs.min_dop) AS min_dop,\n        MAX(qs.max_dop) AS max_dop,\n        MIN(qs.min_worker_time) AS min_worker_time,\n        MAX(qs.max_worker_time) AS max_worker_time,\n        MIN(qs.min_elapsed_time) AS min_elapsed_time,\n        MAX(qs.max_elapsed_time) AS max_elapsed_time,\n        MIN(qs.min_physical_reads) AS min_physical_reads,\n        MAX(qs.max_physical_reads) AS max_physical_reads,\n        MIN(qs.min_rows) AS min_rows,\n        MAX(qs.max_rows) AS max_rows,\n        MIN(qs.min_grant_kb) AS min_grant_kb,\n        MAX(qs.max_grant_kb) AS max_grant_kb,\n        MIN(qs.min_used_grant_kb) AS min_used_grant_kb,\n        MAX(qs.max_used_grant_kb) AS max_used_grant_kb,\n        MIN(qs.min_ideal_grant_kb) AS min_ideal_grant_kb,\n        MAX(qs.max_ideal_grant_kb) AS max_ideal_grant_kb,\n        MIN(qs.min_reserved_threads) AS min_reserved_threads,\n        MAX(qs.max_reserved_threads) AS max_reserved_threads,\n        MIN(qs.min_used_threads) AS min_used_threads,\n        MAX(qs.max_used_threads) AS max_used_threads,\n        MIN(qs.min_spills) AS min_spills,\n        MAX(qs.max_spills) AS max_spills,\n        MAX(qs.query_plan_hash) AS query_plan_hash,\n        MAX(qs.sql_handle) AS sql_handle,\n        MAX(qs.plan_handle) AS plan_handle,\n        MAX(qs.total_clr_time) AS total_clr_time,\n        MAX(qs.plan_generation_num) AS plan_generation_num,\n        MAX(qs.delta_worker_time::double precision / NULLIF(qs.sample_interval_seconds, 0) / 1000.0) AS worker_time_per_second,\n        bool_or(qs.query_plan_xml IS NOT NULL OR qs.query_plan_digest IS NOT NULL) AS has_query_plan\n    FROM collect.v_query_stats AS qs\n    WHERE qs.server_id IN (${server:csv})\n      AND $__timeFilter(qs.collection_time)\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR qs.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n    GROUP BY qs.server_id, qs.database_name, qs.query_hash\n    HAVING SUM(qs.delta_execution_count) > 0 OR SUM(qs.delta_elapsed_time) > 0\n    ORDER BY SUM(qs.delta_elapsed_time) DESC\n    LIMIT ${topn} + 5\n),\nmodule AS (\n    SELECT server_id, sql_handle, object_name, schema_name, database_name\n    FROM (\n        SELECT\n            server_id, sql_handle, object_name, schema_name, database_name,\n            ROW_NUMBER() OVER (PARTITION BY server_id, sql_handle ORDER BY collection_time DESC) AS rn\n        FROM collect.procedure_stats\n        WHERE server_id IN (${server:csv})\n          AND sql_handle IS NOT NULL AND sql_handle <> ''\n    ) AS ranked_modules\n    WHERE rn = 1\n)\nSELECT\n    r.server_id AS \"server_id\",\n    srv.name AS \"Server\",\n    r.database_name AS \"Database\",\n    COALESCE(m.database_name || '.' || m.schema_name || '.' || m.object_name, 'ad hoc') AS \"Module\",\n    r.last_execution_time AS \"Last Execution\",\n    r.creation_time AS \"Creation Time\",\n    r.total_executions AS \"Executions\",\n    r.total_cpu_us / 1000.0 AS \"Total CPU (ms)\",\n    (r.total_cpu_us / 1000.0) / NULLIF(r.total_executions, 0) AS \"Avg CPU (ms)\",\n    r.worker_time_per_second AS \"Peak CPU (ms/s)\",\n    r.plan_generation_num AS \"Plan Gen\",\n    r.total_clr_time / 1000.0 AS \"Total CLR (ms)\",\n    r.total_elapsed_us / 1000.0 AS \"Total Duration (ms)\",\n    (r.total_elapsed_us / 1000.0) / NULLIF(r.total_executions, 0) AS \"Avg Duration (ms)\",\n    r.total_reads AS \"Total Reads\",\n    r.total_reads::double precision / NULLIF(r.total_executions, 0) AS \"Avg Reads\",\n    r.total_writes AS \"Total Writes\",\n    r.total_physical_reads AS \"Physical Reads\",\n    r.total_rows AS \"Total Rows\",\n    r.total_spills AS \"Total Spills\",\n    r.min_worker_time / 1000.0 AS \"Min CPU (ms)\",\n    r.max_worker_time / 1000.0 AS \"Max CPU (ms)\",\n    r.min_elapsed_time / 1000.0 AS \"Min Duration (ms)\",\n    r.max_elapsed_time / 1000.0 AS \"Max Duration (ms)\",\n    r.min_physical_reads AS \"Min Phys Reads\",\n    r.max_physical_reads AS \"Max Phys Reads\",\n    r.min_rows AS \"Min Rows\",\n    r.max_rows AS \"Max Rows\",\n    r.min_grant_kb AS \"Min Grant (KB)\",\n    r.max_grant_kb AS \"Max Grant (KB)\",\n    r.min_used_grant_kb AS \"Min Used Grant (KB)\",\n    r.max_used_grant_kb AS \"Max Used Grant (KB)\",\n    r.min_ideal_grant_kb AS \"Min Ideal Grant (KB)\",\n    r.max_ideal_grant_kb AS \"Max Ideal Grant (KB)\",\n    r.min_spills AS \"Min Spills\",\n    r.max_spills AS \"Max Spills\",\n    r.min_dop AS \"Min DOP\",\n    r.max_dop AS \"Max DOP\",\n    r.min_reserved_threads AS \"Min Reserved Threads\",\n    r.max_reserved_threads AS \"Max Reserved Threads\",\n    r.min_used_threads AS \"Min Used Threads\",\n    r.max_used_threads AS \"Max Used Threads\",\n    r.query_hash AS \"Query Hash\",\n    r.query_plan_hash AS \"Plan Hash\",\n    r.sql_handle AS \"SQL Handle\",\n    r.plan_handle AS \"Plan Handle\",\n    r.has_query_plan AS \"Has Query Plan\",\n    t.query_text AS \"Query Text\"\nFROM ranked AS r\nJOIN config.config_monitored_servers AS srv ON srv.server_id = r.server_id\nLEFT JOIN LATERAL (\n    SELECT query_text\n    FROM collect.v_query_stats\n    WHERE server_id = r.server_id\n      AND query_hash = r.query_hash\n      AND database_name = r.database_name\n      AND query_text IS NOT NULL\n    ORDER BY collection_time DESC\n    LIMIT 1\n) AS t ON TRUE\nLEFT JOIN module AS m ON m.server_id = r.server_id AND m.sql_handle = r.sql_handle\nWHERE t.query_text IS NULL OR t.query_text NOT LIKE 'WAITFOR%'\nORDER BY r.total_elapsed_us DESC\nLIMIT ${topn}\n"
+          "rawSql": "\nWITH ranked AS (\n    SELECT\n        qs.server_id,\n        qs.database_name,\n        qs.query_hash,\n        MAX(qs.last_execution_time) AS last_execution_time,\n        MAX(qs.creation_time) AS creation_time,\n        SUM(qs.delta_execution_count)::bigint AS total_executions,\n        SUM(qs.delta_worker_time)::bigint AS total_cpu_us,\n        SUM(qs.delta_elapsed_time)::bigint AS total_elapsed_us,\n        SUM(qs.delta_logical_reads)::bigint AS total_reads,\n        SUM(qs.delta_rows)::bigint AS total_rows,\n        SUM(qs.delta_logical_writes)::bigint AS total_writes,\n        SUM(qs.delta_physical_reads)::bigint AS total_physical_reads,\n        SUM(qs.delta_spills)::bigint AS total_spills,\n        MIN(qs.min_dop) AS min_dop,\n        MAX(qs.max_dop) AS max_dop,\n        MIN(qs.min_worker_time) AS min_worker_time,\n        MAX(qs.max_worker_time) AS max_worker_time,\n        MIN(qs.min_elapsed_time) AS min_elapsed_time,\n        MAX(qs.max_elapsed_time) AS max_elapsed_time,\n        MIN(qs.min_physical_reads) AS min_physical_reads,\n        MAX(qs.max_physical_reads) AS max_physical_reads,\n        MIN(qs.min_rows) AS min_rows,\n        MAX(qs.max_rows) AS max_rows,\n        MIN(qs.min_grant_kb) AS min_grant_kb,\n        MAX(qs.max_grant_kb) AS max_grant_kb,\n        MIN(qs.min_used_grant_kb) AS min_used_grant_kb,\n        MAX(qs.max_used_grant_kb) AS max_used_grant_kb,\n        MIN(qs.min_ideal_grant_kb) AS min_ideal_grant_kb,\n        MAX(qs.max_ideal_grant_kb) AS max_ideal_grant_kb,\n        MIN(qs.min_reserved_threads) AS min_reserved_threads,\n        MAX(qs.max_reserved_threads) AS max_reserved_threads,\n        MIN(qs.min_used_threads) AS min_used_threads,\n        MAX(qs.max_used_threads) AS max_used_threads,\n        MIN(qs.min_spills) AS min_spills,\n        MAX(qs.max_spills) AS max_spills,\n        MAX(qs.query_plan_hash) AS query_plan_hash,\n        MAX(qs.sql_handle) AS sql_handle,\n        MAX(qs.plan_handle) AS plan_handle,\n        MAX(qs.total_clr_time) AS total_clr_time,\n        MAX(qs.plan_generation_num) AS plan_generation_num,\n        MAX(qs.delta_worker_time::double precision / NULLIF(qs.sample_interval_seconds, 0) / 1000.0) AS worker_time_per_second,\n        bool_or(qs.query_plan_xml IS NOT NULL OR qs.query_plan_digest IS NOT NULL) AS has_query_plan\n    FROM collect.v_query_stats AS qs\n    WHERE qs.server_id IN (${server:csv})\n      AND $__timeFilter(qs.collection_time)\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR qs.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n    GROUP BY qs.server_id, qs.database_name, qs.query_hash\n    HAVING SUM(qs.delta_execution_count) > 0 OR SUM(qs.delta_elapsed_time) > 0\n    ORDER BY SUM(qs.delta_elapsed_time) DESC\n    LIMIT ${topn} + 5\n),\nmodule AS (\n    SELECT server_id, sql_handle, object_name, schema_name, database_name\n    FROM (\n        SELECT\n            server_id, sql_handle, object_name, schema_name, database_name,\n            ROW_NUMBER() OVER (PARTITION BY server_id, sql_handle ORDER BY collection_time DESC) AS rn\n        FROM collect.procedure_stats\n        WHERE server_id IN (${server:csv})\n          AND sql_handle IS NOT NULL AND sql_handle <> ''\n    ) AS ranked_modules\n    WHERE rn = 1\n)\nSELECT\n    r.server_id AS \"server_id\",\n    srv.name AS \"Server\",\n    r.database_name AS \"Database\",\n    COALESCE(m.database_name || '.' || m.schema_name || '.' || m.object_name, 'ad hoc') AS \"Module\",\n    r.last_execution_time AS \"Last Execution\",\n    r.creation_time AS \"Creation Time\",\n    r.query_hash AS \"Query Hash\",\n    r.total_executions AS \"Executions\",\n    r.total_cpu_us / 1000.0 AS \"Total CPU (ms)\",\n    (r.total_cpu_us / 1000.0) / NULLIF(r.total_executions, 0) AS \"Avg CPU (ms)\",\n    r.worker_time_per_second AS \"Peak CPU (ms/s)\",\n    r.plan_generation_num AS \"Plan Gen\",\n    r.total_clr_time / 1000.0 AS \"Total CLR (ms)\",\n    r.total_elapsed_us / 1000.0 AS \"Total Duration (ms)\",\n    (r.total_elapsed_us / 1000.0) / NULLIF(r.total_executions, 0) AS \"Avg Duration (ms)\",\n    r.total_reads AS \"Total Reads\",\n    r.total_reads::double precision / NULLIF(r.total_executions, 0) AS \"Avg Reads\",\n    r.total_writes AS \"Total Writes\",\n    r.total_physical_reads AS \"Physical Reads\",\n    r.total_rows AS \"Total Rows\",\n    r.total_spills AS \"Total Spills\",\n    r.min_worker_time / 1000.0 AS \"Min CPU (ms)\",\n    r.max_worker_time / 1000.0 AS \"Max CPU (ms)\",\n    r.min_elapsed_time / 1000.0 AS \"Min Duration (ms)\",\n    r.max_elapsed_time / 1000.0 AS \"Max Duration (ms)\",\n    r.min_physical_reads AS \"Min Phys Reads\",\n    r.max_physical_reads AS \"Max Phys Reads\",\n    r.min_rows AS \"Min Rows\",\n    r.max_rows AS \"Max Rows\",\n    r.min_grant_kb AS \"Min Grant (KB)\",\n    r.max_grant_kb AS \"Max Grant (KB)\",\n    r.min_used_grant_kb AS \"Min Used Grant (KB)\",\n    r.max_used_grant_kb AS \"Max Used Grant (KB)\",\n    r.min_ideal_grant_kb AS \"Min Ideal Grant (KB)\",\n    r.max_ideal_grant_kb AS \"Max Ideal Grant (KB)\",\n    r.min_spills AS \"Min Spills\",\n    r.max_spills AS \"Max Spills\",\n    r.min_dop AS \"Min DOP\",\n    r.max_dop AS \"Max DOP\",\n    r.min_reserved_threads AS \"Min Reserved Threads\",\n    r.max_reserved_threads AS \"Max Reserved Threads\",\n    r.min_used_threads AS \"Min Used Threads\",\n    r.max_used_threads AS \"Max Used Threads\",\n    r.query_plan_hash AS \"Plan Hash\",\n    r.sql_handle AS \"SQL Handle\",\n    r.plan_handle AS \"Plan Handle\",\n    r.has_query_plan AS \"Has Query Plan\",\n    t.query_text AS \"Query Text\"\nFROM ranked AS r\nJOIN config.config_monitored_servers AS srv ON srv.server_id = r.server_id\nLEFT JOIN LATERAL (\n    SELECT query_text\n    FROM collect.v_query_stats\n    WHERE server_id = r.server_id\n      AND query_hash = r.query_hash\n      AND database_name = r.database_name\n      AND query_text IS NOT NULL\n    ORDER BY collection_time DESC\n    LIMIT 1\n) AS t ON TRUE\nLEFT JOIN module AS m ON m.server_id = r.server_id AND m.sql_handle = r.sql_handle\nWHERE t.query_text IS NULL OR t.query_text NOT LIKE 'WAITFOR%'\nORDER BY r.total_elapsed_us DESC\nLIMIT ${topn}\n"
         }
       ]
     },
@@ -1262,7 +1236,7 @@
               {
                 "id": "custom.cellOptions",
                 "value": {
-                  "type": "color-background"
+                  "type": "color-text"
                 }
               }
             ]
@@ -1312,7 +1286,7 @@
     {
       "id": 18,
       "type": "timeseries",
-      "title": "Total CPU trend (hourly, fixed metric)",
+      "title": "Total CPU trend (hourly)",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "darling"
@@ -1329,10 +1303,10 @@
             "mode": "palette-classic"
           },
           "custom": {
-            "drawStyle": "line",
+            "drawStyle": "bars",
             "lineInterpolation": "smooth",
             "lineWidth": 1,
-            "fillOpacity": 12,
+            "fillOpacity": 80,
             "showPoints": "never",
             "spanNulls": true,
             "stacking": {
@@ -1528,7 +1502,7 @@
               {
                 "id": "custom.cellOptions",
                 "value": {
-                  "type": "color-background"
+                  "type": "color-text"
                 }
               }
             ]
@@ -1577,7 +1551,7 @@
     {
       "id": 22,
       "type": "timeseries",
-      "title": "Total CPU trend (hourly, fixed metric)",
+      "title": "Total CPU trend (hourly)",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "darling"
@@ -1594,10 +1568,10 @@
             "mode": "palette-classic"
           },
           "custom": {
-            "drawStyle": "line",
+            "drawStyle": "bars",
             "lineInterpolation": "smooth",
             "lineWidth": 1,
-            "fillOpacity": 12,
+            "fillOpacity": 80,
             "showPoints": "never",
             "spanNulls": true,
             "stacking": {
@@ -1826,7 +1800,7 @@
               {
                 "id": "custom.cellOptions",
                 "value": {
-                  "type": "color-background"
+                  "type": "color-text"
                 }
               }
             ]
@@ -2420,7 +2394,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "\nSELECT\n    srv.name AS \"Server\",\n    lqc.event_time AS \"Event Time\",\n    lqc.event_type AS \"Event Type\",\n    lqc.duration_microseconds / 1000.0 AS \"Duration\",\n    lqc.cpu_time_microseconds / 1000.0 AS \"CPU\",\n    lqc.logical_reads AS \"Logical Reads\",\n    lqc.physical_reads AS \"Physical Reads\",\n    lqc.writes AS \"Writes\",\n    lqc.row_count AS \"Rows\",\n    lqc.result AS \"Result\",\n    lqc.database_name AS \"Database\",\n    lqc.object_name AS \"Object\",\n    lqc.statement_text AS \"Statement\",\n    lqc.session_id AS \"Session\",\n    lqc.client_app_name AS \"Application\",\n    lqc.server_principal_name AS \"Login\",\n    lqc.query_hash AS \"Query Hash\"\nFROM collect.long_query_completions AS lqc\nJOIN config.config_monitored_servers AS srv ON srv.server_id = lqc.server_id\nWHERE $__timeFilter(lqc.collection_time)\n  AND lqc.server_id IN (${server:csv})\n  AND (cardinality(ARRAY[${long_query_database:sqlstring}]::text[]) = 0 OR lqc.database_name = ANY(ARRAY[${long_query_database:sqlstring}]::text[]))\nORDER BY lqc.event_time DESC\nLIMIT 200\n"
+          "rawSql": "\nSELECT\n    srv.name AS \"Server\",\n    lqc.event_time AS \"Event Time\",\n    lqc.event_type AS \"Event Type\",\n    lqc.duration_microseconds / 1000.0 AS \"Duration\",\n    lqc.cpu_time_microseconds / 1000.0 AS \"CPU\",\n    lqc.logical_reads AS \"Logical Reads\",\n    lqc.physical_reads AS \"Physical Reads\",\n    lqc.writes AS \"Writes\",\n    lqc.row_count AS \"Rows\",\n    lqc.result AS \"Result\",\n    lqc.database_name AS \"Database\",\n    lqc.object_name AS \"Object\",\n    lqc.statement_text AS \"Statement\",\n    lqc.session_id AS \"Session\",\n    lqc.client_app_name AS \"Application\",\n    lqc.server_principal_name AS \"Login\",\n    lqc.query_hash AS \"Query Hash\"\nFROM collect.long_query_completions AS lqc\nJOIN config.config_monitored_servers AS srv ON srv.server_id = lqc.server_id\nWHERE $__timeFilter(lqc.collection_time)\n  AND lqc.server_id IN (${server:csv})\nORDER BY lqc.event_time DESC\nLIMIT 200\n"
         }
       ],
       "description": "Attentions (cancels/timeouts) carry no duration - the event has none."

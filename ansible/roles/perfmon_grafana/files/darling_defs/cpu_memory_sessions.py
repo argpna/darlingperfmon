@@ -121,6 +121,7 @@ _STAT_ROW = [
         "title": "Memory Pressure State",
         "sql": _MEMORY_PRESSURE_STATE_SQL,
         "th": thresholds(("text", None)),
+        "fields": "/.*/",
     },
 ]
 

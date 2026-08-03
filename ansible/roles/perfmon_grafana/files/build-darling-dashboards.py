@@ -47,9 +47,8 @@ from darling_defs.finops.optimization_indexing import (  # noqa: E402
     optimization_indexing,
 )
 from darling_defs.finops.recommendations import recommendations  # noqa: E402
-from darling_defs.finops.utilization_inventory import (  # noqa: E402
-    utilization_inventory,
-)
+from darling_defs.finops.server_inventory import server_inventory  # noqa: E402
+from darling_defs.finops.utilization import utilization  # noqa: E402
 from darling_defs.finops.workload_contention import workload_contention  # noqa: E402
 
 DASHBOARDS = [
@@ -79,7 +78,8 @@ DASHBOARDS = [
     object_sizes,
     optimization_indexing,
     recommendations,
-    utilization_inventory,
+    server_inventory,
+    utilization,
     workload_contention,
 ]
 

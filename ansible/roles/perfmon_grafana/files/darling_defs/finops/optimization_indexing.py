@@ -5,8 +5,10 @@ Upstream ref: ViewerDataService.FinOps.Storage.cs, .Workload.cs, .Utilization.cs
 .IndexAnalysis.cs, IndexCleanupAnalyzer.cs.
 
 Wait Stats Summary and Expensive Queries follow the dashboard range; the rest of Optimization
-keeps upstream's fixed windows. Index Analysis ports the analyzer's snapshot-derived half only
-- see its own text panel for what the consolidation-rule engine leaves out.
+keeps upstream's fixed windows. Index Analysis ports the analyzer's snapshot-derived half only;
+the consolidation-rule engine (duplicate/subset/superset detection, generated DDL scripts) is
+not re-derived as panel SQL - use the PerformanceMonitor Viewer's FinOps -> Index Analysis tab
+instead.
 """
 
 from .._shared import (
@@ -25,7 +27,6 @@ from .._shared import (
     status_colors,
     subtab,
     table,
-    text_panel,
     uid,
 )
 from ._shared import (
@@ -454,23 +455,6 @@ WHERE a.is_unused
 ORDER BY a.database_name, a.schema_name, a.table_name, a.index_name
 """
 
-_LIMITATION = """
-## What the rule engine adds
-
-Upstream also runs an ordered consolidation engine (`IndexCleanupAnalyzer`, reproducing
-`sp_IndexCleanup`): exact duplicate, key subset, key superset, key duplicate and
-unique-constraint replacement, each emitting a generated `DISABLE` / `MERGE` /
-`DROP CONSTRAINT` script. Its output is destructive DDL, so it is not re-derived as panel SQL.
-
-The rollup columns needing an engine verdict are therefore absent: **To Disable**,
-**To Merge**, **Disable GB**, and the **compression-savings band**, which counts only indexes
-the engine leaves alone.
-
-For those recommendations and their scripts, use the PerformanceMonitor Viewer's
-FinOps -> Index Analysis tab against this store, or run `sp_IndexCleanup` on the target.
-"""
-
-
 def optimization_indexing():
     """Build the FinOps Optimization & Indexing dashboard."""
     reset_id()
@@ -676,13 +660,6 @@ def optimization_indexing():
                 ),
             )
         ],
-    )
-
-    subtab(
-        panels,
-        "Consolidation Recommendations",
-        y,
-        [(24, 9, lambda x, y, w, h: text_panel("Not ported", x, y, w, h, _LIMITATION))],
     )
 
     return finops_dashboard(

@@ -99,12 +99,18 @@ class PanelKit:
         sql: str,
         states: list[tuple[int, str, str]],
         description: str | None = None,
+        time_from: str | None = None,
     ) -> dict:
         """Build a state-timeline panel: one colored band per state run, per series.
 
         states are (stored value, display text, color). The query returns time / series
         name / numeric state, and value mappings turn each level into a labelled band -
-        a string value column would not survive the time_series frame conversion.
+        a string value column would not survive the time_series frame conversion. Color
+        mode must be "fixed", not "thresholds" - state-timeline only reads mapping colors
+        when the color scheme isn't thresholds-based, per Grafana's status-history docs.
+
+        time_from, if given, is a relative-time string (e.g. "30d") overriding the
+        dashboard's time picker for this panel only.
         """
         panel = {
             "id": self.nid(),
@@ -114,7 +120,7 @@ class PanelKit:
             "gridPos": {"h": h, "w": w, "x": x, "y": y},
             "fieldConfig": {
                 "defaults": {
-                    "color": {"mode": "thresholds"},
+                    "color": {"mode": "fixed", "fixedColor": states[0][2]},
                     "custom": {"fillOpacity": 90, "lineWidth": 0},
                     "mappings": [
                         {
@@ -125,7 +131,6 @@ class PanelKit:
                             },
                         }
                     ],
-                    "thresholds": self.thresholds(("text", None)),
                 },
                 "overrides": [],
             },
@@ -141,6 +146,8 @@ class PanelKit:
         }
         if description:
             panel["description"] = description
+        if time_from:
+            panel["timeFrom"] = time_from
         return panel
 
     def text_panel(self, title, x, y, w, h, content):
@@ -225,8 +232,13 @@ class PanelKit:
         overrides: list[dict] | None = None,
         sort_by: list[dict] | None = None,
         description: str | None = None,
+        time_from: str | None = None,
     ) -> dict:
-        """Build a table panel."""
+        """Build a table panel.
+
+        time_from, if given, is a relative-time string (e.g. "30d") overriding the
+        dashboard's time picker for this panel only.
+        """
         panel = {
             "id": self.nid(),
             "type": "table",
@@ -254,6 +266,8 @@ class PanelKit:
         }
         if description:
             panel["description"] = description
+        if time_from:
+            panel["timeFrom"] = time_from
         return panel
 
     def bargauge(
@@ -394,7 +408,9 @@ class PanelKit:
     def stat_grid(self, specs, cols=2):
         """flow() factory placing stat() panels in a cols-wide sub-grid inside its
         envelope, so small stat cards can share a line with a taller chart.
-        specs: dicts with title/sql/th and optionally unit."""
+        specs: dicts with title/sql/th and optionally unit/fields. fields defaults to
+        "" (numeric-only auto-pick) - a spec whose column is text must pass an explicit
+        fields regex (e.g. "/.*/") or Grafana's stat panel filters it out as "No data"."""
 
         def factory(x, y, w, h):
             rows = -(-len(specs) // cols)
@@ -409,6 +425,7 @@ class PanelKit:
                     s["sql"],
                     s.get("unit", "short"),
                     s["th"],
+                    fields=s.get("fields", ""),
                 )
                 for i, s in enumerate(specs)
             ]
@@ -449,8 +466,14 @@ def col_gauge_bar(col, min_val=0, max_val=100, unit="percent"):
     return {"matcher": {"id": "byName", "options": col}, "properties": properties}
 
 
-def status_colors(col, mapping):
-    """Table override: colored background cell driven by value mappings."""
+def status_colors(col, mapping, cell_type="color-background"):
+    """Table override: colored cell driven by value mappings.
+
+    cell_type="color-background" (default) solid-fills the whole cell, so every row -
+    including any value absent from mapping - gets a colored block. Use "color-text" for
+    columns where the empty/default case has no mapping entry (e.g. an unchanged-state
+    blank), so that case renders as plain unfilled text instead of a meaningless block.
+    """
     return {
         "matcher": {"id": "byName", "options": col},
         "properties": [
@@ -466,7 +489,7 @@ def status_colors(col, mapping):
                     }
                 ],
             },
-            {"id": "custom.cellOptions", "value": {"type": "color-background"}},
+            {"id": "custom.cellOptions", "value": {"type": cell_type}},
         ],
     }
 

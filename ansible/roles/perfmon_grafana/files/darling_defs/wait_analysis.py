@@ -169,7 +169,12 @@ FROM (
 """
 
 _STAT_ROW = [
-    {"title": "Top Wait Type", "sql": _TOP_WAIT_TYPE_SQL, "th": thresholds(("text", None))},
+    {
+        "title": "Top Wait Type",
+        "sql": _TOP_WAIT_TYPE_SQL,
+        "th": thresholds(("text", None)),
+        "fields": "/.*/",
+    },
     {
         "title": "Total Wait ms/sec",
         "sql": _TOTAL_WAIT_MS_SEC_SQL,

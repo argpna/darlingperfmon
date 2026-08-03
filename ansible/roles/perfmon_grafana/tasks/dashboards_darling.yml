@@ -25,3 +25,35 @@
     label: "{{ item | basename | replace('.json', '') }}"
   delegate_to: localhost
   no_log: true
+
+- name: Get all Darling dashboards
+  ansible.builtin.uri:
+    url: "{{ grafana_url }}/api/search?folderUIDs={{ grafana_darling_folder_uid }}&type=dash-db"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ grafana_api_key }}"
+    status_code: [200]
+  register: _all_darling_dashboards
+  when: perfmon_prune_orphaned | bool
+  delegate_to: localhost
+  no_log: true
+
+- name: Remove orphaned Darling dashboards
+  ansible.builtin.uri:
+    url: "{{ grafana_url }}/api/dashboards/uid/{{ item }}"
+    method: DELETE
+    headers:
+      Authorization: "Bearer {{ grafana_api_key }}"
+    status_code: [200, 404]
+  vars:
+    _expected_uids: >-
+      {{ lookup('fileglob', role_path + '/files/grafana/dashboards/darling/*.json', wantlist=true)
+         | map('basename') | map('regex_replace', '\.json$', '') | list }}
+  loop: >-
+    {{ _all_darling_dashboards.json | map(attribute='uid') | list | difference(_expected_uids) }}
+  loop_control:
+    label: "{{ item }}"
+  when: perfmon_prune_orphaned | bool
+  changed_when: false
+  delegate_to: localhost
+  no_log: true

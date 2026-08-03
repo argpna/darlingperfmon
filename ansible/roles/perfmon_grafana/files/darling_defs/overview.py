@@ -470,9 +470,17 @@ def _anomaly_islands_sql(
     samples_sql: str, value_col: str, buckets_sql: str, abs_floor: float, min_anomaly: float
 ) -> str:
     """Group one lane's flagged anomaly samples into contiguous events, one row per event:
-    (start_time, end_time, peak_value). A non-anomalous sample breaks the run, so a run of
-    consecutive flagged samples with no unflagged sample between them is one event regardless
-    of collection cadence.
+    (start_time, end_time, sample_count, peak_value). A non-anomalous sample breaks the
+    run, so a run of consecutive flagged samples with no unflagged sample between them is
+    one event regardless of collection cadence.
+
+    end_time - start_time is NOT exposed as a "duration" - at this collector's cadence
+    almost every event is exactly one flagged sample (start_time = end_time), so a
+    from/to span reads as "0ms" for the overwhelming majority of rows: not just
+    uninformative but actively misleading, since the metric really did spike, we just
+    can't resolve how long for between collections. sample_count (how many consecutive
+    collections stayed flagged) is the honest version of the same "blip vs sustained"
+    signal.
     """
     ctes = _baseline_ctes(buckets_sql, abs_floor)
     return f"""
@@ -490,7 +498,8 @@ islands AS (
         SUM(CASE WHEN is_anomaly = 0 THEN 1 ELSE 0 END) OVER (ORDER BY time) AS grp
     FROM flagged
 )
-SELECT MIN(time) AS start_time, MAX(time) AS end_time, MAX(value) AS peak_value
+SELECT MIN(time) AS start_time, MAX(time) AS end_time, COUNT(*) AS sample_count,
+       MAX(value) AS peak_value
 FROM islands
 WHERE is_anomaly = 1
 GROUP BY grp
@@ -509,7 +518,7 @@ def _anomaly_row_sql(metric_label: str, islands_sql: str, peak_expr: str) -> str
 SELECT
     '{metric_label}' AS "Metric",
     start_time AS "Start Time",
-    {duration_ms("EXTRACT(EPOCH FROM (end_time - start_time)) * 1000")} AS "Duration",
+    sample_count AS "Samples",
     {peak_expr} AS "Peak Value",
     'from=' || (EXTRACT(EPOCH FROM (start_time - INTERVAL '{_ANOMALY_PAD}')) * 1000)::bigint
         || '&to=' || (EXTRACT(EPOCH FROM (end_time + INTERVAL '{_ANOMALY_PAD}')) * 1000)::bigint
@@ -549,11 +558,18 @@ _ANOMALY_DRILL = col_datalink(
 # Stat row. Upstream ref: server_inventory.py's _VERSION_DISPLAY/_UPTIME for the same
 # ServerPropertyRow computed columns, re-derived here scoped to one server instead of the
 # whole fleet.
-_EDITION_VERSION_SQL = f"""
-SELECT sp.edition || ' - ' ||
-    CASE WHEN COALESCE(sp.product_update_level, '') <> ''
+_EDITION_SQL = f"""
+SELECT sp.edition AS "Edition"
+FROM {collector('server_properties')} AS sp
+WHERE {server_filter('sp.server_id')}
+ORDER BY sp.collection_time DESC
+LIMIT 1
+"""
+
+_VERSION_SQL = f"""
+SELECT CASE WHEN COALESCE(sp.product_update_level, '') <> ''
          THEN sp.product_version || ' (' || sp.product_update_level || ')'
-         ELSE sp.product_version END AS "Edition / Version"
+         ELSE sp.product_version END AS "Version"
 FROM {collector('server_properties')} AS sp
 WHERE {server_filter('sp.server_id')}
 ORDER BY sp.collection_time DESC
@@ -623,6 +639,15 @@ SELECT COALESCE(NULLIF((SELECT c FROM bpr), 0), (SELECT c FROM dmv), 0)
        + (SELECT c FROM deadlocks) AS v
 """
 
+_BUFFER_POOL_PCT_SQL = f"""
+SELECT CASE WHEN total_server_memory_mb > 0
+            THEN buffer_pool_mb::double precision / total_server_memory_mb * 100 END AS v
+FROM {collector('memory_stats')}
+WHERE {server_filter()}
+ORDER BY collection_time DESC
+LIMIT 1
+"""
+
 # Reuses collection_health.py's 7-day collector banding (same pattern fleet.py uses for its
 # fleet-wide Collectors Failing tile) rather than re-deriving the classifier here.
 _FAILING_COLLECTORS_SQL = f"""
@@ -648,26 +673,44 @@ FROM (SELECT {_HEALTH_STATUS} AS status FROM a) AS x
 
 _STAT_ROW = [
     {
-        "title": "Edition / Version",
-        "sql": _EDITION_VERSION_SQL,
+        "title": "Edition",
+        "sql": _EDITION_SQL,
         "th": thresholds(("text", None)),
+        "fields": "/.*/",
     },
-    {"title": "Uptime", "sql": _UPTIME_SQL, "th": thresholds(("text", None))},
     {
-        "title": "Current CPU %",
+        "title": "Version",
+        "sql": _VERSION_SQL,
+        "th": thresholds(("text", None)),
+        "fields": "/.*/",
+    },
+    {
+        "title": "Uptime",
+        "sql": _UPTIME_SQL,
+        "th": thresholds(("text", None)),
+        "fields": "/.*/",
+    },
+    {
+        "title": "CPU % (Now)",
         "sql": _CURRENT_CPU_SQL,
         "unit": "percent",
         "th": thresholds(("green", None), ("yellow", 80), ("red", 95)),
     },
     {
-        "title": "Current Wait ms/sec",
+        "title": "Wait ms/sec (Now)",
         "sql": _CURRENT_WAIT_SQL,
         "th": thresholds(("text", None)),
     },
     {
-        "title": "Blocking & Deadlocks Today",
+        "title": "Blocking & Deadlocks (Today)",
         "sql": _BLOCKING_DEADLOCKS_TODAY_SQL,
         "th": thresholds(("green", None), ("yellow", 1), ("red", 5)),
+    },
+    {
+        "title": "Buffer Pool % (Now)",
+        "sql": _BUFFER_POOL_PCT_SQL,
+        "unit": "percent",
+        "th": thresholds(("text", None)),
     },
     {
         "title": "Failing Collectors",
@@ -904,6 +947,10 @@ _DAILY = tiered(
     base="query_stats",
 )
 
+# Fixed panel-level time override for the History section - independent of Overview's
+# now-3h dashboard default, so the calendar/table always show a real multi-day window.
+_HISTORY_WINDOW = "30d"
+
 _CALENDAR_SQL = f"""
 WITH d AS ({_DAILY})
 SELECT d.day AS time, srv.name AS metric, {_BAND_LEVEL} AS band
@@ -942,7 +989,7 @@ def overview():
     reset_id()
     panels: list[dict] = []
 
-    y = flow(panels, 0, [(24, 4, stat_grid(_STAT_ROW, cols=6))])
+    y = flow(panels, 0, [(24, 8, stat_grid(_STAT_ROW, cols=4))])
 
     y = subtab(
         panels,
@@ -1073,6 +1120,7 @@ def overview():
                         "Composite daily health, one band per day. A day with no "
                         "collection at all is absent rather than banded."
                     ),
+                    time_from=_HISTORY_WINDOW,
                 ),
             ),
             (
@@ -1085,6 +1133,7 @@ def overview():
                     w,
                     h,
                     _DAILY_DETAIL_SQL,
+                    time_from=_HISTORY_WINDOW,
                     overrides=[
                         status_colors("Health", HEALTH_STATUS_COLORS),
                         col_unit("Total Wait", "s"),
@@ -1111,8 +1160,7 @@ def overview():
         ],
     )
 
-    # Default stays now-3h (Overview's original): this is the landing page after Fleet, and
-    # its "right now" correlated lanes are the primary job. The History section's calendar
-    # and table read a shorter slice at that default - widen the time picker to see more
-    # days, same tradeoff Daily Summary's own 30d default made in the other direction.
+    # Default stays now-3h: this is the landing page after Fleet, and its "right now"
+    # correlated lanes are the primary job. The History section panels carry their own
+    # fixed _HISTORY_WINDOW override so they stay meaningful regardless of this default.
     return dashboard(uid("overview"), "Overview", panels, [server_var()])

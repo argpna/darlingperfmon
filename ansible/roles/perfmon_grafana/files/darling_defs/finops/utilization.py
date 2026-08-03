@@ -1,18 +1,16 @@
-"""FinOps Utilization & Inventory dashboard (Darling line) - merges Utilization,
-Server Inventory, and Database Resources dashboards into one compute/memory/IO/cost view.
+"""FinOps Utilization & Database Resources dashboard (Darling line) - merges Utilization
+and Database Resources dashboards into one compute/memory/IO/cost view.
 
-Upstream ref: ViewerDataService.FinOps.Utilization.cs, .Workload.cs, .Inventory.cs.
+Upstream ref: ViewerDataService.FinOps.Utilization.cs, .Workload.cs.
 
-Upstream's progress-bar strip becomes a table with gauge cells. Server Inventory carries no
-$server filter - upstream's query is cross-server by design.
+Upstream's progress-bar strip becomes stat panels plus a detail table with gauge cells.
+Server Inventory is its own dashboard - see server_inventory.py.
 """
 
 from .._shared import (
     CAGG_TIME_COL,
-    SERVER_REGISTRY,
     UTC_NOW,
     col_gauge_bar,
-    col_thresholds,
     col_unit,
     collector,
     finops_dashboard,
@@ -22,16 +20,16 @@ from .._shared import (
     server_filter,
     server_join,
     server_var,
+    stat,
     status_colors,
     subtab,
     table,
+    thresholds,
     tiered,
     uid,
 )
 from ._shared import (
     HEALTH_SCORE_STEPS,
-    IDLE_DAYS,
-    IDLE_DB_EXCLUSIONS,
     PROVISIONING_STATUS_COLORS,
     TREND_DAYS,
     budget_cte,
@@ -163,6 +161,14 @@ LEFT JOIN storage st ON st.server_id = c.server_id
 LEFT JOIN budget b ON b.server_id = c.server_id
 {server_join('c.server_id')}
 ORDER BY srv.name
+"""
+
+_EFFICIENCY_DETAIL_SQL = f"""
+SELECT
+    "Server", "CPUs", "Workers", "Samples (24h)", "Mem Ratio",
+    "Physical MB", "Target MB", "Total MB", "Buffer Pool MB",
+    "Budget $/mo", "Budget $/yr"
+FROM ({_EFFICIENCY_SQL}) AS t
 """
 
 # GetProvisioningTrendAsync - a fixed 7 days, classified per day by the same thresholds.
@@ -453,148 +459,7 @@ ORDER BY u.cpu_time_ms DESC
 """
 
 
-def _latest_all_servers(relation: str) -> str:
-    """Newest snapshot per server, unfiltered - the inventory section covers the whole fleet."""
-    return (
-        "(server_id, collection_time) IN ("
-        f"SELECT server_id, MAX(collection_time) FROM {relation} GROUP BY server_id)"
-    )
-
-
-# ServerPropertyRow.ProductVersion - update level when known, product level otherwise.
-_VERSION_DISPLAY = """CASE
-        WHEN COALESCE(sp.product_update_level, '') <> ''
-        THEN sp.product_version || ' - ' || sp.product_update_level
-        ELSE sp.product_version || ' - ' || COALESCE(sp.product_level, '')
-    END"""
-
-# HardwareNoteFor. Both columns come from the same guarded sys.dm_os_sys_info read, so
-# requiring both to be NULL avoids annotating a server over one odd NULL.
-_HARDWARE_NOTE = """CASE
-        WHEN sp.cpu_count IS NULL AND sp.physical_memory_mb IS NULL
-        THEN 'Hardware inventory (CPU, memory, sockets) unavailable - the monitoring login '
-             || 'likely lacks VIEW SERVER STATE (VIEW DATABASE STATE on Azure SQL DB) on '
-             || 'this server.'
-        ELSE ''
-    END"""
-
-# LicenseWarning: Standard Edition's documented CPU and RAM ceilings.
-_LICENSE_WARNING = """CASE
-        WHEN sp.edition NOT ILIKE '%Standard%' THEN ''
-        ELSE COALESCE(NULLIF(concat_ws('; ',
-            CASE WHEN sp.cpu_count > 24
-                 THEN 'CPU: ' || sp.cpu_count || ' cores (Standard limited to 24)' END,
-            CASE WHEN sp.physical_memory_mb > 131072
-                 THEN 'RAM: ' || (sp.physical_memory_mb / 1024) || 'GB '
-                      || '(Standard limited to 128GB)' END
-        ), ''), '')
-    END"""
-
-# UptimeDisplay. sqlserver_start_time is server-local, compared against a local clock
-# upstream too; the day/hour granularity tolerates the offset.
-_UPTIME = """CASE WHEN sp.sqlserver_start_time IS NULL THEN ''
-        ELSE (EXTRACT(EPOCH FROM (LOCALTIMESTAMP - sp.sqlserver_start_time))
-              / 86400)::int || 'd '
-             || ((EXTRACT(EPOCH FROM (LOCALTIMESTAMP - sp.sqlserver_start_time))::bigint
-                  % 86400) / 3600) || 'h'
-    END"""
-
-
-def _yes_no(col: str) -> str:
-    """HadrDisplay / ClusteredDisplay - blank when the collector could not read the flag."""
-    return f"CASE WHEN {col} IS NULL THEN '' WHEN {col} THEN 'Yes' ELSE 'No' END"
-
-
-_INVENTORY_STATUS = provisioning_status(
-    "c.avg_cpu_pct", "c.max_cpu_pct", "c.p95_cpu_pct", "m.memory_ratio"
-)
-
-_INVENTORY_SQL = f"""
-WITH props AS (
-    SELECT DISTINCT ON (server_id) *
-    FROM {_PROPS}
-    ORDER BY server_id, collection_time DESC
-),
-cpu_24h AS (
-    SELECT server_id,
-           AVG(sqlserver_cpu_utilization::numeric) AS avg_cpu_pct,
-           MAX(sqlserver_cpu_utilization) AS max_cpu_pct,
-           PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY sqlserver_cpu_utilization)::numeric
-               AS p95_cpu_pct
-    FROM {_CPU}
-    WHERE collection_time >= {UTC_NOW} - INTERVAL '24 hours'
-    GROUP BY server_id
-),
-mem_latest AS (
-    SELECT server_id,
-           total_server_memory_mb::numeric / NULLIF(target_server_memory_mb, 0)
-               AS memory_ratio
-    FROM {_MEM}
-    WHERE {_latest_all_servers(_MEM)}
-),
-storage_totals AS (
-    SELECT server_id, SUM(total_size_mb) / 1024.0 AS total_storage_gb
-    FROM {_SIZES}
-    WHERE {_latest_all_servers(_SIZES)}
-    GROUP BY server_id
-),
-sized_dbs AS (
-    SELECT DISTINCT server_id, database_name
-    FROM {_SIZES}
-    WHERE {_latest_all_servers(_SIZES)}
-      AND database_name NOT IN ({IDLE_DB_EXCLUSIONS})
-),
-active_dbs AS (
-    SELECT DISTINCT server_id, database_name
-    FROM {_QUERY_STATS}
-    WHERE collection_time >= {UTC_NOW} - INTERVAL '{IDLE_DAYS} days'
-      AND delta_execution_count > 0
-),
-idle_dbs AS (
-    SELECT server_id, COUNT(*) AS idle_db_count
-    FROM (SELECT * FROM sized_dbs EXCEPT SELECT * FROM active_dbs) AS idle
-    GROUP BY server_id
-)
-SELECT
-    COALESCE(reg.name, sp.server_name) AS "Server",
-    sp.edition AS "Edition",
-    {_VERSION_DISPLAY} AS "Version",
-    COALESCE(sp.host_os_version, '') AS "Host OS",
-    sp.engine_edition AS "Engine Edition",
-    sp.cpu_count AS "Logical CPUs",
-    sp.physical_memory_mb AS "Memory MB",
-    sp.socket_count AS "Sockets",
-    sp.cores_per_socket AS "Cores/Socket",
-    {_HARDWARE_NOTE} AS "Hardware Note",
-    {status_display(_INVENTORY_STATUS)} AS "Status",
-    round(c.avg_cpu_pct, 1) AS "Avg CPU %",
-    round(st.total_storage_gb, 1) AS "Storage GB",
-    COALESCE(id.idle_db_count, 0) AS "Idle DBs",
-    {_UPTIME} AS "Uptime",
-    sp.sqlserver_start_time AS "Start Time",
-    sp.collection_time AS "Last Updated",
-    COALESCE(reg.monthly_cost_usd, 0) AS "Monthly ($)",
-    COALESCE(reg.monthly_cost_usd, 0) * 12 AS "Annual ($)",
-    /* LoadFinOpsServerInventoryAsync fixes the memory and storage terms at 80 and
-       StorageScore(50) - the inventory read carries neither input. */
-    {overall_score(cpu_score('COALESCE(c.avg_cpu_pct, 0)'), '80', storage_score('50'))}
-        AS "Health",
-    {_LICENSE_WARNING} AS "License Warning",
-    {_yes_no('sp.is_hadr_enabled')} AS "HADR",
-    CASE WHEN COALESCE(sp.ag_replica_role, 'Standalone') = 'Standalone'
-         THEN '-' ELSE sp.ag_replica_role END AS "AG Role",
-    {_yes_no('sp.is_clustered')} AS "Clustered"
-FROM props sp
-LEFT JOIN {SERVER_REGISTRY} reg ON reg.server_id = sp.server_id
-LEFT JOIN cpu_24h c ON c.server_id = sp.server_id
-LEFT JOIN mem_latest m ON m.server_id = sp.server_id
-LEFT JOIN storage_totals st ON st.server_id = sp.server_id
-LEFT JOIN idle_dbs id ON id.server_id = sp.server_id
-ORDER BY 1
-"""
-
-
-def utilization_inventory():
+def utilization():
     """Build the FinOps Utilization & Inventory dashboard."""
     reset_id()
     panels: list[dict] = []
@@ -605,24 +470,158 @@ def utilization_inventory():
         0,
         [
             (
-                24,
-                8,
-                lambda x, y, w, h: table(
-                    "Utilization Efficiency",
+                6,
+                4,
+                lambda x, y, w, h: stat(
+                    "Status",
                     x,
                     y,
                     w,
                     h,
                     _EFFICIENCY_SQL,
+                    "short",
+                    thresholds(("text", None)),
+                    mappings=PROVISIONING_STATUS_COLORS,
+                    show_values=True,
+                    fields="/^Status$/",
+                ),
+            ),
+            (
+                6,
+                4,
+                lambda x, y, w, h: stat(
+                    "Health",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _EFFICIENCY_SQL,
+                    "short",
+                    thresholds(*HEALTH_SCORE_STEPS),
+                    fields="/^Health$/",
+                ),
+            ),
+            (
+                6,
+                4,
+                lambda x, y, w, h: stat(
+                    "Avg CPU %",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _EFFICIENCY_SQL,
+                    "percent",
+                    thresholds(("green", None), ("yellow", 70), ("red", 85)),
+                    decimals=1,
+                    fields="/^Avg CPU %$/",
+                ),
+            ),
+            (
+                6,
+                4,
+                lambda x, y, w, h: stat(
+                    "P95 CPU %",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _EFFICIENCY_SQL,
+                    "percent",
+                    thresholds(("green", None), ("yellow", 70), ("red", 85)),
+                    decimals=1,
+                    fields="/^P95 CPU %$/",
+                ),
+            ),
+            (
+                6,
+                4,
+                lambda x, y, w, h: stat(
+                    "Max CPU %",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _EFFICIENCY_SQL,
+                    "percent",
+                    thresholds(("green", None), ("yellow", 70), ("red", 85)),
+                    fields="/^Max CPU %$/",
+                ),
+            ),
+            (
+                6,
+                4,
+                lambda x, y, w, h: stat(
+                    "Stolen Mem %",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _EFFICIENCY_SQL,
+                    "percent",
+                    thresholds(("green", None), ("yellow", 70), ("red", 90)),
+                    decimals=1,
+                    fields="/^Stolen Mem %$/",
+                ),
+            ),
+            (
+                6,
+                4,
+                lambda x, y, w, h: stat(
+                    "Buffer Pool %",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _EFFICIENCY_SQL,
+                    "percent",
+                    thresholds(("green", None), ("yellow", 80), ("red", 95)),
+                    decimals=1,
+                    fields="/^Buffer Pool %$/",
+                ),
+            ),
+            (
+                6,
+                4,
+                lambda x, y, w, h: stat(
+                    "Storage Free %",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _EFFICIENCY_SQL,
+                    "percent",
+                    thresholds(("red", None), ("yellow", 10), ("green", 30)),
+                    decimals=1,
+                    fields="/^Storage Free %$/",
+                ),
+            ),
+            (
+                24,
+                3,
+                lambda x, y, w, h: stat(
+                    "Why",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _EFFICIENCY_SQL,
+                    "short",
+                    thresholds(("text", None)),
+                    fields="/^Why$/",
+                ),
+            ),
+            (
+                24,
+                6,
+                lambda x, y, w, h: table(
+                    "Utilization Efficiency - Detail",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _EFFICIENCY_DETAIL_SQL,
                     overrides=[
-                        status_colors("Status", PROVISIONING_STATUS_COLORS),
-                        col_thresholds("Health", *HEALTH_SCORE_STEPS),
-                        col_gauge_bar("Avg CPU %"),
-                        col_gauge_bar("P95 CPU %"),
-                        col_gauge_bar("Max CPU %"),
-                        col_gauge_bar("Stolen Mem %"),
-                        col_gauge_bar("Buffer Pool %"),
-                        col_gauge_bar("Storage Free %"),
                         col_unit("Physical MB", "mbytes"),
                         col_unit("Target MB", "mbytes"),
                         col_unit("Total MB", "mbytes"),
@@ -631,9 +630,9 @@ def utilization_inventory():
                         col_unit("Budget $/yr", "currencyUSD"),
                     ],
                     description=(
-                        "Fixed 24h window, as upstream's is. Health weights CPU 40 %, "
-                        "memory 30 %, storage 30 %. Budget columns read 0 until one is "
-                        "configured for the server."
+                        "Fixed 24h window, as upstream's is. Status/Health/CPU/memory/"
+                        "storage % are above as stat panels. Budget columns read 0 "
+                        "until one is configured for the server."
                     ),
                 ),
             ),
@@ -731,7 +730,7 @@ def utilization_inventory():
         ],
     )
 
-    y = subtab(
+    subtab(
         panels,
         "Database Resource Usage",
         y,
@@ -764,43 +763,9 @@ def utilization_inventory():
         ],
     )
 
-    subtab(
-        panels,
-        "Server Inventory",
-        y,
-        [
-            (
-                24,
-                20,
-                lambda x, y, w, h: table(
-                    "Server Inventory (All Servers)",
-                    x,
-                    y,
-                    w,
-                    h,
-                    _INVENTORY_SQL,
-                    overrides=[
-                        status_colors("Status", PROVISIONING_STATUS_COLORS),
-                        col_thresholds("Health", *HEALTH_SCORE_STEPS),
-                        col_gauge_bar("Avg CPU %"),
-                        col_unit("Memory MB", "mbytes"),
-                        col_unit("Storage GB", "gbytes"),
-                        col_unit("Monthly ($)", "currencyUSD"),
-                        col_unit("Annual ($)", "currencyUSD"),
-                        col_thresholds("Idle DBs", ("text", None), ("yellow", 1)),
-                    ],
-                    description=(
-                        "Every registered server, not filtered by $server. Health varies "
-                        "only with CPU: upstream fixes the memory and storage terms here."
-                    ),
-                ),
-            )
-        ],
-    )
-
     return finops_dashboard(
-        uid("finops-utilization-inventory"),
-        "Utilization & Inventory",
+        uid("finops-utilization"),
+        "Utilization & Database Resources",
         panels,
         [server_var()],
     )

@@ -4,23 +4,8 @@ Upstream ref: ViewerServerTab.Queries.cs, ViewerDataService.QueryStats.cs, .Proc
 .QueryStore.cs, .QueryStoreRegressions.cs, .QuerySnapshots.cs, .QueryTrends.cs,
 .QueryHeatmap.cs (Darling.Viewer), ViewerServerTab.LongQueries.cs,
 ViewerDataService.LongQueries.cs. Eight sub-tabs (seven upstream Queries sub-tabs plus Long
-Queries, thin enough on its own to read as a trailing section here). Current Active Queries
-(LIVE) is not ported: it needs a live DMV connection to the monitored server via
-config_command, and Grafana here talks only to Postgres.
-
-The Top Queries/Procedures/Query Store grids and their comparison panels stay raw-table-only,
-not tiered() - the hourly/daily CAGGs carry only cpu/duration/execution-count sums, not the
-other columns these grids show. Only the four Performance Trends charts and each grid's
-fixed-metric CPU trend use tiered().
-
-Long Queries: completed long-running queries plus attentions (cancels/timeouts) from the
-opt-in PerformanceMonitor_LongQueryCompletions XE session, reading the base
-long_query_completions table (no collect.v_* view for this collector). The collector
-defaults OFF, so a Trace Status panel surfaces the resolved per-server enabled state in
-place of the WPF tab's hide/show banner. Duration/CPU are shown in milliseconds (divided
-down from stored microseconds) for numeric sortability. Its database filter is a separate
-$long_query_database variable, not the page's shared $database - long_query_completions and
-query_stats can list different database sets and the two must not collide.
+Queries). Current Active Queries (LIVE) is not ported: it needs a live DMV connection to the
+monitored server via config_command, and Grafana here talks only to Postgres.
 """
 
 from ._shared import (
@@ -181,6 +166,7 @@ _STAT_ROW = [
         "title": "Top CPU Consumer This Window",
         "sql": _TOP_CPU_CONSUMER_SQL,
         "th": thresholds(("text", None)),
+        "fields": "/.*/",
     },
     {
         "title": "Regressions Detected",
@@ -190,13 +176,6 @@ _STAT_ROW = [
 ]
 
 # Long Queries section, absorbed from the former standalone dashboard (#1496).
-_LONG_QUERY_DATABASE_VAR_SQL = f"""
-SELECT DISTINCT database_name
-FROM {collector('long_query_completions')}
-WHERE {server_filter()}
-ORDER BY 1
-"""
-
 # Upstream ref: GetLongQueryTraceEnabledAsync - per-server override > fleet override > default OFF.
 _TRACE_STATUS_SQL = f"""
 SELECT
@@ -240,7 +219,6 @@ FROM {collector('long_query_completions')} AS lqc
 {server_join('lqc.server_id')}
 WHERE $__timeFilter(lqc.collection_time)
   AND {server_filter('lqc.server_id')}
-  AND {multi_filter('lqc.database_name', 'long_query_database')}
 ORDER BY lqc.event_time DESC
 LIMIT 200
 """
@@ -536,6 +514,7 @@ SELECT
     COALESCE(m.database_name || '.' || m.schema_name || '.' || m.object_name, 'ad hoc') AS "Module",
     r.last_execution_time AS "Last Execution",
     r.creation_time AS "Creation Time",
+    r.query_hash AS "Query Hash",
     r.total_executions AS "Executions",
     r.total_cpu_us / 1000.0 AS "Total CPU (ms)",
     (r.total_cpu_us / 1000.0) / NULLIF(r.total_executions, 0) AS "Avg CPU (ms)",
@@ -572,7 +551,6 @@ SELECT
     r.max_reserved_threads AS "Max Reserved Threads",
     r.min_used_threads AS "Min Used Threads",
     r.max_used_threads AS "Max Used Threads",
-    r.query_hash AS "Query Hash",
     r.query_plan_hash AS "Plan Hash",
     r.sql_handle AS "SQL Handle",
     r.plan_handle AS "Plan Handle",
@@ -1675,6 +1653,7 @@ def queries():
                     h,
                     [target(f"{_ACTIVE_QUERIES_SLICER_SQL}\nORDER BY 1")],
                     unit="short",
+                    bars=True,
                 ),
             ),
             (
@@ -1705,13 +1684,14 @@ def queries():
                 16,
                 6,
                 lambda x, y, w, h: timeseries(
-                    "Total CPU trend (hourly, fixed metric)",
+                    "Total CPU trend (hourly)",
                     x,
                     y,
                     w,
                     h,
                     [target(f"{_TOP_QUERIES_SLICER_SQL}\nORDER BY 1")],
                     unit="ms",
+                    bars=True,
                 ),
             ),
             (
@@ -1771,7 +1751,7 @@ def queries():
                     h,
                     _TOP_QUERIES_COMPARISON_SQL,
                     overrides=[
-                        status_colors("Status", {"NEW": "blue", "GONE": "orange"})
+                        status_colors("Status", {"NEW": "blue", "GONE": "orange"}, cell_type="color-text")
                     ],
                     description="Top 100 (by executions) queries in the current window unioned "
                     "with the top 100 in the baseline window, full-outer-joined so NEW/GONE "
@@ -1790,13 +1770,14 @@ def queries():
                 24,
                 6,
                 lambda x, y, w, h: timeseries(
-                    "Total CPU trend (hourly, fixed metric)",
+                    "Total CPU trend (hourly)",
                     x,
                     y,
                     w,
                     h,
                     [target(f"{_TOP_PROCEDURES_SLICER_SQL}\nORDER BY 1")],
                     unit="ms",
+                    bars=True,
                 ),
             ),
         ],
@@ -1836,7 +1817,7 @@ def queries():
                     h,
                     _TOP_PROCEDURES_COMPARISON_SQL,
                     overrides=[
-                        status_colors("Status", {"NEW": "blue", "GONE": "orange"})
+                        status_colors("Status", {"NEW": "blue", "GONE": "orange"}, cell_type="color-text")
                     ],
                 ),
             ),
@@ -1852,13 +1833,14 @@ def queries():
                 24,
                 6,
                 lambda x, y, w, h: timeseries(
-                    "Total CPU trend (hourly, fixed metric)",
+                    "Total CPU trend (hourly)",
                     x,
                     y,
                     w,
                     h,
                     [target(f"{_QUERY_STORE_SLICER_SQL}\nORDER BY 1")],
                     unit="ms",
+                    bars=True,
                 ),
             ),
         ],
@@ -1905,7 +1887,7 @@ def queries():
                     h,
                     _QUERY_STORE_COMPARISON_SQL,
                     overrides=[
-                        status_colors("Status", {"NEW": "blue", "GONE": "orange"})
+                        status_colors("Status", {"NEW": "blue", "GONE": "orange"}, cell_type="color-text")
                     ],
                 ),
             ),
@@ -2044,12 +2026,6 @@ def queries():
                 "Database",
                 _DATABASE_VAR_SQL,
                 "Optional database filter, shared across every Queries sub-tab.",
-            ),
-            query_var(
-                "long_query_database",
-                "Long Query Database",
-                _LONG_QUERY_DATABASE_VAR_SQL,
-                "Optional database filter, scoped to the Long Queries section only.",
             ),
             custom_var(
                 "topn", "Top N", ["25", "10", "50", "100"], "Row cap for the grids."

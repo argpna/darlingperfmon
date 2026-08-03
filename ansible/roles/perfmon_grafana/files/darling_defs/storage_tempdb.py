@@ -101,6 +101,7 @@ _STAT_ROW = [
         "title": "Worst-Latency File",
         "sql": _WORST_LATENCY_FILE_SQL,
         "th": thresholds(("text", None)),
+        "fields": "/.*/",
     },
 ]
 

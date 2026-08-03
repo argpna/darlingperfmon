@@ -1032,34 +1032,6 @@
         }
       ],
       "description": "Nonclustered, non-unique, non-PK/UC/FK-referenced indexes with no reads. Empty on a server up 7 days or less, where upstream switches to dedupe-only."
-    },
-    {
-      "id": 15,
-      "type": "row",
-      "title": "Consolidation Recommendations",
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 70
-      },
-      "panels": []
-    },
-    {
-      "id": 16,
-      "type": "text",
-      "title": "Not ported",
-      "gridPos": {
-        "h": 9,
-        "w": 24,
-        "x": 0,
-        "y": 71
-      },
-      "options": {
-        "mode": "markdown",
-        "content": "\n## What the rule engine adds\n\nUpstream also runs an ordered consolidation engine (`IndexCleanupAnalyzer`, reproducing\n`sp_IndexCleanup`): exact duplicate, key subset, key superset, key duplicate and\nunique-constraint replacement, each emitting a generated `DISABLE` / `MERGE` /\n`DROP CONSTRAINT` script. Its output is destructive DDL, so it is not re-derived as panel SQL.\n\nThe rollup columns needing an engine verdict are therefore absent: **To Disable**,\n**To Merge**, **Disable GB**, and the **compression-savings band**, which counts only indexes\nthe engine leaves alone.\n\nFor those recommendations and their scripts, use the PerformanceMonitor Viewer's\nFinOps -> Index Analysis tab against this store, or run `sp_IndexCleanup` on the target.\n"
-      }
     }
   ]
 }
