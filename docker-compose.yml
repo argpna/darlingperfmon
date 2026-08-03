@@ -242,6 +242,20 @@ services:
     restart: "no"
     profiles: ["darling"]
 
+  darling-collector-config:
+    image: postgres:17-alpine
+    container_name: perfmon-darling-collector-config
+    depends_on:
+      darling-pg:
+        condition: service_healthy
+    environment:
+      DARLING_PG_PASSWORD: ${DARLING_PG_PASSWORD}
+    volumes:
+      - ./docker/darling/provision-collector-schedules.sh:/provision-collector-schedules.sh:ro
+    entrypoint: ["/bin/sh", "/provision-collector-schedules.sh"]
+    restart: "no"
+    profiles: ["darling"]
+
   # Opt-in profile for AD-auth ansible tests: `docker compose --profile ad up -d`
   samba-ad:
     build:
