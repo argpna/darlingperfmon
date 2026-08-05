@@ -41,22 +41,34 @@ class PanelKit:
         unit: str = "short",
         stacked: bool = False,
         bars: bool = False,
+        points: bool = False,
         max_: float | None = None,
         fill: int = 12,
         axis_label: str | None = None,
         description: str | None = None,
         overrides: list[dict] | None = None,
+        links: list[dict] | None = None,
     ) -> dict:
-        """Build a timeseries panel."""
+        """Build a timeseries panel.
+
+        points=True renders a dot-only scatter - for a chart grouped into many series
+        (e.g. one per plan shape) where the point cloud itself is the point, not the
+        trend line. A shape-grouped query can produce hundreds of series
+        (e.g. a recompile-happy procedure), so points=True also hides the legend and
+        drops the tooltip to single-series - a legend or a per-series tooltip listing
+        that many entries is noise, not information.
+        """
         custom = {
-            "drawStyle": "bars" if bars else "line",
+            "drawStyle": "points" if points else ("bars" if bars else "line"),
             "lineInterpolation": "smooth",
-            "lineWidth": 1,
-            "fillOpacity": 80 if bars else fill,
-            "showPoints": "never",
+            "lineWidth": 0 if points else 1,
+            "fillOpacity": 0 if points else (80 if bars else fill),
+            "showPoints": "always" if points else "never",
             "spanNulls": True,
             "stacking": {"mode": "normal" if stacked else "none", "group": "A"},
         }
+        if points:
+            custom["pointSize"] = 5
         if axis_label:
             custom["axisLabel"] = axis_label
         defaults = {
@@ -67,6 +79,8 @@ class PanelKit:
         if max_ is not None:
             defaults["max"] = max_
             defaults["min"] = 0
+        if links:
+            defaults["links"] = links
         panel = {
             "id": self.nid(),
             "type": "timeseries",
@@ -78,10 +92,10 @@ class PanelKit:
                 "legend": {
                     "displayMode": "list",
                     "placement": "bottom",
-                    "showLegend": True,
+                    "showLegend": not points,
                     "calcs": [],
                 },
-                "tooltip": {"mode": "multi", "sort": "desc"},
+                "tooltip": {"mode": "single" if points else "multi", "sort": "desc"},
             },
             "targets": targets,
         }
@@ -366,6 +380,41 @@ class PanelKit:
                 "overrides": [],
             },
             "targets": [self._target(sql, "time_series")],
+        }
+        if description:
+            panel["description"] = description
+        return panel
+
+    def logs(
+        self,
+        title: str,
+        x: int,
+        y: int,
+        w: int,
+        h: int,
+        sql: str,
+        description: str | None = None,
+    ) -> dict:
+        """Build a logs panel from a (time, text) query - a scrollable, wrapped monospace
+        view for long blobs (e.g. plan XML) a table cell renders too cramped to read.
+        """
+        panel = {
+            "id": self.nid(),
+            "type": "logs",
+            "title": title,
+            "datasource": self._ds,
+            "gridPos": {"h": h, "w": w, "x": x, "y": y},
+            "options": {
+                "showTime": True,
+                "showLabels": False,
+                "showCommonLabels": False,
+                "wrapLogLines": True,
+                "prettifyLogMessage": False,
+                "enableLogDetails": False,
+                "dedupStrategy": "none",
+                "sortOrder": "Descending",
+            },
+            "targets": [self._target(sql, "table")],
         }
         if description:
             panel["description"] = description

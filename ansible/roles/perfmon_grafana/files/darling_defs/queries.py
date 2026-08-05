@@ -21,7 +21,9 @@ from ._shared import (
     fixed,
     flow,
     heatmap,
+    logs,
     multi_filter,
+    plan_parameters_sql,
     query_var,
     reset_id,
     rollup,
@@ -29,6 +31,7 @@ from ._shared import (
     server_join,
     server_var,
     SERVER_REGISTRY,
+    single_query_var,
     stat,
     stat_grid,
     status_colors,
@@ -1378,14 +1381,73 @@ WHERE {_PROCEDURE_HISTORY_WHERE}
 ORDER BY ps.collection_time
 """
 
+# One series (dot cloud) per plan shape, matching query_stats/query_store's grouping -
+# plan_handle is procedure_stats' de facto shape id (see the Plan Shapes comment below).
 _PROCEDURE_HISTORY_CHART_SQL = f"""
 SELECT
     ps.collection_time AS time,
+    COALESCE(ps.plan_handle, 'unknown') AS metric,
     {_history_metric_expr('ps.')} AS value
 FROM {collector('procedure_stats')} AS ps
 WHERE {_PROCEDURE_HISTORY_WHERE}
 ORDER BY 1
 """
+
+
+# Plan Shapes: procedure_stats has no query_plan_hash column (query_stats' plan-cache shape id)
+# - a procedure's plan_handle changes on recompile, so it plays that role here instead.
+# procedure_stats also has no v_procedure_stats resolving view (see _shared.py's _NO_VIEW), so
+# unlike collector('query_stats'), its query_plan_xml can be NULL with the real XML sitting in
+# query_plan_dim under query_plan_digest - every read below resolves that join by hand.
+_PROCEDURE_PLAN_SHAPE_VAR_SQL = f"""
+SELECT
+    ps.plan_handle AS __text,
+    ps.plan_handle AS __value
+FROM {collector('procedure_stats')} AS ps
+WHERE {_PROCEDURE_HISTORY_WHERE}
+  AND ps.plan_handle IS NOT NULL
+GROUP BY ps.plan_handle
+ORDER BY MAX(ps.collection_time) DESC
+"""
+
+_PROCEDURE_PLAN_SHAPES_SQL = f"""
+SELECT
+    ps.plan_handle AS "Plan Handle",
+    MIN(ps.collection_time) AS "First Seen",
+    MAX(ps.collection_time) AS "Last Seen",
+    SUM(ps.delta_execution_count)::bigint AS "Executions",
+    (SUM(ps.delta_worker_time)::double precision / 1000.0) / NULLIF(SUM(ps.delta_execution_count), 0) AS "Avg CPU (ms)",
+    (SUM(ps.delta_elapsed_time)::double precision / 1000.0) / NULLIF(SUM(ps.delta_execution_count), 0) AS "Avg Duration (ms)",
+    bool_or(COALESCE(ps.query_plan_xml, dim.query_plan_xml) IS NOT NULL) AS "Has Plan XML"
+FROM {collector('procedure_stats')} AS ps
+LEFT JOIN collect.query_plan_dim AS dim ON dim.digest = ps.query_plan_digest
+WHERE {_PROCEDURE_HISTORY_WHERE}
+  AND ps.plan_handle IS NOT NULL
+GROUP BY ps.plan_handle
+ORDER BY MAX(ps.collection_time) DESC
+"""
+
+_PROCEDURE_PLAN_XML_SQL = f"""
+SELECT ps.collection_time AS time, COALESCE(ps.query_plan_xml, dim.query_plan_xml) AS "Line"
+FROM {collector('procedure_stats')} AS ps
+LEFT JOIN collect.query_plan_dim AS dim ON dim.digest = ps.query_plan_digest
+WHERE {_PROCEDURE_HISTORY_WHERE}
+  AND ps.plan_handle = ${{plan_shape:sqlstring}}
+  AND COALESCE(ps.query_plan_xml, dim.query_plan_xml) IS NOT NULL
+ORDER BY ps.collection_time DESC
+LIMIT 1
+"""
+
+_PROCEDURE_PLAN_PARAMETERS_SQL = plan_parameters_sql(f"""
+    SELECT COALESCE(ps.query_plan_xml, dim.query_plan_xml) AS plan_xml
+    FROM {collector('procedure_stats')} AS ps
+    LEFT JOIN collect.query_plan_dim AS dim ON dim.digest = ps.query_plan_digest
+    WHERE {_PROCEDURE_HISTORY_WHERE}
+      AND ps.plan_handle = ${{plan_shape:sqlstring}}
+      AND COALESCE(ps.query_plan_xml, dim.query_plan_xml) IS NOT NULL
+    ORDER BY ps.collection_time DESC
+    LIMIT 1
+""")
 
 
 # Upstream ref: QueryStatsHistorySql (ViewerDataService.ItemHistory.cs)
@@ -1457,14 +1519,70 @@ WHERE {_QUERY_STATS_HISTORY_WHERE}
 ORDER BY qs.collection_time
 """
 
+# One series (dot cloud) per plan shape - see the Plan Shapes comment below for what
+# query_plan_hash identifies. Clicking a dot sets the Plan Shape variable.
 _QUERY_STATS_HISTORY_CHART_SQL = f"""
 SELECT
     qs.collection_time AS time,
+    COALESCE(qs.query_plan_hash, 'unknown') AS metric,
     {_history_metric_expr('qs.')} AS value
 FROM {collector('query_stats')} AS qs
 WHERE {_QUERY_STATS_HISTORY_WHERE}
 ORDER BY 1
 """
+
+
+# Plan Shapes: query_plan_hash is the plan-cache shape identifier (same shape recompiled with
+# different sniffed parameters keeps this hash but gets new XML - see PayloadDimensions.cs's
+# digest-vs-hash rationale upstream). collector('query_stats') resolves to v_query_stats, which
+# already COALESCEs query_plan_xml through the digest-keyed query_plan_dim table, so no extra
+# join is needed here.
+_QUERY_PLAN_SHAPE_VAR_SQL = f"""
+SELECT
+    qs.query_plan_hash AS __text,
+    qs.query_plan_hash AS __value
+FROM {collector('query_stats')} AS qs
+WHERE {_QUERY_STATS_HISTORY_WHERE}
+  AND qs.query_plan_hash IS NOT NULL
+GROUP BY qs.query_plan_hash
+ORDER BY MAX(qs.collection_time) DESC
+"""
+
+_QUERY_PLAN_SHAPES_SQL = f"""
+SELECT
+    qs.query_plan_hash AS "Plan Hash",
+    MIN(qs.collection_time) AS "First Seen",
+    MAX(qs.collection_time) AS "Last Seen",
+    SUM(qs.delta_execution_count)::bigint AS "Executions",
+    (SUM(qs.delta_worker_time)::double precision / 1000.0) / NULLIF(SUM(qs.delta_execution_count), 0) AS "Avg CPU (ms)",
+    (SUM(qs.delta_elapsed_time)::double precision / 1000.0) / NULLIF(SUM(qs.delta_execution_count), 0) AS "Avg Duration (ms)",
+    bool_or(qs.query_plan_xml IS NOT NULL) AS "Has Plan XML"
+FROM {collector('query_stats')} AS qs
+WHERE {_QUERY_STATS_HISTORY_WHERE}
+  AND qs.query_plan_hash IS NOT NULL
+GROUP BY qs.query_plan_hash
+ORDER BY MAX(qs.collection_time) DESC
+"""
+
+_QUERY_STATS_PLAN_XML_SQL = f"""
+SELECT qs.collection_time AS time, qs.query_plan_xml AS "Line"
+FROM {collector('query_stats')} AS qs
+WHERE {_QUERY_STATS_HISTORY_WHERE}
+  AND qs.query_plan_hash = ${{plan_shape:sqlstring}}
+  AND qs.query_plan_xml IS NOT NULL
+ORDER BY qs.collection_time DESC
+LIMIT 1
+"""
+
+_QUERY_STATS_PLAN_PARAMETERS_SQL = plan_parameters_sql(f"""
+    SELECT qs.query_plan_xml AS plan_xml
+    FROM {collector('query_stats')} AS qs
+    WHERE {_QUERY_STATS_HISTORY_WHERE}
+      AND qs.query_plan_hash = ${{plan_shape:sqlstring}}
+      AND qs.query_plan_xml IS NOT NULL
+    ORDER BY qs.collection_time DESC
+    LIMIT 1
+""")
 
 
 # Upstream ref: QueryStoreHistorySql (ViewerDataService.ItemHistory.cs) - query-scoped, not
@@ -1558,16 +1676,76 @@ _QUERY_STORE_HISTORY_METRIC_EXPR = """CASE ${qs_history_metric:sqlstring}
     ELSE qsd.avg_duration_us / 1000.0
 END"""
 
-# One series per plan_id, matching UpdateChart's per-plan grouping.
+# One series (dot cloud) per plan_id, matching UpdateChart's per-plan grouping. Bare
+# plan_id (no "Plan " prefix) so a clicked dot's field name is usable directly as the
+# Plan Shape variable's value.
 _QUERY_STORE_HISTORY_CHART_SQL = f"""
 SELECT
     qsd.collection_time AS time,
-    'Plan ' || qsd.plan_id AS metric,
+    qsd.plan_id::text AS metric,
     {_QUERY_STORE_HISTORY_METRIC_EXPR} AS value
 FROM {collector('query_store_stats')} AS qsd
 WHERE {_QUERY_STORE_HISTORY_WHERE}
 ORDER BY 1
 """
+
+
+# Plan Shapes: unlike query_stats' hash, Query Store's plan_id is a genuine first-class
+# distinct-plan-shape id. This picker deliberately ignores the dashboard's own $plan_id
+# textbox filter (server/database/query_id only) so it still lists every shape when arrived
+# at via the Regressions drill-down, which passes plan_id=* (query-level, no single plan).
+_QUERY_STORE_SHAPE_WHERE = f"""
+{server_filter('qsd.server_id')}
+  AND {_identity_guard('database', 'qsd.database_name')}
+  AND {_identity_guard('query_id', 'qsd.query_id::text')}
+  AND $__timeFilter(qsd.collection_time)
+"""
+
+_QUERY_STORE_PLAN_SHAPE_VAR_SQL = f"""
+SELECT
+    'Plan ' || qsd.plan_id AS __text,
+    qsd.plan_id::text AS __value
+FROM {collector('query_store_stats')} AS qsd
+WHERE {_QUERY_STORE_SHAPE_WHERE}
+GROUP BY qsd.plan_id
+ORDER BY MAX(qsd.last_execution_time) DESC
+"""
+
+_QUERY_STORE_PLAN_SHAPES_SQL = f"""
+SELECT
+    qsd.plan_id AS "Plan ID",
+    MIN(qsd.first_execution_time) AS "First Execution",
+    MAX(qsd.last_execution_time) AS "Last Execution",
+    SUM(qsd.execution_count)::bigint AS "Executions",
+    AVG(qsd.avg_duration_us::double precision) / 1000.0 AS "Avg Duration (ms)",
+    AVG(qsd.avg_cpu_time_us::double precision) / 1000.0 AS "Avg CPU (ms)",
+    bool_or(qsd.is_forced_plan) AS "Forced",
+    bool_or(qsd.query_plan_text IS NOT NULL) AS "Has Plan XML"
+FROM {collector('query_store_stats')} AS qsd
+WHERE {_QUERY_STORE_SHAPE_WHERE}
+GROUP BY qsd.plan_id
+ORDER BY MAX(qsd.last_execution_time) DESC
+"""
+
+_QUERY_STORE_PLAN_XML_SQL = f"""
+SELECT qsd.collection_time AS time, qsd.query_plan_text AS "Line"
+FROM {collector('query_store_stats')} AS qsd
+WHERE {_QUERY_STORE_SHAPE_WHERE}
+  AND qsd.plan_id::text = ${{plan_shape:sqlstring}}
+  AND qsd.query_plan_text IS NOT NULL
+ORDER BY qsd.collection_time DESC
+LIMIT 1
+"""
+
+_QUERY_STORE_PLAN_PARAMETERS_SQL = plan_parameters_sql(f"""
+    SELECT qsd.query_plan_text AS plan_xml
+    FROM {collector('query_store_stats')} AS qsd
+    WHERE {_QUERY_STORE_SHAPE_WHERE}
+      AND qsd.plan_id::text = ${{plan_shape:sqlstring}}
+      AND qsd.query_plan_text IS NOT NULL
+    ORDER BY qsd.collection_time DESC
+    LIMIT 1
+""")
 
 
 def queries():
@@ -2066,17 +2244,28 @@ def procedure_history():
                 24,
                 8,
                 lambda x, y, w, h: timeseries(
-                    "${history_metric} over time",
+                    "${history_metric} over time (one dot per plan shape)",
                     x,
                     y,
                     w,
                     h,
                     [target(_PROCEDURE_HISTORY_CHART_SQL)],
+                    points=True,
+                    links=[
+                        {
+                            "title": "Show this plan shape below",
+                            "url": "/d/darling-procedure-history?${__url_time_range}"
+                            "&var-server=$server&var-database=$database"
+                            "&var-schema=$schema&var-object_name=$object_name"
+                            "&var-plan_shape=${__field.name}",
+                            "targetBlank": False,
+                        }
+                    ],
                 ),
             ),
         ],
     )
-    subtab(
+    y = subtab(
         panels,
         "History Grid",
         y,
@@ -2097,6 +2286,58 @@ def procedure_history():
         ],
     )
 
+    subtab(
+        panels,
+        "Plan Shapes",
+        y,
+        [
+            (
+                24,
+                8,
+                lambda x, y, w, h: table(
+                    "Plan shapes seen in range",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _PROCEDURE_PLAN_SHAPES_SQL,
+                    sort_by=[{"displayName": "Last Seen", "desc": True}],
+                    description="plan_handle identifies the plan shape - a recompile gets a "
+                    "new handle. Pick a shape with the Plan Shape variable.",
+                ),
+            ),
+            (
+                24,
+                4,
+                lambda x, y, w, h: logs(
+                    "Plan XML (${plan_shape})",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _PROCEDURE_PLAN_XML_SQL,
+                    description="Compiled/cached plan (sys.dm_exec_text_query_plan) - not an "
+                    "actual/runtime plan, since Grafana has no live SQL Server access here.",
+                ),
+            ),
+            (
+                24,
+                8,
+                lambda x, y, w, h: table(
+                    "Compile-time parameters",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _PROCEDURE_PLAN_PARAMETERS_SQL,
+                    description="Parsed from the plan XML's ParameterList. Runtime Value is "
+                    "only ever populated on an actual (post-execution) plan, which this stored "
+                    "plan is not - expect it blank here.",
+                ),
+            ),
+        ],
+    )
+
     return detail_dashboard(
         uid("procedure-history"),
         "Procedure History",
@@ -2111,6 +2352,13 @@ def procedure_history():
                 "Chart Metric",
                 _HISTORY_METRIC_OPTIONS,
                 "Metric the trend chart plots.",
+            ),
+            single_query_var(
+                "plan_shape",
+                "Plan Shape",
+                _PROCEDURE_PLAN_SHAPE_VAR_SQL,
+                "Plan handle to show XML/parameters for, among those seen in the current time "
+                "range.",
             ),
         ],
     )
@@ -2130,17 +2378,28 @@ def query_stats_history():
                 24,
                 8,
                 lambda x, y, w, h: timeseries(
-                    "${history_metric} over time",
+                    "${history_metric} over time (one dot per plan shape)",
                     x,
                     y,
                     w,
                     h,
                     [target(_QUERY_STATS_HISTORY_CHART_SQL)],
+                    points=True,
+                    links=[
+                        {
+                            "title": "Show this plan shape below",
+                            "url": "/d/darling-query-stats-history?${__url_time_range}"
+                            "&var-server=$server&var-database=$database"
+                            "&var-query_hash=$query_hash"
+                            "&var-plan_shape=${__field.name}",
+                            "targetBlank": False,
+                        }
+                    ],
                 ),
             ),
         ],
     )
-    subtab(
+    y = subtab(
         panels,
         "History Grid",
         y,
@@ -2161,6 +2420,59 @@ def query_stats_history():
         ],
     )
 
+    subtab(
+        panels,
+        "Plan Shapes",
+        y,
+        [
+            (
+                24,
+                8,
+                lambda x, y, w, h: table(
+                    "Plan shapes seen in range",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _QUERY_PLAN_SHAPES_SQL,
+                    sort_by=[{"displayName": "Last Seen", "desc": True}],
+                    description="query_plan_hash identifies the plan shape - a recompile that "
+                    "keeps the same shape but sniffs different parameters shows the same hash "
+                    "here with different XML below. Pick a shape with the Plan Shape variable.",
+                ),
+            ),
+            (
+                24,
+                4,
+                lambda x, y, w, h: logs(
+                    "Plan XML (${plan_shape})",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _QUERY_STATS_PLAN_XML_SQL,
+                    description="Compiled/cached plan (sys.dm_exec_text_query_plan) - not an "
+                    "actual/runtime plan, since Grafana has no live SQL Server access here.",
+                ),
+            ),
+            (
+                24,
+                8,
+                lambda x, y, w, h: table(
+                    "Compile-time parameters",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _QUERY_STATS_PLAN_PARAMETERS_SQL,
+                    description="Parsed from the plan XML's ParameterList. Runtime Value is "
+                    "only ever populated on an actual (post-execution) plan, which this stored "
+                    "plan is not - expect it blank here.",
+                ),
+            ),
+        ],
+    )
+
     return detail_dashboard(
         uid("query-stats-history"),
         "Query History",
@@ -2174,6 +2486,13 @@ def query_stats_history():
                 "Chart Metric",
                 _HISTORY_METRIC_OPTIONS,
                 "Metric the trend chart plots.",
+            ),
+            single_query_var(
+                "plan_shape",
+                "Plan Shape",
+                _QUERY_PLAN_SHAPE_VAR_SQL,
+                "Plan-cache shape (query_plan_hash) to show XML/parameters for, among those "
+                "seen in the current time range.",
             ),
         ],
     )
@@ -2193,17 +2512,28 @@ def query_store_history():
                 24,
                 8,
                 lambda x, y, w, h: timeseries(
-                    "${qs_history_metric} over time (one series per plan)",
+                    "${qs_history_metric} over time (one dot per plan)",
                     x,
                     y,
                     w,
                     h,
                     [target(_QUERY_STORE_HISTORY_CHART_SQL)],
+                    points=True,
+                    links=[
+                        {
+                            "title": "Show this plan shape below",
+                            "url": "/d/darling-query-store-history?${__url_time_range}"
+                            "&var-server=$server&var-database=$database"
+                            "&var-query_id=$query_id&var-plan_id=$plan_id"
+                            "&var-plan_shape=${__field.name}",
+                            "targetBlank": False,
+                        }
+                    ],
                 ),
             ),
         ],
     )
-    subtab(
+    y = subtab(
         panels,
         "History Grid",
         y,
@@ -2227,6 +2557,62 @@ def query_store_history():
         ],
     )
 
+    subtab(
+        panels,
+        "Plan Shapes",
+        y,
+        [
+            (
+                24,
+                8,
+                lambda x, y, w, h: table(
+                    "Plan shapes seen in range",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _QUERY_STORE_PLAN_SHAPES_SQL,
+                    overrides=[
+                        status_colors("Forced", {"true": "blue", "false": "text"})
+                    ],
+                    sort_by=[{"displayName": "Last Execution", "desc": True}],
+                    description="plan_id is Query Store's own distinct-plan-shape id, "
+                    "independent of the $plan_id filter above - this list always shows every "
+                    "shape for the query in range. Pick one with the Plan Shape variable.",
+                ),
+            ),
+            (
+                24,
+                4,
+                lambda x, y, w, h: logs(
+                    "Plan XML (${plan_shape})",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _QUERY_STORE_PLAN_XML_SQL,
+                    description="Compiled plan from sys.query_store_plan - not an actual/"
+                    "runtime plan, since Grafana has no live SQL Server access here.",
+                ),
+            ),
+            (
+                24,
+                8,
+                lambda x, y, w, h: table(
+                    "Compile-time parameters",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _QUERY_STORE_PLAN_PARAMETERS_SQL,
+                    description="Parsed from the plan XML's ParameterList. Runtime Value is "
+                    "only ever populated on an actual (post-execution) plan, which this stored "
+                    "plan is not - expect it blank here.",
+                ),
+            ),
+        ],
+    )
+
     return detail_dashboard(
         uid("query-store-history"),
         "Query Store History",
@@ -2241,6 +2627,13 @@ def query_store_history():
                 "Chart Metric",
                 _QUERY_STORE_HISTORY_METRIC_OPTIONS,
                 "Metric the trend chart plots.",
+            ),
+            single_query_var(
+                "plan_shape",
+                "Plan Shape",
+                _QUERY_STORE_PLAN_SHAPE_VAR_SQL,
+                "Query Store plan_id to show XML/parameters for, among those seen in the "
+                "current time range (independent of the $plan_id filter above).",
             ),
         ],
     )

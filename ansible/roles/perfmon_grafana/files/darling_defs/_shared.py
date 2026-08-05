@@ -333,6 +333,27 @@ def time_bucket(interval: str, col: str = "collection_time") -> str:
     return f"time_bucket(INTERVAL '{interval}', {col})"
 
 
+_SHOWPLAN_NS = "http://schemas.microsoft.com/sqlserver/2004/07/showplan"
+
+
+def plan_parameters_sql(plan_source_sql: str) -> str:
+    """Compile-time parameter values parsed out of a stored plan XML."""
+    return f"""
+WITH plan AS ( {plan_source_sql} ),
+parsed AS (SELECT plan_xml::xml AS doc FROM plan WHERE plan_xml IS NOT NULL),
+ns AS (SELECT ARRAY[ARRAY['sp', '{_SHOWPLAN_NS}']] AS n),
+params AS (
+    SELECT unnest(xpath('//sp:ParameterList/sp:ColumnReference', doc, ns.n)) AS node
+    FROM parsed, ns
+)
+SELECT
+    (xpath('/*/@Column', node))[1]::text AS "Parameter",
+    (xpath('/*/@ParameterCompiledValue', node))[1]::text AS "Compiled Value",
+    (xpath('/*/@ParameterRuntimeValue', node))[1]::text AS "Runtime Value"
+FROM params
+"""
+
+
 def target(sql: str, fmt: str = "time_series", ref: str = "A") -> dict:
     """Build a Grafana query target. No SQL rewriting: no tz shim, no dirty-read hint."""
     return {
@@ -357,6 +378,7 @@ state_timeline = _kit.state_timeline
 table = _kit.table
 bargauge = _kit.bargauge
 heatmap = _kit.heatmap
+logs = _kit.logs
 row = _kit.row
 flow = _kit.flow
 stat_grid = _kit.stat_grid
@@ -415,6 +437,31 @@ def query_var(
         "hide": 0,
         "multi": multi,
         "includeAll": True,
+        "sort": 0,
+        "description": description,
+    }
+
+
+def single_query_var(name: str, label: str, query: str, description: str):
+    """Build a single-select query-backed variable, auto-selecting the first row.
+
+    Unlike query_var(), there is no "All" option - for a picker where exactly one value
+    (e.g. one plan shape) must drive the panels below. refresh=2 (on time-range change)
+    since the option list is itself time-bounded (only shapes seen in the current window).
+    """
+    return {
+        "name": name,
+        "label": label,
+        "type": "query",
+        "datasource": DS,
+        "query": query,
+        "definition": query,
+        "current": {},
+        "options": [],
+        "refresh": 2,
+        "hide": 0,
+        "multi": False,
+        "includeAll": False,
         "sort": 0,
         "description": description,
     }
@@ -579,9 +626,11 @@ __all__ = [
     "fixed",
     "flow",
     "heatmap",
+    "logs",
     "n0",
     "multi_filter",
     "nid",
+    "plan_parameters_sql",
     "query_var",
     "reflow",
     "reset_id",
@@ -592,6 +641,7 @@ __all__ = [
     "server_filter",
     "server_join",
     "server_var",
+    "single_query_var",
     "stat",
     "stat_grid",
     "state_timeline",
