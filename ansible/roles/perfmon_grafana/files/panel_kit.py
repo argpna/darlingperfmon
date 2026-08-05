@@ -420,6 +420,54 @@ class PanelKit:
             panel["description"] = description
         return panel
 
+    def alertlist(
+        self,
+        title: str,
+        x: int,
+        y: int,
+        w: int,
+        h: int,
+        folder_uid: str,
+        folder_title: str,
+        max_items: int = 20,
+        description: str | None = None,
+    ) -> dict:
+        """Build a Grafana-managed Alert List panel (built-in, by Grafana Labs).
+
+        Reads live alert-rule state from Grafana's own alerting engine, not a
+        datasource query - no targets/fieldConfig. Scoped to one alert-rule folder;
+        sortOrder 3 is Importance (firing outranks pending outranks normal).
+        """
+        panel = {
+            "id": self.nid(),
+            "type": "alertlist",
+            "title": title,
+            "gridPos": {"h": h, "w": w, "x": x, "y": y},
+            "options": {
+                "viewMode": "list",
+                "groupMode": "default",
+                "groupBy": [],
+                "maxItems": max_items,
+                "sortOrder": 3,
+                "dashboardAlerts": False,
+                "alertName": "",
+                "alertInstanceLabelFilter": "",
+                "folder": {"uid": folder_uid, "title": folder_title},
+                "stateFilter": {
+                    "firing": True,
+                    "pending": True,
+                    "recovering": True,
+                    "noData": False,
+                    "normal": False,
+                    "error": True,
+                },
+                "showInactiveAlerts": False,
+            },
+        }
+        if description:
+            panel["description"] = description
+        return panel
+
     def row(self, title: str, y: int, repeat: str | None = None) -> dict:
         """Build a collapsible row panel used as a section header."""
         r = {

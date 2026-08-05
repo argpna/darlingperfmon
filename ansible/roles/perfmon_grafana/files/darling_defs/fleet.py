@@ -6,6 +6,7 @@ ServerHealthBands.cs (ServerHealthClassifier).
 
 from ._shared import (
     HEALTH_STATUS_COLORS,
+    alertlist,
     collector,
     col_datalink,
     col_datalinks,
@@ -24,6 +25,11 @@ from .collection_health import _CADENCE_TABLE, _HEALTH_AGG, _HEALTH_STATUS
 # ServerHealthThresholds: stale = 2x the 1-min collector cadence, offline = 15 min.
 _STALE_MINUTES = 2
 _OFFLINE_MINUTES = 15
+
+# Alert rules for this line are provisioned into this folder (alerting_darling.yml); must
+# match grafana_darling_folder_uid/grafana_darling_folder in defaults/main.yml.
+_ALERT_FOLDER_UID = "perfmon-darling"
+_ALERT_FOLDER_TITLE = "PerformanceMonitor (Darling)"
 
 _NOT_FRESH = f"(m.last_collection_time IS NULL OR m.minutes_since_collection > {_STALE_MINUTES})"
 
@@ -390,11 +396,27 @@ def fleet():
         x += w
 
     panels.append(
-        table(
-            "Needs Attention",
+        alertlist(
+            "Active Alerts",
             0,
             4,
-            24,
+            8,
+            7,
+            folder_uid=_ALERT_FOLDER_UID,
+            folder_title=_ALERT_FOLDER_TITLE,
+            description=(
+                "Grafana-managed alert rules currently firing or pending across the fleet "
+                f"(folder: {_ALERT_FOLDER_TITLE})."
+            ),
+        )
+    )
+
+    panels.append(
+        table(
+            "Needs Attention",
+            8,
+            4,
+            16,
             7,
             _NEEDS_ATTENTION_SQL,
             overrides=[

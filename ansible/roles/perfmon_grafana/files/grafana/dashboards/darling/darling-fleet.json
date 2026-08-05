@@ -362,6 +362,41 @@
     },
     {
       "id": 35,
+      "type": "alertlist",
+      "title": "Active Alerts",
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 4
+      },
+      "options": {
+        "viewMode": "list",
+        "groupMode": "default",
+        "groupBy": [],
+        "maxItems": 20,
+        "sortOrder": 3,
+        "dashboardAlerts": false,
+        "alertName": "",
+        "alertInstanceLabelFilter": "",
+        "folder": {
+          "uid": "perfmon-darling",
+          "title": "PerformanceMonitor (Darling)"
+        },
+        "stateFilter": {
+          "firing": true,
+          "pending": true,
+          "recovering": true,
+          "noData": false,
+          "normal": false,
+          "error": true
+        },
+        "showInactiveAlerts": false
+      },
+      "description": "Grafana-managed alert rules currently firing or pending across the fleet (folder: PerformanceMonitor (Darling))."
+    },
+    {
+      "id": 36,
       "type": "table",
       "title": "Needs Attention",
       "datasource": {
@@ -370,8 +405,8 @@
       },
       "gridPos": {
         "h": 7,
-        "w": 24,
-        "x": 0,
+        "w": 16,
+        "x": 8,
         "y": 4
       },
       "fieldConfig": {
@@ -518,7 +553,7 @@
       "description": "Worst-first, capped at the 5 servers needing attention most (see the Critical/Warning tiles above and the full Fleet health table below for the rest). Empty when every monitored server is healthy. Click Links to pick a destination dashboard for the reasons named in this row."
     },
     {
-      "id": 36,
+      "id": 37,
       "type": "table",
       "title": "Fleet health",
       "datasource": {

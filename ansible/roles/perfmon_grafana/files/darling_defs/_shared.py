@@ -379,6 +379,7 @@ table = _kit.table
 bargauge = _kit.bargauge
 heatmap = _kit.heatmap
 logs = _kit.logs
+alertlist = _kit.alertlist
 row = _kit.row
 flow = _kit.flow
 stat_grid = _kit.stat_grid
@@ -610,6 +611,7 @@ __all__ = [
     "HEALTH_STATUS_COLORS",
     "OUT",
     "UTC_NOW",
+    "alertlist",
     "bargauge",
     "col_datalink",
     "col_datalinks",
