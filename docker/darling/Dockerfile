@@ -6,7 +6,6 @@ ARG DOTNET_SDK_TAG=10.0
 ARG DOTNET_RUNTIME_TAG=10.0
 
 FROM mcr.microsoft.com/dotnet/sdk:${DOTNET_SDK_TAG} AS build
-# Keep in step with perfmon_version in roles/perfmon_install/defaults/main.yml.
 ARG PERFMON_VERSION=v3.3.0
 WORKDIR /src
 RUN apt-get update \

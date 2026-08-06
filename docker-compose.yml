@@ -107,6 +107,7 @@ services:
       AD_DOMAIN: ${AD_DOMAIN}
       AD_REALM: ${AD_REALM}
       AD_NETBIOS: ${AD_NETBIOS}
+      DARLING_PG_PASSWORD: ${DARLING_PG_PASSWORD}
       DARLING_VIEWER_PASSWORD: ${DARLING_VIEWER_PASSWORD}
     volumes:
       - ./.env:/workspace/.env

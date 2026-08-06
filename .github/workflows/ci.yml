@@ -94,6 +94,11 @@ jobs:
           rc=$(docker wait perfmon-darling-collector-config)
           docker logs perfmon-darling-collector-config 2>&1 | tail -40
           exit "$rc"
+      - name: Verify the perfmon_darling collector role
+        run: |
+          docker compose run --rm ansible-runner \
+            ansible-playbook -i /workspace/ansible/inventory/docker \
+            /workspace/ansible/playbooks/deploy_perfmon_darling.yml
       - name: Deploy Darling-line Grafana dashboards
         run: |
           docker compose run --rm ansible-runner \
