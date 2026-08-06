@@ -74,6 +74,54 @@ jobs:
           docker compose ps -a
           docker compose logs --tail 100 ansible-runner grafana mssql-2022 mssql-2025
 
+  e2e-darling:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    needs: static
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start stack with darling profile
+        run: |
+          cp .env.example .env
+          docker compose --profile darling up -d --scale ansible-runner=0
+      - name: Wait for the Darling store to migrate and provision roles
+        run: |
+          rc=$(docker wait perfmon-darling-provision)
+          docker logs perfmon-darling-provision 2>&1 | tail -40
+          exit "$rc"
+      - name: Wait for collector schedule provisioning
+        run: |
+          rc=$(docker wait perfmon-darling-collector-config)
+          docker logs perfmon-darling-collector-config 2>&1 | tail -40
+          exit "$rc"
+      - name: Deploy Darling-line Grafana dashboards
+        run: |
+          docker compose run --rm ansible-runner \
+            ansible-playbook -i /workspace/ansible/inventory/docker \
+            /workspace/ansible/playbooks/deploy_perfmon_grafana.yml \
+            -e perfmon_edition=darling
+      - name: Assert datasource, auth, alert rules
+        run: python3 scripts/e2e-checks-darling.py
+      - name: Smoke-test every panel query
+        run: |
+          GRAFANA_API_KEY=$(grep '^GRAFANA_API_KEY=' .env | cut -d= -f2-)
+          export GRAFANA_API_KEY
+          PERFMON_DASHBOARD_DIR=ansible/roles/perfmon_grafana/files/grafana/dashboards/darling \
+            python3 scripts/verify-panels.py darling
+      # scripts are idempotent: a second full deploy must succeed
+      - name: Deploy re-run succeeds
+        run: |
+          docker compose run --rm ansible-runner \
+            ansible-playbook -i /workspace/ansible/inventory/docker \
+            /workspace/ansible/playbooks/deploy_perfmon_grafana.yml \
+            -e perfmon_edition=darling
+      - name: Diagnostics
+        if: failure()
+        run: |
+          docker compose --profile darling ps -a
+          docker compose --profile darling logs --tail 100 \
+            darling darling-provision darling-collector-config grafana mssql-2022 mssql-2025
+
   e2e-ad:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
