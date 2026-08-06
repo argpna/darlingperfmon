@@ -1,6 +1,4 @@
 ---
-# Only reached when darling.json actually changed. Registry edits need no restart - the
-# table's trigger bumps config_version and the running service reloads.
 - name: Restart darling
   ansible.builtin.service:
     name: "{{ perfmon_darling_service_name }}"

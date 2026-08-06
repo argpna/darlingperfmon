@@ -28,11 +28,9 @@ perfmon_darling_analysis_enabled: true
 # so they start collecting without recreating the store.
 perfmon_darling_register_new: true
 
-# Disable registry rows whose instance has left the inventory. Off by default, matching
-# perfmon_prune_orphaned: a partial-inventory run must not disable another team's instance.
+# Disable registry rows whose instance has left the inventory. Off by default.
 perfmon_darling_prune_orphaned: false
 
-# The service unit to restart when darling.json changes. Off by default: the demo stack
-# runs the service as a container, and a host install may manage its own lifecycle.
+# The service unit to restart when darling.json changes. Off by default.
 perfmon_darling_manage_service: false
 perfmon_darling_service_name: darling

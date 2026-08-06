@@ -1,13 +1,4 @@
 ---
-# darling.json's servers[] seeds config_monitored_servers only while it is empty, so an
-# instance added to inventory after the store's first start is otherwise never collected.
-# These tasks insert it directly; the table's trigger bumps config_version, so the running
-# service reloads without a restart.
-#
-# The secret is not written here. On Linux there is no DPAPI blob to store, and the service
-# backfills a row's password from darling.json by matching storage name (host) + username -
-# which is why the rendered file must keep listing every SQL-auth instance.
-
 - name: Read the current monitored-server registry
   community.postgresql.postgresql_query:
     login_host: "{{ perfmon_darling_pg_host }}"
@@ -64,9 +55,6 @@
   become: false
   no_log: true
 
-# Only for a run whose inventory is the complete fleet - a partial run would otherwise stop
-# collection on instances it simply does not know about. Rows are disabled, never deleted,
-# so their collected history survives.
 - name: Disable registry rows whose instance left the inventory
   vars:
     _known: >-

@@ -54,7 +54,7 @@ groups:
               conditions:
                 - evaluator:
                     params:
-                      - {{ perfmon_alert_darling_cpu_pct | float }}
+                      - {{ perfmon_alert_cpu_pct | float }}
                     type: gte
                   operator:
                     type: and
@@ -79,7 +79,7 @@ groups:
           instance: "{{ item.inventory_hostname }}"
         annotations:
           summary: >
-            CPU utilization on {{ item.inventory_hostname }} exceeded {{ perfmon_alert_darling_cpu_pct }}%.
+            CPU utilization on {{ item.inventory_hostname }} exceeded {{ perfmon_alert_cpu_pct }}%.
 
   # -----------------------------------------------------------------------
   # Blocking Detected
@@ -131,7 +131,7 @@ groups:
               conditions:
                 - evaluator:
                     params:
-                      - {{ perfmon_alert_darling_blocking_count | float }}
+                      - {{ perfmon_alert_blocking_count | float }}
                     type: gte
                   operator:
                     type: and
@@ -156,7 +156,7 @@ groups:
           instance: "{{ item.inventory_hostname }}"
         annotations:
           summary: >
-            {{ item.inventory_hostname }} captured {{ perfmon_alert_darling_blocking_count }} or more
+            {{ item.inventory_hostname }} captured {{ perfmon_alert_blocking_count }} or more
             blocking event(s) in the last hour.
 
   # -----------------------------------------------------------------------

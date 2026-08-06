@@ -5,18 +5,15 @@ grafana_url: "http://localhost:3000"
 # Used by alerting_rulegroups.yml to render one alert-rule-group set per instance.
 perfmon_instances: "{{ groups['sql_servers'] | default([]) | map('extract', hostvars) | list }}"
 
-# Set to true to regenerate the fleet baked in static mode
-perfmon_fleet_static: false
-
-# Delete PerfMon-managed datasources/mute timings/dashboards that exist in Grafana but
-# aren't produced by this run - either because they're not in this run's inventory/config,
-# or because a dashboard's uid changed or was removed upstream. Off by default: a run
-# against a partial inventory would otherwise delete datasources for every other instance.
+# Delete PerfMon-managed dashboards/mute timings/alert rules that exist in Grafana but
+# aren't produced by this run - dashboards/mute timings no longer generated or configured,
+# alert rules for an instance no longer in perfmon_instances. Off by default: a run against
+# a partial inventory would otherwise delete another instance's alert rules.
 # Only set true for a run whose inventory is the complete, current fleet.
 perfmon_prune_orphaned: false
 
-perfmon_alert_cpu_pct: 90
-perfmon_alert_blocking_s: 30
+perfmon_alert_cpu_pct: 80
+perfmon_alert_blocking_count: 1
 perfmon_alert_deadlock_count: 1
 perfmon_alert_tempdb_pct: 80
 perfmon_alert_disk_free_pct: 10
@@ -56,9 +53,3 @@ perfmon_darling_pg_database: darling
 perfmon_darling_pg_user: viewer
 # perfmon_darling_pg_password: set in inventory group_vars or vault
 perfmon_darling_pg_sslmode: disable
-
-# Darling-line alert thresholds (rules-instance-darling.yaml.j2). Every other alert reuses the
-# perfmon_alert_* defaults above unchanged; these two differ in default or in kind - see
-# rules-instance-darling.yaml.j2.
-perfmon_alert_darling_cpu_pct: 80
-perfmon_alert_darling_blocking_count: 1
