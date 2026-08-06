@@ -11,104 +11,22 @@
     - dashboards
     - alerting
 
-- name: Validate the configured edition
-  ansible.builtin.assert:
-    that:
-      - perfmon_edition in ['dashboard', 'darling']
-    fail_msg: >-
-      Invalid perfmon_edition '{{ perfmon_edition }}'. Must be dashboard (SQL-Server-resident
-      collect.*/report.* schema) or darling (central PostgreSQL store).
-    quiet: true
-  tags:
-    - datasources
-    - dashboards
-    - alerting
-
-- name: Validate resolved reader auth mode on every instance
-  vars:
-    resolved_mode: "{{ item.perfmon_reader_auth_mode | default(perfmon_reader_auth_mode) }}"
-  when: perfmon_edition == 'dashboard'
-  ansible.builtin.assert:
-    that:
-      - resolved_mode in ['sql', 'windows']
-    fail_msg: >-
-      Invalid resolved auth mode '{{ resolved_mode }}' for instance {{ item.inventory_hostname }}.
-      perfmon_reader_auth_mode must be sql or windows.
-    quiet: true
-  loop: "{{ perfmon_instances }}"
-  loop_control:
-    label: "{{ item.inventory_hostname }}"
-  no_log: true
-  tags: datasources
-
-- name: Validate reader credentials for the resolved auth mode on every instance
-  vars:
-    resolved_mode: "{{ item.perfmon_reader_auth_mode | default(perfmon_reader_auth_mode) }}"
-  when: perfmon_edition == 'dashboard'
-  ansible.builtin.assert:
-    that:
-      - resolved_mode != 'windows'
-        or (item.perfmon_reader_windows_upn | default(perfmon_reader_windows_upn | default(''))) | length > 0
-      - resolved_mode != 'windows'
-        or (item.perfmon_reader_windows_password | default(perfmon_reader_windows_password | default(''))) | length > 0
-      - resolved_mode != 'sql'
-        or perfmon_reader_password | default('') | length > 0
-    fail_msg: >-
-      Missing reader credentials for instance {{ item.inventory_hostname }}, resolved auth mode
-      {{ resolved_mode }}.{%- if resolved_mode == 'windows' %}
-      windows mode needs perfmon_reader_windows_upn and perfmon_reader_windows_password,
-      set fleet-wide or per-host.{%- else %}
-      sql mode needs perfmon_reader_password.{%- endif %}
-      See README.md 'Required credentials'.
-    quiet: true
-  loop: "{{ perfmon_instances }}"
-  loop_control:
-    label: "{{ item.inventory_hostname }}"
-  no_log: true
-  tags: datasources
-
-- name: Provision datasources
-  ansible.builtin.import_tasks: datasources.yml
-  when: perfmon_edition == 'dashboard'
-  tags: datasources
-
 - name: Provision the Darling datasource
   ansible.builtin.import_tasks: datasources_darling.yml
-  when: perfmon_edition == 'darling'
   tags: datasources
-
-- name: Generate dashboard JSON files
-  ansible.builtin.import_tasks: generate_dashboards.yml
-  when: perfmon_edition == 'dashboard'
-  tags:
-    - dashboards
-    - generate
 
 - name: Generate Darling dashboard JSON files
   ansible.builtin.import_tasks: generate_dashboards_darling.yml
-  when: perfmon_edition == 'darling'
   tags:
     - dashboards
     - generate
 
-- name: Import dashboards into Grafana
-  ansible.builtin.import_tasks: dashboards.yml
-  when: perfmon_edition == 'dashboard'
-  tags: dashboards
-
 - name: Import Darling dashboards into Grafana
   ansible.builtin.import_tasks: dashboards_darling.yml
-  when: perfmon_edition == 'darling'
   tags: dashboards
-
-- name: Provision alerting resources
-  ansible.builtin.import_tasks: alerting.yml
-  when: perfmon_edition == 'dashboard'
-  tags: alerting
 
 - name: Provision Darling alerting resources
   ansible.builtin.import_tasks: alerting_darling.yml
-  when: perfmon_edition == 'darling'
   tags: alerting
 
 - name: Remove all provisioned resources

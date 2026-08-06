@@ -1,5 +1,3 @@
 .ansible
 *.pyc
 __pycache__/
-community/*.sql
-community/*.zip

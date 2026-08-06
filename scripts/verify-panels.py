@@ -315,7 +315,7 @@ def main() -> None:
         / "files"
         / "grafana"
         / "dashboards"
-        / "perfmon"
+        / "darling"
     )
     dashboard_dir = (
         pathlib.Path(os.environ["PERFMON_DASHBOARD_DIR"])

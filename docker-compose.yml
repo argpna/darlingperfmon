@@ -1,30 +1,5 @@
 name: eriksperfmon
 
-configs:
-  krb5_conf:
-    content: |
-      # kerberos client config for the AD profile realm ${AD_REALM}.
-      # mounted into ansible-runner, grafana, and mssql-ad; kdc resolves via the compose
-      # network alias on the samba-ad service. rdns=false because docker PTR records would
-      # otherwise break SPN construction. Generated from AD_DOMAIN/AD_REALM in .env - do not
-      # hand-edit this file.
-      [libdefaults]
-          default_realm = ${AD_REALM}
-          dns_lookup_realm = false
-          dns_lookup_kdc = false
-          rdns = false
-
-      [realms]
-          ${AD_REALM} = {
-              kdc = sambadc.${AD_DOMAIN}
-              admin_server = sambadc.${AD_DOMAIN}
-              default_domain = ${AD_DOMAIN}
-          }
-
-      [domain_realm]
-          .${AD_DOMAIN} = ${AD_REALM}
-          ${AD_DOMAIN} = ${AD_REALM}
-
 x-mssql-env: &mssql-env
   ACCEPT_EULA: "Y"
   MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
@@ -98,27 +73,16 @@ services:
         condition: service_healthy
     environment:
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
-      MSSQL_READER_PASSWORD: ${MSSQL_READER_PASSWORD}
       GRAFANA_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
       GRAFANA_URL: http://grafana:3000
       GRAFANA_ADMIN_USER: admin
-      AD_SQLADMIN_PASSWORD: ${AD_SQLADMIN_PASSWORD}
-      AD_READER_PASSWORD: ${AD_READER_PASSWORD}
-      AD_DOMAIN: ${AD_DOMAIN}
-      AD_REALM: ${AD_REALM}
-      AD_NETBIOS: ${AD_NETBIOS}
       DARLING_PG_PASSWORD: ${DARLING_PG_PASSWORD}
       DARLING_VIEWER_PASSWORD: ${DARLING_VIEWER_PASSWORD}
     volumes:
       - ./.env:/workspace/.env
       - ./ansible:/workspace/ansible
       - ./bootstrap:/workspace/bootstrap:ro
-      - ./community:/workspace/community:ro
-      - ./patches:/workspace/patches:ro
       - ./scripts:/workspace/scripts:ro
-    configs:
-      - source: krb5_conf
-        target: /etc/krb5.conf
     restart: "no"
 
   # demo workload against mssql-2022
@@ -176,9 +140,6 @@ services:
       GF_FEATURE_TOGGLES_ENABLE: dashboardNewLayouts
     volumes:
       - grafana-data:/var/lib/grafana
-    configs:
-      - source: krb5_conf
-        target: /etc/krb5.conf
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health"]
       interval: 10s
@@ -258,90 +219,8 @@ services:
     restart: "no"
     profiles: ["darling"]
 
-  # Opt-in profile for AD-auth ansible tests: `docker compose --profile ad up -d`
-  samba-ad:
-    build:
-      context: .
-      dockerfile: docker/samba-ad/Dockerfile
-    container_name: perfmon-samba-ad
-    hostname: sambadc
-    deploy:
-      resources:
-        limits:
-          memory: 512m
-    environment:
-      DOMAIN: ${AD_REALM}
-      DOMAINPASS: ${SAMBA_ADMIN_PASSWORD}
-      NOCOMPLEXITY: "true"
-      # forwards anything outside AD_DOMAIN to Docker's embedded resolver, so clients can
-      # point solely at this container's DNS and still resolve other compose service names.
-      DNSFORWARDER: "127.0.0.11"
-      MSSQL_AD_IP: 10.200.1.246
-      AD_DOMAIN: ${AD_DOMAIN}
-      AD_NETBIOS: ${AD_NETBIOS}
-      AD_SQLADMIN_PASSWORD: ${AD_SQLADMIN_PASSWORD}
-      AD_READER_PASSWORD: ${AD_READER_PASSWORD}
-      AD_SVC_MSSQL_PASSWORD: ${AD_SVC_MSSQL_PASSWORD}
-    privileged: true
-    networks:
-      default:
-        ipv4_address: 10.200.1.245
-        aliases:
-          - sambadc.${AD_DOMAIN}
-    volumes:
-      - samba-ad-data:/var/lib/samba
-      - ad-keytab:/ad-keytab
-    profiles: ["ad"]
-
-  # AD-authenticated instance. The ansible-runner detects it via its
-  # network alias and installs PerformanceMonitor over kerberos.
-  mssql-ad:
-    image: mcr.microsoft.com/mssql/server:2022-latest
-    container_name: perfmon-mssql-ad
-    hostname: mssql-ad.${AD_DOMAIN}
-    user: root
-    <<: *mssql-deploy
-    entrypoint: ["/bin/bash", "/scripts/entrypoint.sh"]
-    environment:
-      <<: *mssql-env
-      AD_DOMAIN: ${AD_DOMAIN}
-      AD_NETBIOS: ${AD_NETBIOS}
-    networks:
-      default:
-        ipv4_address: 10.200.1.246
-        aliases:
-          - mssql-ad.${AD_DOMAIN}
-    depends_on:
-      samba-ad:
-        condition: service_started
-    ports:
-      - "14335:1433"
-    volumes:
-      - mssql-ad-data:/var/opt/mssql
-      - ad-keytab:/ad-keytab:ro
-      - ./docker/mssql-ad/entrypoint.sh:/scripts/entrypoint.sh:ro
-    configs:
-      - source: krb5_conf
-        target: /etc/krb5.conf
-    healthcheck:
-      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -b -Q \"IF IS_SRVROLEMEMBER(N'sysadmin', N'${AD_NETBIOS}\\\\sqladmin') <> 1 RAISERROR(N'AD bootstrap pending', 16, 1);\" -o /dev/null"]
-      interval: 15s
-      timeout: 10s
-      retries: 60
-      start_period: 60s
-    profiles: ["ad"]
-
-networks:
-  default:
-    ipam:
-      config:
-        - subnet: 10.200.1.0/24
-
 volumes:
   mssql-2022-data:
   mssql-2025-data:
-  mssql-ad-data:
   grafana-data:
-  samba-ad-data:
-  ad-keytab:
   darling-pg-data:
