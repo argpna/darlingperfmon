@@ -7,7 +7,7 @@
     that:
       - perfmon_darling_pg_password | default('') | length > 0
     fail_msg: >-
-      perfmon_darling_pg_password must be set when perfmon_edition is darling.
+      perfmon_darling_pg_password must be set.
       Provision the store's least-privilege roles with Darling/tools/provision-roles.sql
       and set this to the "viewer" role's password.
     quiet: true
