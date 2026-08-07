@@ -2,7 +2,7 @@
 """Generate the Darling (PostgreSQL) PerformanceMonitor Grafana dashboards.
 
 Per-dashboard modules live in darling_defs/, shared helpers in darling_defs/_shared.py,
-panel builders in panel_kit.py. The MSSQL line is build-dashboards.py + dashboard_defs/.
+panel builders in panel_kit.py.
 
 Usage:
   python3 build-darling-dashboards.py

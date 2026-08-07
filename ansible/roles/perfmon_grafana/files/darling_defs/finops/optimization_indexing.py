@@ -1,4 +1,4 @@
-"""FinOps Optimization & Indexing dashboard (Darling line) - merges Optimization and
+"""FinOps Optimization & Indexing dashboard - merges Optimization and
 Index Analysis dashboards into one cleanup-opportunities page.
 
 Upstream ref: ViewerDataService.FinOps.Storage.cs, .Workload.cs, .Utilization.cs,

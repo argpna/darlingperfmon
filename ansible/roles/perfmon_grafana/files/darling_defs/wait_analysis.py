@@ -1,4 +1,4 @@
-"""Wait Analysis dashboard (Darling line) - merges Wait Stats and Latches &
+"""Wait Analysis dashboard - merges Wait Stats and Latches &
 Spinlocks dashboards: three angles ("what is the engine waiting on") on one page.
 
 Upstream ref: ViewerServerTab.Waits.cs / ViewerDataService.Waits.cs,

@@ -1,4 +1,4 @@
-"""FinOps Recommendations dashboard (Darling line).
+"""FinOps Recommendations dashboard.
 
 Upstream ref: ViewerDataService.FinOps.Recommendations.cs.
 

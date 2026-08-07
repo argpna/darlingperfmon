@@ -1,4 +1,4 @@
-"""FinOps object-growth drill-down (Darling line).
+"""FinOps object-growth drill-down.
 
 Upstream ref: ObjectGrowthSummarySql / ObjectGrowthSeriesSql
 (ViewerDataService.FinOps.Storage.cs), FinOpsTab.ObjectHeatmap.cs.

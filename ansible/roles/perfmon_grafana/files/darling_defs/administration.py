@@ -1,4 +1,4 @@
-"""Administration dashboard (Darling line) - merges Configuration, Configuration
+"""Administration dashboard - merges Configuration, Configuration
 Changes, and Running Jobs dashboards: current setup, recent changes, and scheduled jobs.
 
 Upstream ref: ViewerDataService.Config.cs, ViewerDataService.ConfigChanges.cs,

@@ -1,4 +1,4 @@
-"""Wait Stats section (Darling line) - the Wait Stats half of the Wait Analysis dashboard
+"""Wait Stats section - the Wait Stats half of the Wait Analysis dashboard
 (wait_analysis.py), plus the Wait Drill-Down nav-only dashboard it links to.
 
 Upstream ref: ViewerServerTab.Waits.cs / ViewerDataService.Waits.cs.
@@ -8,8 +8,8 @@ The picker becomes $wait_type; the combo's options become their own panels, sinc
 panel has no combo and showing both costs nothing.
 
 Upstream ref: WaitDrillDownWindow.xaml.cs. wait_drill_down() below only implements the
-Filtered path of WaitDrillDownHelper.Classify, matching dashboard_defs/wait_drill_down.py's
-precedent - Correlated, Uncapturable, and Chain are not ported.
+Filtered path of WaitDrillDownHelper.Classify - Correlated, Uncapturable, and Chain are not
+ported.
 """
 
 from ._shared import (

@@ -1,4 +1,4 @@
-name: eriksperfmon
+name: darlingperfmon
 
 x-mssql-env: &mssql-env
   ACCEPT_EULA: "Y"

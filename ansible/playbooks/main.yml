@@ -1,6 +1,6 @@
 ---
-# End-to-end install PerformanceMonitor on all database instances,
-# then provision grafana dashboards, alerting.
+# End-to-end: configure the Darling collector service, then provision Grafana
+# dashboards and alerting.
 #
 # Usage:
 #   ansible-playbook -i ansible/inventory ansible/playbooks/main.yml

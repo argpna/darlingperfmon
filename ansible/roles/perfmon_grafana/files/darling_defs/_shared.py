@@ -1,4 +1,4 @@
-"""Shared helpers for the Darling (PostgreSQL) dashboard line.
+"""Shared helpers for the Darling (PostgreSQL) dashboards.
 
 One datasource for the whole store; instance selection is the $server variable.
 Read the column and retention notes below before writing panel SQL.
@@ -22,7 +22,7 @@ from panel_kit import (  # noqa: E402
     text_var,
 )
 
-# Own directory and uid prefix so both dashboard lines can coexist in one Grafana.
+# Dedicated dashboard-JSON directory and uid prefix.
 _DASHBOARDS_ROOT = (
     pathlib.Path(__file__).resolve().parent.parent / "grafana" / "dashboards"
 )
@@ -32,7 +32,7 @@ UID_PREFIX = "darling"
 
 
 def uid(name: str) -> str:
-    """Namespace a dashboard uid to the Darling line."""
+    """Namespace a dashboard uid with the darling prefix."""
     return f"{UID_PREFIX}-{name}"
 
 

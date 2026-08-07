@@ -1,4 +1,4 @@
-"""Queries dashboard (Darling line).
+"""Queries dashboard.
 
 Upstream ref: ViewerServerTab.Queries.cs, ViewerDataService.QueryStats.cs, .ProcedureStats.cs,
 .QueryStore.cs, .QueryStoreRegressions.cs, .QuerySnapshots.cs, .QueryTrends.cs,

@@ -1,4 +1,4 @@
-"""Collection Health dashboard (Darling line).
+"""Collection Health dashboard.
 
 Upstream ref: ViewerDataService.CollectionHealth.cs, ViewerServerTab.CollectionHealth.cs,
 CollectorHealthClassifier (PerformanceMonitor.Common), CollectorScheduleDefaults.

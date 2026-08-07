@@ -1,4 +1,4 @@
-"""FinOps Server Inventory dashboard (Darling line).
+"""FinOps Server Inventory dashboard.
 
 Upstream ref: ViewerDataService.FinOps.Inventory.cs.
 

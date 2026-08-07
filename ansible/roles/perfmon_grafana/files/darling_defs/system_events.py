@@ -1,9 +1,9 @@
-"""System Events dashboard (Darling line).
+"""System Events dashboard.
 
 Upstream ref: ViewerServerTab/ViewerDataService.SystemEvents.cs, SystemEventSignificance.cs
 (Darling.Viewer); SystemHealthParser.cs, SystemHealthSignificance.cs,
 DefaultTraceEventSignificance.cs (PerformanceMonitor.Common). Eleven sub-tabs in upstream's
-XAML order; Significant Waits and Default Trace have no dashboard_defs precedent.
+XAML order.
 
 Every category but Corruption/Contention (unfiltered SYSTEM-component charts) is a
 parse-on-read shred of event_xml, kept to the rows SystemHealthSignificance/
@@ -707,7 +707,7 @@ _MEMORY_NODE_OOM_STATS = [
 ]
 
 
-# Significant Waits (Darling-only, no dashboard_defs precedent)
+# Significant Waits
 # Upstream ref: GetSignificantWaitsAsync (ViewerDataService.SystemEvents.cs);
 # SystemHealthSignificance.IsSignificant(SignificantWaitRecord) - real session, non-BACKUP
 # statement, duration >= 500 ms, wait type not on the idle-wait ignore list.
@@ -970,7 +970,7 @@ ORDER BY 1
 """
 
 
-# Default Trace (Darling-only, no dashboard_defs precedent)
+# Default Trace
 # Upstream ref: GetDefaultTraceEventsAsync (ViewerDataService.SystemEvents.cs);
 # DefaultTraceEventSignificance.Classify / IsSignificant (PerformanceMonitor.Common) -
 # ErrorLog gated by severity >= 16, every other collected category significant as-is.

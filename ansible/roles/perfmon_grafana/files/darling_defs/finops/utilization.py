@@ -1,4 +1,4 @@
-"""FinOps Utilization & Database Resources dashboard (Darling line) - merges Utilization
+"""FinOps Utilization & Database Resources dashboard - merges Utilization
 and Database Resources dashboards into one compute/memory/IO/cost view.
 
 Upstream ref: ViewerDataService.FinOps.Utilization.cs, .Workload.cs.

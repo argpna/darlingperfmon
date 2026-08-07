@@ -1,7 +1,7 @@
-"""Datasource-agnostic Grafana panel builders, shared across dashboard lines.
+"""Datasource-agnostic Grafana panel builders.
 
-A line binds its own datasource and target() once: kit = PanelKit(DS, target).
-Panel ids come from the kit instance, so each line has its own counter.
+Bind a datasource and target() once: kit = PanelKit(DS, target).
+Panel ids come from the kit instance's own counter.
 """
 
 

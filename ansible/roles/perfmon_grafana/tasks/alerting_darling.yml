@@ -1,12 +1,11 @@
 ---
-# Alerting for the Darling line: rules-instance-darling.yaml.j2, reading collect.* through the
-# single Postgres datasource. Own folder and darling- uid prefix, same convention as the
-# darling_defs/ dashboards, so both editions' rules coexist without collision.
+# Renders rules-instance-darling.yaml.j2, reading collect.* through the single Postgres
+# datasource, into its own Grafana folder.
 
 - name: Provision alert contact points, mute timings, and notification route
   ansible.builtin.import_tasks: alerting_contacts.yml
 
-- name: Provision Darling-line alert rule groups
+- name: Provision alert rule groups
   ansible.builtin.import_tasks: alerting_rulegroups.yml
   vars:
     _alerting_template_path: "{{ role_path }}/templates/alerting/rules-instance-darling.yaml.j2"

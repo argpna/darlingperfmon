@@ -1,4 +1,4 @@
-"""Overview dashboard (Darling line) - per-server correlated timeline lanes, a status stat
+"""Overview dashboard - per-server correlated timeline lanes, a status stat
 row, and a rolled-up daily history (absorbs the former Daily Summary dashboard).
 
 Upstream ref: CorrelatedTimelineLanesControl.xaml(.cs), ViewerDataService.Cpu.cs,

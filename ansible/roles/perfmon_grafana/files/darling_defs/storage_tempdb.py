@@ -1,4 +1,4 @@
-"""Storage & tempdb dashboard (Darling line) - merges File I/O and tempdb
+"""Storage & tempdb dashboard - merges File I/O and tempdb
 dashboards: disk-facing resource pressure, split out from CPU/Memory & Sessions because it
 answers a different question ("is storage the bottleneck" vs "is compute the bottleneck").
 

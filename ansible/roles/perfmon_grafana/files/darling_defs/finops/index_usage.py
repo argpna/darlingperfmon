@@ -1,4 +1,4 @@
-"""FinOps per-index detail drill-down (Darling line).
+"""FinOps per-index detail drill-down.
 
 Upstream ref: ObjectIndexDetailSql (ViewerDataService.FinOps.Storage.cs).
 

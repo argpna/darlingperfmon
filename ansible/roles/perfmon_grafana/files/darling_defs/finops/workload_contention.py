@@ -1,4 +1,4 @@
-"""FinOps Workload & Contention dashboard (Darling line) - merges High Impact,
+"""FinOps Workload & Contention dashboard - merges High Impact,
 Application Connections, and Locking & Contention dashboards: what's driving cost and what's
 contending for locks.
 

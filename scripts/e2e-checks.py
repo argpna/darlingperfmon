@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assert a provisioned Darling-line stack is wired up correctly, via the Grafana API.
+"""Assert a provisioned stack is wired up correctly, via the Grafana API.
 
 Check:
   - the darling-fleet dashboard was imported

@@ -1,4 +1,4 @@
-"""CPU, Memory & Sessions dashboard (Darling line) - merges CPU, Memory, Session
+"""CPU, Memory & Sessions dashboard - merges CPU, Memory, Session
 Stats, and Perfmon Counters dashboards into one engine-resource-pressure view.
 
 Upstream ref: ViewerDataService.Cpu.cs, ViewerDataService.Memory.cs,

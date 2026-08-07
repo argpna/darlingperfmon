@@ -1,4 +1,4 @@
-"""FinOps Capacity & Growth dashboard (Darling line) - merges Database Sizes and
+"""FinOps Capacity & Growth dashboard - merges Database Sizes and
 Storage Growth dashboards: current size snapshot and growth trend.
 
 Upstream ref: ViewerDataService.FinOps.Storage.cs.

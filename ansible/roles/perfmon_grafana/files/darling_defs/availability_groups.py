@@ -1,4 +1,4 @@
-"""Availability Groups dashboards (Darling line).
+"""Availability Groups dashboards.
 
 Upstream ref: AvailabilityGroupsTab.xaml(.cs), ViewerDataService.AvailabilityGroups.cs,
 AgTopology (PerformanceMonitor.Common) for the banding and drain-minutes math ported below.

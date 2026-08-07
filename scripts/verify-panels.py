@@ -224,7 +224,7 @@ _DS_TYPES: dict[str, str] = {}
 
 
 def ds_type(ds_uid: str) -> str:
-    """Look up a datasource's plugin type, so this drives both dashboard lines."""
+    """Look up a datasource's plugin type, cached per uid."""
     if ds_uid not in _DS_TYPES:
         req = urllib.request.Request(
             f"{GRAFANA}/api/datasources/uid/{ds_uid}",

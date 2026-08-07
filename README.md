@@ -7,7 +7,7 @@ Darling is a headless collector service that polls one or more SQL Server instan
 into a central PostgreSQL/TimescaleDB store. The Grafana dashboards read that store through a
 single Postgres datasource that serves every monitored instance.
 
-Screenshots of all dashboards can be viewed at: [argpna.github.io/eriksperfmon-demo](https://argpna.github.io/eriksperfmon-demo/)
+Screenshots of all dashboards can be viewed at: [argpna.github.io/screenshot-gallery/darlingperfmon](https://argpna.github.io/screenshot-gallery/darlingperfmon/)
 
 ## Dashboards
 

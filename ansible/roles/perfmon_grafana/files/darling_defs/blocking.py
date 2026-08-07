@@ -1,4 +1,4 @@
-"""Blocking & Deadlocks dashboard (Darling line).
+"""Blocking & Deadlocks dashboard.
 
 Upstream ref: ViewerServerTab.Blocking.cs, ViewerDataService.Blocking.cs,
 ViewerDataService.BlockingStats.cs, ViewerDataService.BlockingTrends.cs,

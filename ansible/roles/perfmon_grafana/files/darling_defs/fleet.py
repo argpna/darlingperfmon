@@ -1,4 +1,4 @@
-"""Fleet dashboard (Darling line).
+"""Fleet dashboard.
 
 Upstream ref: MainWindow.xaml's Overview tab, ViewerDataService.Overview.cs/.Fleet.cs,
 ServerHealthBands.cs (ServerHealthClassifier).

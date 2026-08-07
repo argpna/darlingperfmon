@@ -1,6 +1,5 @@
 ---
-# Contact points, mute timings, and the notification-policy route. Shared by both editions'
-# alerting tasks (alerting.yml, alerting_darling.yml) - these are org-wide Grafana resources,
+# Contact points, mute timings, and the notification-policy route - org-wide Grafana resources,
 # not tied to which schema the alert rules read from.
 #
 # Uses ansible.builtin.uri throughout. The grafana.grafana.alert_contact_point module is not

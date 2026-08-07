@@ -1,13 +1,8 @@
 ---
-# Renders one edition's alert-rule template per instance, merges the resulting groups, and
-# PUTs each rule group into its folder. Shared by alerting.yml (dashboard, MSSQL) and
-# alerting_darling.yml (Darling, Postgres) - parameterized by the caller via:
+# Renders the alert-rule template per instance, merges the resulting groups, and PUTs each rule
+# group into its folder. Parameterized by the caller via:
 #   _alerting_template_path: absolute path to the rules-instance*.yaml.j2 template
 #   _alerting_folder_uid:    the Grafana folder uid rule groups are provisioned into
-#
-# A rule's uid must be unique within its OWN template's namespace (perfmon-* vs darling-*), but
-# both editions loop over the same perfmon_instances, so the two are provisioned into different
-# folders and never collide.
 
 - name: Initialize rule group accumulator
   ansible.builtin.set_fact:
