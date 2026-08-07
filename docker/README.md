@@ -1,8 +1,7 @@
 # Docker environment
 
-Self-contained stack: SQL Server instances covering multiple versions and auth modes,
-workload generators, Grafana, and an Ansible runner that provisions everything automatically.
-See the Services table below for the current set.
+Self-contained demo stack: SQL Server instances with workload generators, a central Darling
+store, and an Ansible runner that provisions Grafana automatically.
 
 See `docker-compose.yml` at the repo root for the full service definition.
 
@@ -15,51 +14,13 @@ See `docker-compose.yml` at the repo root for the full service definition.
 | `workload` | `perfmon-workload` | - | Generates realistic query load against `mssql-2022` |
 | `workload-memory` | `perfmon-workload-memory` | - | Memory-pressure workload against `mssql-2025` |
 | `grafana` | `perfmon-grafana` | 3000 | Grafana UI with provisioned dashboards |
-| `ansible-runner` | `perfmon-ansible-runner` | - | Runs the full Ansible playbook inside the stack |
-| `samba-ad` (profile `ad`) | `perfmon-samba-ad` | - | Samba AD DC for the opt-in AD-auth tests |
-| `mssql-ad` (profile `ad`) | `perfmon-mssql-ad` | 14335 | SQL Server 2022 authenticated via kerberos/AD only |
+| `ansible-runner` | `perfmon-ansible-runner` | - | Runs the Ansible playbook that configures Grafana |
+| `darling-pg` (profile `darling`) | `perfmon-darling-pg` | - | Central TimescaleDB store the collector writes into |
+| `darling` (profile `darling`) | `perfmon-darling` | - | The Darling collector service, monitoring both SQL Server instances |
+| `darling-provision` (profile `darling`) | `perfmon-darling-provision` | - | One-shot: waits for the store to migrate, then provisions the `darling`/`viewer` roles |
+| `darling-collector-config` (profile `darling`) | `perfmon-darling-collector-config` | - | One-shot: waits for the store to migrate, then enables collectors that default off fleet-wide |
 
 All SQL Server instances run as Developer Edition with SQL Agent enabled.
-
-## AD authentication (profile `ad`)
-
-`docker compose --profile ad up -d` adds a Samba AD DC (`AD_REALM`, `lab.internal`/
-`LAB.INTERNAL` by default) and a third SQL Server instance installed and queried entirely
-over kerberos - the install role's admin connection (`perfmon_admin_auth_mode: windows`,
-`kinit` + integrated-auth `sqlcmd`), the reader login (`CREATE LOGIN ... FROM WINDOWS`), and
-the Grafana datasource (`Windows AD: Username + password`) all authenticate against the DC;
-`sa` is unused for that instance after its bootstrap.
-
-Domain identity is configured through `AD_DOMAIN`/`AD_REALM`/`AD_NETBIOS` in `.env`, the single
-source of truth referenced by `docker-compose.yml`, every `docker/*/*.sh` script in the AD
-profile, and `ansible/inventory/docker-ad/hosts.yml` (via `lookup('env', ...)`). Change the domain
-there, not in any individual file.
-
-Moving parts, in start order:
-
-1. `samba-ad` provisions the domain on first boot, then `docker/samba-ad/provision-ad.sh`
-   (re-)creates the test accounts (`sqladmin`, `svc_grafana_reader`, `svc_mssql`), the
-   `MSSQLSvc` SPNs, the DNS records SQL Server's AD principal lookup requires (NetBIOS-name A
-   record, reverse zone + PTRs - sqlservr resolves `AD_NETBIOS` as a plain A record and
-   verifies the DC via rDNS), and exports the service keytab into the shared `ad-keytab`
-   volume.
-2. `mssql-ad` (`docker/mssql-ad/entrypoint.sh`) waits for the keytab, points its resolv.conf
-   directly at the DC (docker's embedded DNS would derail the NetBIOS and PTR lookups with
-   network-scoped names), registers the keytab via `mssql-conf`, then bootstraps
-   `AD_NETBIOS\sqladmin` as sysadmin. Its healthcheck passes only after that bootstrap.
-3. `ansible-runner` detects the instance via its `mssql-ad.$AD_DOMAIN` network alias, waits
-   for the bootstrap, then runs the normal playbook with the `ansible/inventory/docker-ad/`
-   overlay inventory added (a second `-i`) - its `sqlad` host carries the windows-mode
-   variables. Without the profile the overlay is not loaded, so the default stack never
-   provisions a `sqlad` datasource, fleet row, or alert rules, and a stale `sqlad`
-   datasource from an earlier profile run is deleted as orphaned.
-
-Kerberos client config for the runner, Grafana, and `mssql-ad` is generated at `docker compose
-up` time from the `krb5_conf` entry in `docker-compose.yml`'s top-level `configs:` block (note
-`rdns = false`), interpolating `AD_DOMAIN`/`AD_REALM` from `.env` - there is no static
-`krb5.conf` file to edit. Domain passwords default to test values - override with the `AD_*`
-variables in `.env`. The DC keeps state in the `samba-ad-data` volume;
-`docker compose down --profile ad -v` resets the whole domain.
 
 ## Prerequisites
 
@@ -71,13 +32,21 @@ variables in `.env`. The DC keeps state in the `samba-ad-data` volume;
 
 ```bash
 cp .env.example .env
-# Edit .env - set MSSQL_SA_PASSWORD, MSSQL_READER_PASSWORD, GRAFANA_ADMIN_PASSWORD
-docker compose up -d
+# Edit .env - set MSSQL_SA_PASSWORD, GRAFANA_ADMIN_PASSWORD, DARLING_PG_PASSWORD, DARLING_VIEWER_PASSWORD
+docker compose --profile darling up -d --scale ansible-runner=0
 ```
 
-The `ansible-runner` container runs the full Ansible playbook automatically once all SQL Server
-and Grafana health checks pass. First run: approximately 5-10 minutes for image build, PerformanceMonitor
-install on both instances, first collection cycle.
+`ansible-runner` is scaled to zero on the first boot because it isn't gated on the Darling store
+being ready. Wait for the two one-shot provisioning containers to finish migrating and configuring
+the store, then run it:
+
+```bash
+docker wait perfmon-darling-provision perfmon-darling-collector-config
+docker compose run --rm ansible-runner
+```
+
+This runs the full Ansible playbook (`ansible/playbooks/main.yml`) inside the stack, configuring
+the Darling collector role and provisioning Grafana's datasource, dashboards, and alert rules.
 
 ```bash
 docker compose logs -f ansible-runner # watch provisioning progress
@@ -93,24 +62,38 @@ Defined in `.env`:
 | Variable | Purpose |
 |---|---|
 | `MSSQL_SA_PASSWORD` | SA password for both SQL Server instances |
-| `MSSQL_READER_PASSWORD` | Password for the `grafana_reader` login created on each instance |
 | `GRAFANA_ADMIN_PASSWORD` | Grafana admin password |
-| `SAMBA_ADMIN_PASSWORD` | (profile `ad`, optional) Samba domain administrator password |
-| `AD_SQLADMIN_PASSWORD` | (profile `ad`, optional) AD account the install role authenticates as |
-| `AD_READER_PASSWORD` | (profile `ad`, optional) AD account the Grafana datasource authenticates as |
-| `AD_SVC_MSSQL_PASSWORD` | (profile `ad`, optional) SQL Server service account holding the SPNs |
-| `AD_DOMAIN` | (profile `ad`, optional) DNS domain, e.g. `lab.internal` - single source of truth for the domain identity |
-| `AD_REALM` | (profile `ad`, optional) Kerberos realm, uppercase form of `AD_DOMAIN`, e.g. `LAB.INTERNAL` |
-| `AD_NETBIOS` | (profile `ad`, optional) Down-level/NetBIOS domain name, e.g. `LAB` |
+| `GRAFANA_API_KEY` | Populated automatically by `bootstrap/setup-grafana-api-key.sh` on each `ansible-runner` run |
+| `DARLING_PG_PASSWORD` | Password for the store's `darling` (owner/collector) Postgres role |
+| `DARLING_VIEWER_PASSWORD` | Password for the store's `viewer` (read-only) Postgres role, used by Grafana's datasource |
 
 The SA password must meet SQL Server's complexity requirements (uppercase, lowercase, digit,
 symbol; minimum 8 characters).
 
 ## SQL Server version notes
 
-Both instances use `mssql-tools18` at `/opt/mssql-tools18/bin/sqlcmd` and connect with TLS
-using `tlsSkipVerify`. The Ansible role runs Erik's numbered install scripts, in order,
-against both instances.
+Both instances use `mssql-tools18` at `/opt/mssql-tools18/bin/sqlcmd` for their healthchecks and
+connect with TLS using `tlsSkipVerify`. The Darling collector and the workload generators are the
+only things that connect to them - there is no Ansible role installing anything onto SQL Server
+itself.
+
+## Darling store
+
+`darling-pg` is a TimescaleDB container the `darling` service migrates on first start. The
+`darling` container builds from `docker/darling/Dockerfile` (which fetches the pinned
+`PERFMON_VERSION` collector release) and renders its own config from
+`docker/darling/darling.json.template` via `docker/darling/entrypoint.sh`, independently of the
+Ansible role - see [Ansible inventory](#ansible-inventory) below.
+
+`darling-provision` and `darling-collector-config` are one-shot containers (`restart: "no"`) that
+each poll until the service has migrated the schema they depend on, then run their SQL and exit:
+
+- `darling-provision` runs upstream's `provision-roles.sql` (fetched from the pinned
+  `PERFMON_VERSION` tag) to create the least-privilege `darling`/`viewer` Postgres roles. A real
+  store is expected to already have these roles provisioned by its operator; the Ansible role
+  never does this itself.
+- `darling-collector-config` enables collectors that default off fleet-wide with no
+  `config.config_collector_schedules` row (currently `long_query_completions`).
 
 ## Workload generator
 
@@ -125,29 +108,28 @@ The `workload` container runs `scripts/workload.sh` against `mssql-2022` in a lo
 
 The `workload-memory` container runs `scripts/workload-memory.sh` against `mssql-2025`, generating
 memory-pressure workload, `RESOURCE_SEMAPHORE` waits, memory grant queue activity. Both instances
-have active workload and populate the collector tables so dashboards have data to display.
+have active workload so the Darling store has data to display.
 
 ## Re-running Ansible
 
-To re-provision after changing Ansible roles or inventory; for example, after modifying datasource
-settings:
+To re-provision after changing Ansible roles or inventory; for example, after modifying alerting
+variables:
 
 ```bash
-docker compose up ansible-runner
+docker compose run --rm ansible-runner
 ```
 
-The `ansible-runner` service has `restart: "no"`, so it runs once and stops. `docker compose up`
-starts it again from the beginning.
+`ansible-runner` has `restart: "no"`, so its container exits after each run; `docker compose run`
+starts a fresh one.
 
 ## Stopping and cleanup
 
 ```bash
 docker compose down # stop containers, but keep volumes
 docker compose down -v # stop containers and delete all data volumes
-docker compose --profile ad down -v # stop and clean up optional ad profile resources
 ```
 
-## Connecting directly to a SQL Server instance
+## Connecting directly
 
 From the host (using `sqlcmd` from mssql-tools18):
 
@@ -158,21 +140,35 @@ sqlcmd -S localhost,14334 -U sa -P "$MSSQL_SA_PASSWORD" -C # 2025
 
 From inside the stack, use the container hostnames (`mssql-2022`, `mssql-2025`) on port 1433.
 
+The Darling store is not published to the host; connect from inside the stack:
+
+```bash
+psql -h darling-pg -U darling -d darling
+```
+or via docker:
+
+```bash
+docker compose exec darling-pg psql -U darling -d darling
+```
+
 ## Ansible inventory
 
-The docker-internal inventory lives at `ansible/inventory/docker/`, with the opt-in AD
-instance in the `ansible/inventory/docker-ad/` overlay. Both are only used by the
-`ansible-runner` container; they are not intended for use from the host. The host-facing
-inventory is `ansible/inventory/`.
+The docker-internal inventory lives at `ansible/inventory/docker/`, used only by the
+`ansible-runner` container - it is not intended for use from the host. The host-facing inventory
+is `ansible/inventory/`.
+
+Its `darling` group has a single `ansible_connection: local` host, used only to exercise the
+`perfmon_darling` role's own logic (config rendering, registry reconciliation) against the demo's
+real `darling-pg` store, rendering to a throwaway config path. It does not configure the `darling`
+collector container itself - that container renders its own config independently, as described
+in [Darling store](#darling-store) above.
 
 ## Smoke-testing panels
 
-After provisioning completes, run the panel smoke test against the 2025 instance:
+After provisioning completes, run the panel smoke test against the Darling datasource:
 
 ```bash
-GRAFANA_ADMIN_PASSWORD=<grafana-password> python3 scripts/verify-panels.py
-# or against a specific version:
-GRAFANA_ADMIN_PASSWORD=<grafana-password> python3 scripts/verify-panels.py perfmon-ds-sql2022
+GRAFANA_API_KEY=$(grep '^GRAFANA_API_KEY=' .env | cut -d= -f2-) python3 scripts/verify-panels.py darling
 ```
 
 A SQL error prints `FAIL` and causes a non-zero exit. Zero rows is not a failure.
