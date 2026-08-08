@@ -48,6 +48,7 @@ class PanelKit:
         description: str | None = None,
         overrides: list[dict] | None = None,
         links: list[dict] | None = None,
+        time_from: str | None = None,
     ) -> dict:
         """Build a timeseries panel.
 
@@ -57,6 +58,9 @@ class PanelKit:
         (e.g. a recompile-happy procedure), so points=True also hides the legend and
         drops the tooltip to single-series - a legend or a per-series tooltip listing
         that many entries is noise, not information.
+
+        time_from, if given, is a relative-time string (e.g. "24h") overriding the
+        dashboard's time picker for this panel only.
         """
         custom = {
             "drawStyle": "points" if points else ("bars" if bars else "line"),
@@ -101,9 +105,11 @@ class PanelKit:
         }
         if description:
             panel["description"] = description
+        if time_from:
+            panel["timeFrom"] = time_from
         return panel
 
-    def state_timeline(
+    def status_history(
         self,
         title: str,
         x: int,
@@ -114,21 +120,28 @@ class PanelKit:
         states: list[tuple[int, str, str]],
         description: str | None = None,
         time_from: str | None = None,
+        overrides: list[dict] | None = None,
+        links: list[dict] | None = None,
     ) -> dict:
-        """Build a state-timeline panel: one colored band per state run, per series.
+        """Build a status-history panel: one fixed-width colored tile per data point,
+        per series - unlike state-timeline, a tile's width never stretches to fill the
+        gap to the next point (or to "now" for the most recent one), so a still-open
+        final state doesn't visually balloon.
 
         states are (stored value, display text, color). The query returns time / series
-        name / numeric state, and value mappings turn each level into a labelled band -
+        name / numeric state, and value mappings turn each level into a labelled tile -
         a string value column would not survive the time_series frame conversion. Color
-        mode must be "fixed", not "thresholds" - state-timeline only reads mapping colors
+        mode must be "fixed", not "thresholds" - status-history only reads mapping colors
         when the color scheme isn't thresholds-based, per Grafana's status-history docs.
 
         time_from, if given, is a relative-time string (e.g. "30d") overriding the
-        dashboard's time picker for this panel only.
+        dashboard's time picker for this panel only. links, if given, are data links
+        (title/url dicts) attached to every field - harmless on a field an override
+        hides from view, since a hidden field is never clickable.
         """
         panel = {
             "id": self.nid(),
-            "type": "state-timeline",
+            "type": "status-history",
             "title": title,
             "datasource": self._ds,
             "gridPos": {"h": h, "w": w, "x": x, "y": y},
@@ -145,14 +158,14 @@ class PanelKit:
                             },
                         }
                     ],
+                    "links": links or [],
                 },
-                "overrides": [],
+                "overrides": overrides or [],
             },
             "options": {
-                "showValue": "auto",
-                "mergeValues": True,
-                "alignValue": "center",
+                "showValue": "never",
                 "rowHeight": 0.9,
+                "colWidth": 0.9,
                 "legend": {"displayMode": "list", "placement": "bottom"},
                 "tooltip": {"mode": "single", "sort": "none"},
             },

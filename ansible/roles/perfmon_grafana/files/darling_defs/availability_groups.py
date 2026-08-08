@@ -32,7 +32,6 @@ from ._shared import (
     status_colors,
     subtab,
     table,
-    text_panel,
     text_var,
     thresholds,
     uid,
@@ -274,12 +273,6 @@ WHERE {server_filter('latest.server_id')}
 ORDER BY latest.ag_name, srv.name, latest.database_name, latest.replica_server_name
 """
 
-_EMPTY_STATE_TEXT = """
-No Availability Groups observed on any monitored server, until data is collected. The AG
-collectors write no rows for an instance that hosts none, and they do not run against Azure
-SQL Database - zero rows here is the normal result on most fleets.
-"""
-
 _COUNT_THRESHOLDS = thresholds(("text", None))
 
 
@@ -293,13 +286,6 @@ def availability_groups():
         "Summary",
         0,
         [
-            (
-                24,
-                2,
-                lambda x, y, w, h: text_panel(
-                    "No Availability Groups", x, y, w, h, _EMPTY_STATE_TEXT
-                ),
-            ),
             (
                 8,
                 4,
@@ -388,7 +374,7 @@ def availability_group_detail():
         [
             (
                 24,
-                10,
+                7,
                 lambda x, y, w, h: table(
                     "AG Replicas",
                     x,

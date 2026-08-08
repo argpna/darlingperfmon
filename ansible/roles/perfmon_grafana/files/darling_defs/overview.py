@@ -22,14 +22,15 @@ from ._shared import (
     n0,
     reset_id,
     rollup,
+    SERVER_REGISTRY,
     server_filter,
     server_join,
     server_var,
     series_style,
     stat,
     stat_grid,
-    state_timeline,
     status_colors,
+    status_history,
     subtab,
     table,
     target,
@@ -952,12 +953,56 @@ _DAILY = tiered(
 _HISTORY_WINDOW = "30d"
 
 _CALENDAR_SQL = f"""
-WITH d AS ({_DAILY})
-SELECT d.day AS time, srv.name AS metric, {_BAND_LEVEL} AS band
-FROM d
-{server_join('d.server_id')}
+WITH d AS ({_DAILY}),
+day_range AS (
+    SELECT generate_series(
+        date_trunc('day', $__timeFrom()::timestamptz),
+        date_trunc('day', $__timeTo()::timestamptz),
+        INTERVAL '1 day'
+    ) AS day
+),
+spine AS (
+    SELECT dr.day, srv.server_id, srv.name
+    FROM day_range AS dr
+    CROSS JOIN {SERVER_REGISTRY} AS srv
+    WHERE srv.is_enabled AND {server_filter('srv.server_id')}
+)
+SELECT
+    spine.day AS time,
+    spine.name AS metric,
+    CASE WHEN d.day IS NULL THEN NULL ELSE ({_BAND_LEVEL}) END AS band,
+    (EXTRACT(EPOCH FROM (spine.day + INTERVAL '1 day')) * 1000)::bigint AS day_end
+FROM spine
+LEFT JOIN d ON d.server_id = spine.server_id AND d.day = spine.day
 ORDER BY 1
 """
+
+_CALENDAR_OVERRIDES = [
+    {
+        "matcher": {"id": "byName", "options": "band"},
+        "properties": [{"id": "displayName", "value": "${__field.labels.metric}"}],
+    },
+    {
+        "matcher": {"id": "byName", "options": "day_end"},
+        "properties": [
+            {
+                "id": "custom.hideFrom",
+                "value": {"legend": True, "tooltip": True, "viz": True},
+            }
+        ],
+    },
+]
+
+_CALENDAR_DRILL = [
+    {
+        "title": "Show Active Queries for This Day",
+        "url": (
+            "/d/darling-queries?from=${__value.time}&to=${__data.fields.day_end}"
+            "&var-server=$server"
+        ),
+        "targetBlank": False,
+    }
+]
 
 _DAILY_DETAIL_SQL = f"""
 WITH d AS ({_DAILY})
@@ -1108,7 +1153,7 @@ def overview():
             (
                 24,
                 7,
-                lambda x, y, w, h: state_timeline(
+                lambda x, y, w, h: status_history(
                     "Performance Calendar",
                     x,
                     y,
@@ -1117,10 +1162,13 @@ def overview():
                     _CALENDAR_SQL,
                     _DAILY_STATES,
                     description=(
-                        "Composite daily health, one band per day. A day with no "
-                        "collection at all is absent rather than banded."
+                        "Composite daily health, one tile per day. A day with no "
+                        "collection at all is absent rather than tiled. Click a day to "
+                        "open Query Performance's Active Queries for that day's 24 hours."
                     ),
                     time_from=_HISTORY_WINDOW,
+                    overrides=_CALENDAR_OVERRIDES,
+                    links=_CALENDAR_DRILL,
                 ),
             ),
             (

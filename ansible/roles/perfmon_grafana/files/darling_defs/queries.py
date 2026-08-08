@@ -420,6 +420,7 @@ WHERE {server_filter('qs.server_id')}
   AND {multi_filter('qs.database_name', 'database')}
   AND qs.query_text NOT LIKE 'WAITFOR%'
 ORDER BY qs.collection_time DESC, qs.cpu_time_ms DESC
+LIMIT ${{topn}}
 """
 
 # Upstream ref: ActiveQuerySlicerSql (ViewerDataService.QuerySnapshots.cs) - default metric is
@@ -1832,6 +1833,7 @@ def queries():
                     [target(f"{_ACTIVE_QUERIES_SLICER_SQL}\nORDER BY 1")],
                     unit="short",
                     bars=True,
+                    time_from="24h",
                 ),
             ),
             (
@@ -1870,6 +1872,7 @@ def queries():
                     [target(f"{_TOP_QUERIES_SLICER_SQL}\nORDER BY 1")],
                     unit="ms",
                     bars=True,
+                    time_from="24h",
                 ),
             ),
             (
@@ -1956,6 +1959,7 @@ def queries():
                     [target(f"{_TOP_PROCEDURES_SLICER_SQL}\nORDER BY 1")],
                     unit="ms",
                     bars=True,
+                    time_from="24h",
                 ),
             ),
         ],
@@ -2019,6 +2023,7 @@ def queries():
                     [target(f"{_QUERY_STORE_SLICER_SQL}\nORDER BY 1")],
                     unit="ms",
                     bars=True,
+                    time_from="24h",
                 ),
             ),
         ],

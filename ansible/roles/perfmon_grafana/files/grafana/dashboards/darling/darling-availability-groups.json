@@ -93,21 +93,6 @@
     },
     {
       "id": 2,
-      "type": "text",
-      "title": "No Availability Groups",
-      "gridPos": {
-        "h": 2,
-        "w": 24,
-        "x": 0,
-        "y": 1
-      },
-      "options": {
-        "mode": "markdown",
-        "content": "\nNo Availability Groups observed on any monitored server, until data is collected. The AG\ncollectors write no rows for an instance that hosts none, and they do not run against Azure\nSQL Database - zero rows here is the normal result on most fleets.\n"
-      }
-    },
-    {
-      "id": 3,
       "type": "stat",
       "title": "Availability Groups",
       "datasource": {
@@ -118,7 +103,7 @@
         "h": 4,
         "w": 8,
         "x": 0,
-        "y": 3
+        "y": 1
       },
       "fieldConfig": {
         "defaults": {
@@ -168,7 +153,7 @@
       ]
     },
     {
-      "id": 4,
+      "id": 3,
       "type": "stat",
       "title": "Reporting Servers",
       "datasource": {
@@ -179,7 +164,7 @@
         "h": 4,
         "w": 8,
         "x": 8,
-        "y": 3
+        "y": 1
       },
       "fieldConfig": {
         "defaults": {
@@ -229,7 +214,7 @@
       ]
     },
     {
-      "id": 5,
+      "id": 4,
       "type": "stat",
       "title": "Views",
       "datasource": {
@@ -240,7 +225,7 @@
         "h": 4,
         "w": 8,
         "x": 16,
-        "y": 3
+        "y": 1
       },
       "fieldConfig": {
         "defaults": {
@@ -290,7 +275,7 @@
       ]
     },
     {
-      "id": 6,
+      "id": 5,
       "type": "row",
       "title": "Clusters",
       "collapsed": false,
@@ -298,12 +283,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 7
+        "y": 5
       },
       "panels": []
     },
     {
-      "id": 7,
+      "id": 6,
       "type": "table",
       "title": "Availability Groups",
       "datasource": {
@@ -314,7 +299,7 @@
         "h": 12,
         "w": 24,
         "x": 0,
-        "y": 8
+        "y": 6
       },
       "fieldConfig": {
         "defaults": {

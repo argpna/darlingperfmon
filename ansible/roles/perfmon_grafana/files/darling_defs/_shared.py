@@ -374,7 +374,7 @@ thresholds = _kit.thresholds
 timeseries = _kit.timeseries
 text_panel = _kit.text_panel
 stat = _kit.stat
-state_timeline = _kit.state_timeline
+status_history = _kit.status_history
 table = _kit.table
 bargauge = _kit.bargauge
 heatmap = _kit.heatmap
@@ -646,8 +646,8 @@ __all__ = [
     "single_query_var",
     "stat",
     "stat_grid",
-    "state_timeline",
     "status_colors",
+    "status_history",
     "subtab",
     "table",
     "target",
