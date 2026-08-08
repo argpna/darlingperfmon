@@ -38,6 +38,7 @@ from ._shared import (
     subtab,
     table,
     target,
+    text_panel,
     text_var,
     thresholds,
     tiered,
@@ -440,7 +441,17 @@ GROUP BY date_trunc('hour', qs.collection_time), srv.name
 """
 
 
-# Top Queries by Duration.
+def _rank_by(default_expr: str, by_metric: dict[str, str]) -> str:
+    """CASE expression ranking a Top-N grid by the shared ${metric} var, falling back
+    to default_expr (Duration, present in every ranked query) for any other value."""
+    cases = "\n        ".join(f"WHEN '{label}' THEN {expr}" for label, expr in by_metric.items())
+    return f"""CASE ${{metric:sqlstring}}
+        {cases}
+        ELSE {default_expr}
+    END"""
+
+
+# Top Queries.
 # Upstream ref: TopQueriesSql (ViewerDataService.QueryStats.cs). The #1568 module-attribution
 # CTE is adapted for multi-server: upstream reads one server at a time so a bare sql_handle key
 # is enough; here it is partitioned/joined on (server_id, sql_handle) too, since a handle is only
@@ -496,7 +507,15 @@ WITH ranked AS (
       AND {multi_filter('qs.database_name', 'database')}
     GROUP BY qs.server_id, qs.database_name, qs.query_hash
     HAVING SUM(qs.delta_execution_count) > 0 OR SUM(qs.delta_elapsed_time) > 0
-    ORDER BY SUM(qs.delta_elapsed_time) DESC
+    ORDER BY {_rank_by(
+        "SUM(qs.delta_elapsed_time)",
+        {
+            "CPU": "SUM(qs.delta_worker_time)",
+            "Logical Reads": "SUM(qs.delta_logical_reads)",
+            "Logical Writes": "SUM(qs.delta_logical_writes)",
+            "Execution Count": "SUM(qs.delta_execution_count)",
+        },
+    )} DESC
     LIMIT ${{topn}} + 5
 ),
 module AS (
@@ -574,7 +593,15 @@ LEFT JOIN LATERAL (
 ) AS t ON TRUE
 LEFT JOIN module AS m ON m.server_id = r.server_id AND m.sql_handle = r.sql_handle
 WHERE t.query_text IS NULL OR t.query_text NOT LIKE 'WAITFOR%'
-ORDER BY r.total_elapsed_us DESC
+ORDER BY {_rank_by(
+    "r.total_elapsed_us",
+    {
+        "CPU": "r.total_cpu_us",
+        "Logical Reads": "r.total_reads",
+        "Logical Writes": "r.total_writes",
+        "Execution Count": "r.total_executions",
+    },
+)} DESC
 LIMIT ${{topn}}
 """
 
@@ -706,7 +733,7 @@ ORDER BY "Duration Delta %" DESC NULLS LAST
 """
 
 
-# Top Procedures by Duration.
+# Top Procedures.
 # Upstream ref: TopProceduresSql (ViewerDataService.ProcedureStats.cs).
 _TOP_PROCEDURES_SQL = f"""
 SELECT
@@ -751,7 +778,15 @@ WHERE {server_filter('ps.server_id')}
   AND {multi_filter('ps.database_name', 'database')}
 GROUP BY srv.name, ps.database_name, ps.schema_name, ps.object_name, ps.object_type
 HAVING SUM(ps.delta_execution_count) > 0 OR SUM(ps.delta_elapsed_time) > 0
-ORDER BY SUM(ps.delta_elapsed_time) DESC
+ORDER BY {_rank_by(
+    "SUM(ps.delta_elapsed_time)",
+    {
+        "CPU": "SUM(ps.delta_worker_time)",
+        "Logical Reads": "SUM(ps.delta_logical_reads)",
+        "Logical Writes": "SUM(ps.delta_logical_writes)",
+        "Execution Count": "SUM(ps.delta_execution_count)",
+    },
+)} DESC
 LIMIT ${{topn}}
 """
 
@@ -845,7 +880,7 @@ ORDER BY "Duration Delta %" DESC NULLS LAST
 """
 
 
-# Query Store by Duration.
+# Query Store.
 # Upstream ref: QueryStoreTopSql (ViewerDataService.QueryStore.cs). replica_role is a GROUP BY
 # key, not aggregated away - see that file's header comment on shared/centralized Query Store
 # for AGs on 2022+ (grouping it out would blend primary and secondary workload into one row).
@@ -910,7 +945,15 @@ WITH ranked AS (
       AND $__timeFilter(qsd.collection_time)
       AND {multi_filter('qsd.database_name', 'database')}
     GROUP BY qsd.server_id, qsd.database_name, qsd.query_id, qsd.plan_id, qsd.query_hash, qsd.replica_role
-    ORDER BY SUM(qsd.execution_count) * AVG(qsd.avg_duration_us::double precision) DESC
+    ORDER BY {_rank_by(
+        "SUM(qsd.execution_count) * AVG(qsd.avg_duration_us::double precision)",
+        {
+            "CPU": "SUM(qsd.execution_count) * AVG(qsd.avg_cpu_time_us::double precision)",
+            "Logical Reads": "SUM(qsd.execution_count) * AVG(qsd.avg_logical_io_reads::double precision)",
+            "Logical Writes": "SUM(qsd.execution_count) * AVG(qsd.avg_logical_io_writes::double precision)",
+            "Execution Count": "SUM(qsd.execution_count)",
+        },
+    )} DESC
     LIMIT ${{topn}} + 5
 )
 SELECT
@@ -984,7 +1027,15 @@ LEFT JOIN LATERAL (
     LIMIT 1
 ) AS t ON TRUE
 WHERE t.query_text IS NULL OR t.query_text NOT LIKE 'WAITFOR%'
-ORDER BY r.total_executions * r.avg_duration_ms DESC
+ORDER BY {_rank_by(
+    "r.total_executions * r.avg_duration_ms",
+    {
+        "CPU": "r.total_executions * r.avg_cpu_time_ms",
+        "Logical Reads": "r.total_executions * r.avg_logical_reads",
+        "Logical Writes": "r.total_executions * r.avg_logical_writes",
+        "Execution Count": "r.total_executions",
+    },
+)} DESC
 LIMIT ${{topn}}
 """
 
@@ -1084,8 +1135,7 @@ ORDER BY "Duration Delta %" DESC NULLS LAST
 # Postgres port of the Dashboard's report.query_store_regressions TVF. Baseline is EVERY capture
 # before the window start (unbounded lookback, not tiered - see module docstring); recent is the
 # dashboard's own window. Filter gate is CPU-only (> 25% CPU regression), ranked by
-# execution-count-weighted extra duration, matching the upstream TVF's actual (not its stale
-# doc-comment's claimed) behavior.
+# execution-count-weighted extra duration, matching the upstream TVF's actual behavior.
 _QUERY_STORE_REGRESSIONS_SQL = f"""
 WITH baseline_performance AS (
     SELECT
@@ -1159,7 +1209,7 @@ LIMIT 50
 # Reads v_query_stats at row granularity (per-query-execution magnitude), which the hourly/daily
 # CAGGs cannot answer (they collapse per-row execution counts into bucket sums) - raw-only,
 # bounded by raw retention, matching the module docstring's tiering note.
-_HEATMAP_METRIC_EXPR = """CASE ${heatmap_metric:sqlstring}
+_HEATMAP_METRIC_EXPR = """CASE ${metric:sqlstring}
         WHEN 'Duration' THEN (delta_elapsed_time / 1000.0) / NULLIF(delta_execution_count, 0)
         WHEN 'CPU' THEN (delta_worker_time / 1000.0) / NULLIF(delta_execution_count, 0)
         WHEN 'Logical Reads' THEN delta_logical_reads::double precision / NULLIF(delta_execution_count, 0)
@@ -1171,13 +1221,13 @@ _HEATMAP_METRIC_EXPR = """CASE ${heatmap_metric:sqlstring}
 
 def _heatmap_bucket_label(bucket_col):
     return f"""CASE {bucket_col}
-        WHEN 0 THEN CASE WHEN ${{heatmap_metric:sqlstring}} IN ('Duration', 'CPU') THEN '0: 0-1ms' ELSE '0: 0-1' END
-        WHEN 1 THEN CASE WHEN ${{heatmap_metric:sqlstring}} IN ('Duration', 'CPU') THEN '1: 1-10ms' ELSE '1: 1-10' END
-        WHEN 2 THEN CASE WHEN ${{heatmap_metric:sqlstring}} IN ('Duration', 'CPU') THEN '2: 10-100ms' ELSE '2: 10-100' END
-        WHEN 3 THEN CASE WHEN ${{heatmap_metric:sqlstring}} IN ('Duration', 'CPU') THEN '3: 100ms-1s' ELSE '3: 100-1K' END
-        WHEN 4 THEN CASE WHEN ${{heatmap_metric:sqlstring}} IN ('Duration', 'CPU') THEN '4: 1-10s' ELSE '4: 1K-10K' END
-        WHEN 5 THEN CASE WHEN ${{heatmap_metric:sqlstring}} IN ('Duration', 'CPU') THEN '5: 10-100s' ELSE '5: 10K-100K' END
-        ELSE CASE WHEN ${{heatmap_metric:sqlstring}} IN ('Duration', 'CPU') THEN '6: >100s' ELSE '6: >100K' END
+        WHEN 0 THEN CASE WHEN ${{metric:sqlstring}} IN ('Duration', 'CPU') THEN '0: 0-1ms' ELSE '0: 0-1' END
+        WHEN 1 THEN CASE WHEN ${{metric:sqlstring}} IN ('Duration', 'CPU') THEN '1: 1-10ms' ELSE '1: 1-10' END
+        WHEN 2 THEN CASE WHEN ${{metric:sqlstring}} IN ('Duration', 'CPU') THEN '2: 10-100ms' ELSE '2: 10-100' END
+        WHEN 3 THEN CASE WHEN ${{metric:sqlstring}} IN ('Duration', 'CPU') THEN '3: 100ms-1s' ELSE '3: 100-1K' END
+        WHEN 4 THEN CASE WHEN ${{metric:sqlstring}} IN ('Duration', 'CPU') THEN '4: 1-10s' ELSE '4: 1K-10K' END
+        WHEN 5 THEN CASE WHEN ${{metric:sqlstring}} IN ('Duration', 'CPU') THEN '5: 10-100s' ELSE '5: 10K-100K' END
+        ELSE CASE WHEN ${{metric:sqlstring}} IN ('Duration', 'CPU') THEN '6: >100s' ELSE '6: >100K' END
     END"""
 
 
@@ -1520,6 +1570,16 @@ WHERE {_QUERY_STATS_HISTORY_WHERE}
 ORDER BY qs.collection_time
 """
 
+_QUERY_STATS_TEXT_VAR_SQL = f"""
+SELECT REPLACE(REPLACE(qs.query_text, E'\\r\\n', E'\\n'), E'\\r', E'\\n') AS __text,
+    REPLACE(REPLACE(qs.query_text, E'\\r\\n', E'\\n'), E'\\r', E'\\n') AS __value
+FROM {collector('query_stats')} AS qs
+WHERE {_QUERY_STATS_HISTORY_WHERE}
+  AND qs.query_text IS NOT NULL
+ORDER BY qs.collection_time DESC
+LIMIT 1
+"""
+
 # One series (dot cloud) per plan shape - see the Plan Shapes comment below for what
 # query_plan_hash identifies. Clicking a dot sets the Plan Shape variable.
 _QUERY_STATS_HISTORY_CHART_SQL = f"""
@@ -1654,6 +1714,16 @@ SELECT
 FROM {collector('query_store_stats')} AS qsd
 WHERE {_QUERY_STORE_HISTORY_WHERE}
 ORDER BY qsd.collection_time
+"""
+
+_QUERY_STORE_TEXT_VAR_SQL = f"""
+SELECT REPLACE(REPLACE(qsd.query_text, E'\\r\\n', E'\\n'), E'\\r', E'\\n') AS __text,
+    REPLACE(REPLACE(qsd.query_text, E'\\r\\n', E'\\n'), E'\\r', E'\\n') AS __value
+FROM {collector('query_store_stats')} AS qsd
+WHERE {_QUERY_STORE_HISTORY_WHERE}
+  AND qsd.query_text IS NOT NULL
+ORDER BY qsd.collection_time DESC
+LIMIT 1
 """
 
 _QUERY_STORE_HISTORY_METRIC_OPTIONS = [
@@ -1849,7 +1919,7 @@ def queries():
                     sort_by=[{"displayName": "Collected", "desc": True}],
                     description="Historical snapshots from collect.query_snapshots, bound by the "
                     "dashboard time range. Current Active Queries (live DMV query against the "
-                    "monitored server) is not portable here - see the module docstring.",
+                    "monitored server) is not portable here.",
                 ),
             ),
         ],
@@ -1857,7 +1927,7 @@ def queries():
 
     y = subtab(
         panels,
-        "Top Queries by Duration",
+        "Top Queries",
         y,
         [
             (
@@ -1898,7 +1968,7 @@ def queries():
                 24,
                 16,
                 lambda x, y, w, h: table(
-                    "Top queries by duration",
+                    "Top queries by ${metric}",
                     x,
                     y,
                     w,
@@ -1912,7 +1982,9 @@ def queries():
                         col_unit("Total Duration (ms)", "ms"),
                         col_unit("Total Reads", "short"),
                     ],
-                    sort_by=[{"displayName": "Total Duration (ms)", "desc": True}],
+                    description="Ranked and capped server-side by the selected Metric var. "
+                    "Clicking a different column header only resorts these already-selected "
+                    "rows - it does not refetch a true top-N by that column.",
                 ),
             ),
         ],
@@ -1944,7 +2016,7 @@ def queries():
 
     y = subtab(
         panels,
-        "Top Procedures by Duration",
+        "Top Procedures",
         y,
         [
             (
@@ -1972,14 +2044,16 @@ def queries():
                 24,
                 14,
                 lambda x, y, w, h: table(
-                    "Top procedures by duration",
+                    "Top procedures by ${metric}",
                     x,
                     y,
                     w,
                     h,
                     _TOP_PROCEDURES_SQL,
                     overrides=[col_hidden("server_id"), _PROCEDURE_HISTORY_LINK],
-                    sort_by=[{"displayName": "Total Duration (ms)", "desc": True}],
+                    description="Ranked and capped server-side by the selected Metric var. "
+                    "Clicking a different column header only resorts these already-selected "
+                    "rows - it does not refetch a true top-N by that column.",
                 ),
             ),
         ],
@@ -2008,7 +2082,7 @@ def queries():
 
     y = subtab(
         panels,
-        "Query Store by Duration",
+        "Query Store",
         y,
         [
             (
@@ -2036,7 +2110,7 @@ def queries():
                 24,
                 16,
                 lambda x, y, w, h: table(
-                    "Top queries by duration (Query Store)",
+                    "Top queries by ${metric} (Query Store)",
                     x,
                     y,
                     w,
@@ -2047,10 +2121,11 @@ def queries():
                         _QUERY_STORE_HISTORY_LINK,
                         status_colors("Forced", {"true": "blue", "false": "text"}),
                     ],
-                    sort_by=[{"displayName": "Total Duration (ms)", "desc": True}],
                     description="replica_role is a GROUP BY key, not aggregated away, so a "
                     "shared AG Query Store shows one row per replica role instead of blending "
-                    "primary and secondary workload.",
+                    "primary and secondary workload. Ranked and capped server-side by the "
+                    "selected Metric var - clicking a different column header only resorts "
+                    "these already-selected rows.",
                 ),
             ),
         ],
@@ -2109,7 +2184,7 @@ def queries():
                     description="Baseline is every Query Store capture before the dashboard's "
                     "window start (unbounded lookback, bounded in practice by raw retention); "
                     "recent is the window itself. Only queries with >25% CPU regression are "
-                    "included (the upstream TVF's actual gate, not its doc comment's claim).",
+                    "included.",
                 ),
             ),
         ],
@@ -2124,7 +2199,7 @@ def queries():
                 16,
                 12,
                 lambda x, y, w, h: heatmap(
-                    "Query heatmap (${heatmap_metric} distribution over time)",
+                    "Query heatmap (${metric} distribution over time)",
                     x,
                     y,
                     w,
@@ -2132,15 +2207,14 @@ def queries():
                     _QUERY_HEATMAP_SQL,
                     description="Each cell = number of query executions in that metric bucket "
                     "for the 5-minute window. Duration/CPU buckets are in ms; Reads/Writes in "
-                    "pages. Y-axis runs 0 (fastest/smallest) to 6 (slowest/largest). Raw-only - "
-                    "see the module docstring.",
+                    "pages. Y-axis runs 0 (fastest/smallest) to 6 (slowest/largest). Raw-only.",
                 ),
             ),
             (
                 8,
                 12,
                 lambda x, y, w, h: table(
-                    "Top query per bucket (${heatmap_metric}, by impact)",
+                    "Top query per bucket (${metric}, by impact)",
                     x,
                     y,
                     w,
@@ -2220,8 +2294,8 @@ def queries():
                 "Baseline window offset for the vs-baseline comparison tables.",
             ),
             custom_var(
-                "heatmap_metric",
-                "Heatmap Metric",
+                "metric",
+                "Metric",
                 [
                     "Duration",
                     "CPU",
@@ -2229,7 +2303,8 @@ def queries():
                     "Logical Writes",
                     "Execution Count",
                 ],
-                "Per-execution metric the Query Heatmap buckets rows by.",
+                "Drives both the Query Heatmap's bucketing and which metric the Top "
+                "Queries/Procedures/Query Store grids rank their Top N by.",
             ),
         ],
     )
@@ -2402,6 +2477,19 @@ def query_stats_history():
                     ],
                 ),
             ),
+            (
+                24,
+                6,
+                lambda x, y, w, h: text_panel(
+                    "Query Text",
+                    x,
+                    y,
+                    w,
+                    h,
+                    "${query_text}",
+                    code_language="sql",
+                ),
+            ),
         ],
     )
     y = subtab(
@@ -2499,6 +2587,13 @@ def query_stats_history():
                 "Plan-cache shape (query_plan_hash) to show XML/parameters for, among those "
                 "seen in the current time range.",
             ),
+            single_query_var(
+                "query_text",
+                "Query Text",
+                _QUERY_STATS_TEXT_VAR_SQL,
+                "Backs the Query Text panel - not shown in the variable picker.",
+            )
+            | {"hide": 2},
         ],
     )
 
@@ -2534,6 +2629,19 @@ def query_store_history():
                             "targetBlank": False,
                         }
                     ],
+                ),
+            ),
+            (
+                24,
+                6,
+                lambda x, y, w, h: text_panel(
+                    "Query Text",
+                    x,
+                    y,
+                    w,
+                    h,
+                    "${query_text}",
+                    code_language="sql",
                 ),
             ),
         ],
@@ -2640,5 +2748,12 @@ def query_store_history():
                 "Query Store plan_id to show XML/parameters for, among those seen in the "
                 "current time range (independent of the $plan_id filter above).",
             ),
+            single_query_var(
+                "query_text",
+                "Query Text",
+                _QUERY_STORE_TEXT_VAR_SQL,
+                "Backs the Query Text panel - not shown in the variable picker.",
+            )
+            | {"hide": 2},
         ],
     )

@@ -180,6 +180,25 @@
         "includeAll": false,
         "sort": 0,
         "description": "Query Store plan_id to show XML/parameters for, among those seen in the current time range (independent of the $plan_id filter above)."
+      },
+      {
+        "name": "query_text",
+        "label": "Query Text",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "\nSELECT REPLACE(REPLACE(qsd.query_text, E'\\r\\n', E'\\n'), E'\\r', E'\\n') AS __text,\n    REPLACE(REPLACE(qsd.query_text, E'\\r\\n', E'\\n'), E'\\r', E'\\n') AS __value\nFROM collect.v_query_store_stats AS qsd\nWHERE \nqsd.server_id IN (${server:csv})\n  AND (${database:sqlstring} = '*' OR ${database:sqlstring} = '' OR qsd.database_name = ${database:sqlstring})\n  AND (${query_id:sqlstring} = '*' OR ${query_id:sqlstring} = '' OR qsd.query_id::text = ${query_id:sqlstring})\n  AND (${plan_id:sqlstring} = '*' OR ${plan_id:sqlstring} = '' OR qsd.plan_id::text = ${plan_id:sqlstring})\n  AND $__timeFilter(qsd.collection_time)\n\n  AND qsd.query_text IS NOT NULL\nORDER BY qsd.collection_time DESC\nLIMIT 1\n",
+        "definition": "\nSELECT REPLACE(REPLACE(qsd.query_text, E'\\r\\n', E'\\n'), E'\\r', E'\\n') AS __text,\n    REPLACE(REPLACE(qsd.query_text, E'\\r\\n', E'\\n'), E'\\r', E'\\n') AS __value\nFROM collect.v_query_store_stats AS qsd\nWHERE \nqsd.server_id IN (${server:csv})\n  AND (${database:sqlstring} = '*' OR ${database:sqlstring} = '' OR qsd.database_name = ${database:sqlstring})\n  AND (${query_id:sqlstring} = '*' OR ${query_id:sqlstring} = '' OR qsd.query_id::text = ${query_id:sqlstring})\n  AND (${plan_id:sqlstring} = '*' OR ${plan_id:sqlstring} = '' OR qsd.plan_id::text = ${plan_id:sqlstring})\n  AND $__timeFilter(qsd.collection_time)\n\n  AND qsd.query_text IS NOT NULL\nORDER BY qsd.collection_time DESC\nLIMIT 1\n",
+        "current": {},
+        "options": [],
+        "refresh": 2,
+        "hide": 2,
+        "multi": false,
+        "includeAll": false,
+        "sort": 0,
+        "description": "Backs the Query Text panel - not shown in the variable picker."
       }
     ]
   },
@@ -268,6 +287,26 @@
     },
     {
       "id": 3,
+      "type": "text",
+      "title": "Query Text",
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "options": {
+        "mode": "code",
+        "code": {
+          "language": "sql",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "${query_text}"
+      }
+    },
+    {
+      "id": 4,
       "type": "row",
       "title": "History Grid",
       "collapsed": false,
@@ -275,12 +314,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 9
+        "y": 15
       },
       "panels": []
     },
     {
-      "id": 4,
+      "id": 5,
       "type": "table",
       "title": "Query Store history",
       "datasource": {
@@ -291,7 +330,7 @@
         "h": 16,
         "w": 24,
         "x": 0,
-        "y": 10
+        "y": 16
       },
       "fieldConfig": {
         "defaults": {
@@ -379,7 +418,7 @@
       ]
     },
     {
-      "id": 5,
+      "id": 6,
       "type": "row",
       "title": "Plan Shapes",
       "collapsed": false,
@@ -387,12 +426,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 26
+        "y": 32
       },
       "panels": []
     },
     {
-      "id": 6,
+      "id": 7,
       "type": "table",
       "title": "Plan shapes seen in range",
       "datasource": {
@@ -403,7 +442,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 27
+        "y": 33
       },
       "fieldConfig": {
         "defaults": {
@@ -492,7 +531,7 @@
       "description": "plan_id is Query Store's own distinct-plan-shape id, independent of the $plan_id filter above - this list always shows every shape for the query in range. Pick one with the Plan Shape variable."
     },
     {
-      "id": 7,
+      "id": 8,
       "type": "logs",
       "title": "Plan XML (${plan_shape})",
       "datasource": {
@@ -503,7 +542,7 @@
         "h": 4,
         "w": 24,
         "x": 0,
-        "y": 35
+        "y": 41
       },
       "options": {
         "showTime": true,
@@ -531,7 +570,7 @@
       "description": "Compiled plan from sys.query_store_plan - not an actual/runtime plan, since Grafana has no live SQL Server access here."
     },
     {
-      "id": 8,
+      "id": 9,
       "type": "table",
       "title": "Compile-time parameters",
       "datasource": {
@@ -542,7 +581,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 39
+        "y": 45
       },
       "fieldConfig": {
         "defaults": {

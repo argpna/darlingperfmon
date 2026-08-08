@@ -177,14 +177,31 @@ class PanelKit:
             panel["timeFrom"] = time_from
         return panel
 
-    def text_panel(self, title, x, y, w, h, content):
-        """Build a markdown text panel."""
+    def text_panel(self, title, x, y, w, h, content, code_language: str | None = None):
+        """Build a text panel: markdown by default, or a read-only syntax-highlighted
+        code editor when code_language is given (e.g. "sql"). Text panels have no
+        datasource of their own to query, so dynamic content comes through a ${var}
+        reference to a query-backed template variable - Grafana interpolates variables
+        into this field the same way for both modes.
+        """
+        if code_language:
+            options = {
+                "mode": "code",
+                "code": {
+                    "language": code_language,
+                    "showLineNumbers": False,
+                    "showMiniMap": False,
+                },
+                "content": content,
+            }
+        else:
+            options = {"mode": "markdown", "content": content}
         return {
             "id": self.nid(),
             "type": "text",
             "title": title,
             "gridPos": {"h": h, "w": w, "x": x, "y": y},
-            "options": {"mode": "markdown", "content": content},
+            "options": options,
         }
 
     def stat(
