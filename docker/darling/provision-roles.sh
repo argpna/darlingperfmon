@@ -22,9 +22,11 @@ if $PSQL -tAc "SELECT 1 FROM pg_roles WHERE rolname='viewer'" | grep -q '^1$'; t
     exit 0
 fi
 
+apk add --no-cache curl >/dev/null
+
 url="https://raw.githubusercontent.com/erikdarlingdata/PerformanceMonitor/${PERFMON_VERSION}/Darling/tools/provision-roles.sql"
 echo "fetching $url"
-wget -q -O /tmp/provision-roles.sql "$url"
+curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors -o /tmp/provision-roles.sql "$url"
 
 sed -e "s/CHANGE_ME_ADMIN_PASSWORD/${DARLING_PG_PASSWORD}/g" \
     -e "s/CHANGE_ME_VIEWER_PASSWORD/${DARLING_VIEWER_PASSWORD}/g" \
