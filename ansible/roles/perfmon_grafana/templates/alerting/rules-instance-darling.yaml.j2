@@ -25,7 +25,7 @@ groups:
     folder: "{{ grafana_darling_folder }}"
     interval: 1m
     rules:
-      - uid: "darling-cpu-{{ item.inventory_hostname }}"
+      - uid: "{{ 'darling-cpu-' | darling_alert_uid(item.inventory_hostname) }}"
         title: "High CPU - {{ item.inventory_hostname }}"
         condition: C
         data:
@@ -93,7 +93,7 @@ groups:
     folder: "{{ grafana_darling_folder }}"
     interval: 1m
     rules:
-      - uid: "darling-blocking-{{ item.inventory_hostname }}"
+      - uid: "{{ 'darling-blocking-' | darling_alert_uid(item.inventory_hostname) }}"
         title: "Blocking Detected - {{ item.inventory_hostname }}"
         condition: C
         data:
@@ -172,7 +172,7 @@ groups:
     folder: "{{ grafana_darling_folder }}"
     interval: 1m
     rules:
-      - uid: "darling-deadlocks-{{ item.inventory_hostname }}"
+      - uid: "{{ 'darling-deadlocks-' | darling_alert_uid(item.inventory_hostname) }}"
         title: "Deadlocks Detected - {{ item.inventory_hostname }}"
         condition: C
         data:
@@ -238,7 +238,7 @@ groups:
     folder: "{{ grafana_darling_folder }}"
     interval: 1m
     rules:
-      - uid: "darling-tempdb-{{ item.inventory_hostname }}"
+      - uid: "{{ 'darling-tempdb-' | darling_alert_uid(item.inventory_hostname) }}"
         title: "TempDB Space - {{ item.inventory_hostname }}"
         condition: C
         data:
@@ -308,7 +308,7 @@ groups:
     folder: "{{ grafana_darling_folder }}"
     interval: 1m
     rules:
-      - uid: "darling-disk-{{ item.inventory_hostname }}"
+      - uid: "{{ 'darling-disk-' | darling_alert_uid(item.inventory_hostname) }}"
         title: "Low Disk Space - {{ item.inventory_hostname }}"
         condition: C
         data:
@@ -388,7 +388,7 @@ groups:
     folder: "{{ grafana_darling_folder }}"
     interval: 1m
     rules:
-      - uid: "darling-long-query-{{ item.inventory_hostname }}"
+      - uid: "{{ 'darling-long-query-' | darling_alert_uid(item.inventory_hostname) }}"
         title: "Long-Running Query - {{ item.inventory_hostname }}"
         condition: C
         data:
@@ -470,7 +470,7 @@ groups:
     folder: "{{ grafana_darling_folder }}"
     interval: 1m
     rules:
-      - uid: "darling-poison-wait-{{ item.inventory_hostname }}"
+      - uid: "{{ 'darling-poison-wait-' | darling_alert_uid(item.inventory_hostname) }}"
         title: "Poison Wait - {{ item.inventory_hostname }}"
         condition: C
         data:
@@ -550,7 +550,7 @@ groups:
     folder: "{{ grafana_darling_folder }}"
     interval: 1m
     rules:
-      - uid: "darling-long-job-{{ item.inventory_hostname }}"
+      - uid: "{{ 'darling-long-job-' | darling_alert_uid(item.inventory_hostname) }}"
         title: "Long-Running Job - {{ item.inventory_hostname }}"
         condition: C
         data:
@@ -625,7 +625,7 @@ groups:
     folder: "{{ grafana_darling_folder }}"
     interval: 1m
     rules:
-      - uid: "darling-failed-job-{{ item.inventory_hostname }}"
+      - uid: "{{ 'darling-failed-job-' | darling_alert_uid(item.inventory_hostname) }}"
         title: "Failed Job - {{ item.inventory_hostname }}"
         condition: C
         data:
@@ -696,7 +696,7 @@ groups:
     folder: "{{ grafana_darling_folder }}"
     interval: 1m
     rules:
-      - uid: "darling-collection-stopped-{{ item.inventory_hostname }}"
+      - uid: "{{ 'darling-collection-stopped-' | darling_alert_uid(item.inventory_hostname) }}"
         title: "Collection Stopped - {{ item.inventory_hostname }}"
         condition: C
         data:
