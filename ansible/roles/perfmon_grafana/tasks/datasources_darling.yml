@@ -63,3 +63,26 @@
   when: _darling_ds_put.status == 404
   delegate_to: localhost
   no_log: true
+
+- name: Verify the Darling datasource can connect
+  ansible.builtin.uri:
+    url: "{{ grafana_url }}/api/datasources/uid/{{ perfmon_darling_ds_uid }}/health"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ grafana_api_key }}"
+    status_code: [200, 400]
+  register: _darling_ds_health
+  delegate_to: localhost
+  no_log: true
+
+- name: Assert the Darling datasource is reachable
+  ansible.builtin.assert:
+    that:
+      - _darling_ds_health.json.status == "OK"
+    fail_msg: >-
+      Grafana cannot reach the Darling store as {{ perfmon_darling_pg_user }}:
+      {{ _darling_ds_health.json.message | default('unknown error') }}.
+      Verify the store's viewer role exists and its password matches
+      perfmon_darling_pg_password - re-run Darling/tools/provision-roles.sql
+      against the store if it doesn't.
+    quiet: true

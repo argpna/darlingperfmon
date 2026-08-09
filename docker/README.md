@@ -33,20 +33,15 @@ All SQL Server instances run as Developer Edition with SQL Agent enabled.
 ```bash
 cp .env.example .env
 # Edit .env - set MSSQL_SA_PASSWORD, GRAFANA_ADMIN_PASSWORD, DARLING_PG_PASSWORD, DARLING_VIEWER_PASSWORD
-docker compose --profile darling up -d --scale ansible-runner=0
+docker compose --profile darling up -d
 ```
 
-`ansible-runner` is scaled to zero on the first boot because it isn't gated on the Darling store
-being ready. Wait for the two one-shot provisioning containers to finish migrating and configuring
-the store, then run it:
-
-```bash
-docker wait perfmon-darling-provision perfmon-darling-collector-config
-docker compose run --rm ansible-runner
-```
-
-This runs the full Ansible playbook (`ansible/playbooks/main.yml`) inside the stack, configuring
-the Darling collector role and provisioning Grafana's datasource, dashboards, and alert rules.
+`ansible-runner` waits for the SQL Server instances, Grafana, and the Darling store to all be
+healthy, then runs the full Ansible playbook (`ansible/playbooks/main.yml`), configuring the
+Darling collector role and provisioning Grafana's datasource, dashboards, and alert rules. The
+`darling` container waits in a poll loop until this run renders its config onto the shared
+`darling-config` volume, then starts collecting; `darling-provision` and `darling-collector-config`
+likewise wait for `darling` to migrate the store before running their own SQL.
 
 ```bash
 docker compose logs -f ansible-runner # watch provisioning progress
@@ -81,9 +76,9 @@ itself.
 
 `darling-pg` is a TimescaleDB container the `darling` service migrates on first start. The
 `darling` container builds from `docker/darling/Dockerfile` (which fetches the pinned
-`PERFMON_VERSION` collector release) and renders its own config from
-`docker/darling/darling.json.template` via `docker/darling/entrypoint.sh`, independently of the
-Ansible role - see [Ansible inventory](#ansible-inventory) below.
+`PERFMON_VERSION` collector release) and waits on `docker/darling/entrypoint.sh` for
+`darling.json` to appear on the shared `darling-config` volume - see
+[Ansible inventory](#ansible-inventory) below for where that file comes from.
 
 `darling-provision` and `darling-collector-config` are one-shot containers (`restart: "no"`) that
 each poll until the service has migrated the schema they depend on, then run their SQL and exit:
@@ -157,11 +152,10 @@ The docker-internal inventory lives at `ansible/inventory/docker/`, used only by
 `ansible-runner` container - it is not intended for use from the host. The host-facing inventory
 is `ansible/inventory/`.
 
-Its `darling` group has a single `ansible_connection: local` host, used only to exercise the
-`perfmon_darling` role's own logic (config rendering, registry reconciliation) against the demo's
-real `darling-pg` store, rendering to a throwaway config path. It does not configure the `darling`
-collector container itself - that container renders its own config independently, as described
-in [Darling store](#darling-store) above.
+The `darling` group has a single `ansible_connection: local` host: running the `perfmon_darling`
+role against it renders `darling.json` onto the `darling-config` volume the `darling` container
+reads from, and reconciles `config.config_monitored_servers` in the real `darling-pg` store - the
+`sql_servers` group is the one source of truth for which instances get monitored.
 
 ## Smoke-testing panels
 

@@ -71,6 +71,9 @@ services:
         condition: service_healthy
       grafana:
         condition: service_healthy
+      darling-pg:
+        condition: service_healthy
+        required: false
     environment:
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
       GRAFANA_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
@@ -83,6 +86,7 @@ services:
       - ./ansible:/workspace/ansible
       - ./bootstrap:/workspace/bootstrap:ro
       - ./scripts:/workspace/scripts:ro
+      - darling-config:/etc/darling
     restart: "no"
 
   # demo workload against mssql-2022
@@ -180,11 +184,8 @@ services:
         condition: service_healthy
       mssql-2025:
         condition: service_healthy
-    environment:
-      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
-      DARLING_PG_PASSWORD: ${DARLING_PG_PASSWORD}
     volumes:
-      - ./docker/darling/darling.json.template:/config/darling.json.template:ro
+      - darling-config:/etc/darling:ro
     restart: unless-stopped
     profiles: ["darling"]
 
@@ -224,3 +225,4 @@ volumes:
   mssql-2025-data:
   grafana-data:
   darling-pg-data:
+  darling-config:

@@ -208,9 +208,7 @@ Requires Docker with approximately 6 GB of free RAM.
 
 ```bash
 cp .env.example .env
-docker compose --profile darling up -d --scale ansible-runner=0
-docker wait perfmon-darling-provision perfmon-darling-collector-config
-docker compose run --rm ansible-runner
+docker compose --profile darling up -d
 ```
 
 What you get:

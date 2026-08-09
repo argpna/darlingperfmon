@@ -130,6 +130,11 @@ The table has a trigger that bumps `config_version` on change, so both an insert
 effect on the running service without a restart. Only a `darling.json` content change (credentials,
 auth mode, toggles) needs the `Restart darling` handler.
 
+On a store the collector hasn't started against yet, `config.config_monitored_servers` doesn't
+exist. Reconciliation is skipped in that case - the collector's own first-start
+`servers[]` seeding covers it, and the next run against an inventory change finds the table and
+reconciles normally.
+
 ## Connection strings and secrets
 
 SQL-auth secrets live only in `darling.json`, not in the registry table - there is no DPAPI blob to

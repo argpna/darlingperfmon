@@ -45,6 +45,22 @@
   no_log: true
   notify: Restart darling
 
+- name: Check whether the store has migrated the monitored-server registry table
+  community.postgresql.postgresql_query:
+    login_host: "{{ perfmon_darling_pg_host }}"
+    port: "{{ perfmon_darling_pg_port }}"
+    login_user: "{{ perfmon_darling_pg_user }}"
+    login_password: "{{ perfmon_darling_pg_password }}"
+    db: "{{ perfmon_darling_pg_database }}"
+    query: SELECT to_regclass('config.config_monitored_servers') IS NOT NULL AS present
+  register: _darling_registry_table
+  delegate_to: localhost
+  become: false
+  no_log: true
+  when: perfmon_darling_register_new | bool or perfmon_darling_prune_orphaned | bool
+
 - name: Reconcile the monitored-server registry
   ansible.builtin.include_tasks: registry.yml
-  when: perfmon_darling_register_new | bool or perfmon_darling_prune_orphaned | bool
+  when:
+    - perfmon_darling_register_new | bool or perfmon_darling_prune_orphaned | bool
+    - _darling_registry_table.query_result[0].present | default(false)

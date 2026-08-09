@@ -40,7 +40,12 @@ jobs:
       - name: Start stack with darling profile
         run: |
           cp .env.example .env
-          docker compose --profile darling up -d --scale ansible-runner=0
+          docker compose --profile darling up -d --scale ansible-runner=0 --wait
+      - name: Verify the perfmon_darling collector role
+        run: |
+          docker compose run --rm ansible-runner \
+            ansible-playbook -i /workspace/ansible/inventory/docker \
+            /workspace/ansible/playbooks/deploy_perfmon_darling.yml
       - name: Wait for the Darling store to migrate and provision roles
         run: |
           rc=$(docker wait perfmon-darling-provision)
@@ -51,11 +56,6 @@ jobs:
           rc=$(docker wait perfmon-darling-collector-config)
           docker logs perfmon-darling-collector-config 2>&1 | tail -40
           exit "$rc"
-      - name: Verify the perfmon_darling collector role
-        run: |
-          docker compose run --rm ansible-runner \
-            ansible-playbook -i /workspace/ansible/inventory/docker \
-            /workspace/ansible/playbooks/deploy_perfmon_darling.yml
       - name: Deploy Grafana dashboards
         run: |
           docker compose run --rm ansible-runner \
