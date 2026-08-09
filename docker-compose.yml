@@ -175,7 +175,7 @@ services:
     build:
       context: docker/darling
       args:
-        PERFMON_VERSION: ${PERFMON_VERSION:-v3.3.0}
+        PERFMON_VERSION: ${PERFMON_VERSION:-v3.4.0}
     container_name: perfmon-darling
     depends_on:
       darling-pg:
@@ -197,7 +197,7 @@ services:
       darling-pg:
         condition: service_healthy
     environment:
-      PERFMON_VERSION: ${PERFMON_VERSION:-v3.3.0}
+      PERFMON_VERSION: ${PERFMON_VERSION:-v3.4.0}
       DARLING_PG_PASSWORD: ${DARLING_PG_PASSWORD}
       DARLING_VIEWER_PASSWORD: ${DARLING_VIEWER_PASSWORD}
     volumes:
