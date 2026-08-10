@@ -227,7 +227,13 @@ def _latch_spinlock_section(panels: list[dict], y: int) -> int:
                     axis_label="Collisions/sec",
                 ),
             ),
-            (12, 10, lambda x, y, w, h: table("Latch Stats", x, y, w, h, _LATCH_SNAPSHOT_SQL)),
+            (
+                12,
+                10,
+                lambda x, y, w, h: table(
+                    "Latch Stats", x, y, w, h, _LATCH_SNAPSHOT_SQL
+                ),
+            ),
             (
                 12,
                 10,

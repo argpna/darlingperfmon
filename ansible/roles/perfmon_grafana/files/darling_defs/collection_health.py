@@ -205,6 +205,7 @@ FROM a
 ORDER BY srv.name, a.collector_name
 """
 
+
 # Health Summary stat row: same classification the Collector Health grid's Status column
 # uses, aggregated to a count per bucket instead of read per row.
 def _health_count_sql(status_filter: str | None) -> str:

@@ -358,7 +358,10 @@ def availability_groups():
     )
 
     return dashboard(
-        uid("availability-groups"), "Availability Groups", panels, [server_var(multi=True)]
+        uid("availability-groups"),
+        "Availability Groups",
+        panels,
+        [server_var(multi=True)],
     )
 
 

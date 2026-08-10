@@ -211,19 +211,19 @@ WHERE $__timeFilter(cpu.collection_time)
   AND {server_filter('cpu.server_id')}
 """
 
-# Upstream ref: PgBaselineProvider.GetBaselineQuery(MetricNames.Cpu) - sufficient
-# statistics, since one collection can carry up to 60 ring-buffer samples.
+# Upstream ref: PgBaselineProvider.GetBaselineQuery(MetricNames.Cpu). Reads the raw
+# hypertable directly - #2007 retired the cpu_utilization_baseline aggregate.
 _CPU_BUCKETS_SQL = f"""
 SELECT
     EXTRACT(HOUR FROM collection_time)::int AS hour_of_day,
     EXTRACT(DOW FROM collection_time)::int AS day_of_week,
-    SUM(cpu_sum)::double precision / NULLIF(SUM(cpu_count), 0) AS mean_val,
+    SUM(sqlserver_cpu_utilization)::double precision / NULLIF(COUNT(sqlserver_cpu_utilization), 0) AS mean_val,
     sqrt(GREATEST(
-        (SUM(cpu_sumsq) - POWER(SUM(cpu_sum), 2)::double precision / NULLIF(SUM(cpu_count), 0))
-        / NULLIF(SUM(cpu_count) - 1, 0), 0)) AS stddev_val,
-    SUM(cpu_count) AS sample_count,
+        (SUM(power(sqlserver_cpu_utilization, 2)) - POWER(SUM(sqlserver_cpu_utilization), 2)::double precision / NULLIF(COUNT(sqlserver_cpu_utilization), 0))
+        / NULLIF(COUNT(sqlserver_cpu_utilization) - 1, 0), 0)) AS stddev_val,
+    COUNT(sqlserver_cpu_utilization) AS sample_count,
     COUNT(DISTINCT collection_time::date) AS distinct_days
-FROM collect.cpu_utilization_baseline, ref
+FROM {collector('cpu_utilization_stats')}, ref
 WHERE {server_filter('server_id')}
 AND   collection_time >= ref.ref_time - INTERVAL '30 days'
 AND   collection_time <  ref.ref_time
@@ -433,22 +433,29 @@ FROM per_file
 GROUP BY collection_time
 """
 
-# Upstream ref: PgBaselineProvider.GetBaselineQuery(MetricNames.IoLatency) - sufficient
-# statistics over the per-file ratio, same shape as the CPU baseline.
+# Upstream ref: PgBaselineProvider.GetBaselineQuery(MetricNames.IoLatency). Reads the raw
+# hypertable directly - #2007 retired the file_io_baseline aggregate.
 _FILE_IO_BUCKETS_SQL = f"""
+WITH ratios AS (
+    SELECT
+        collection_time,
+        delta_stall_read_ms::double precision / NULLIF(delta_reads, 0) AS ratio
+    FROM {collector('file_io_stats')}, ref
+    WHERE {server_filter('server_id')}
+    AND   collection_time >= ref.ref_time - INTERVAL '30 days'
+    AND   collection_time <  ref.ref_time
+    AND   (delta_reads > 0 OR delta_writes > 0)
+)
 SELECT
     EXTRACT(HOUR FROM collection_time)::int AS hour_of_day,
     EXTRACT(DOW FROM collection_time)::int AS day_of_week,
-    SUM(ratio_sum) / NULLIF(SUM(ratio_count), 0) AS mean_val,
+    SUM(ratio) / NULLIF(COUNT(ratio), 0) AS mean_val,
     sqrt(GREATEST(
-        (SUM(ratio_sumsq) - POWER(SUM(ratio_sum), 2) / NULLIF(SUM(ratio_count), 0))
-        / NULLIF(SUM(ratio_count) - 1, 0), 0)) AS stddev_val,
-    SUM(row_count) AS sample_count,
+        (SUM(power(ratio, 2)) - POWER(SUM(ratio), 2) / NULLIF(COUNT(ratio), 0))
+        / NULLIF(COUNT(ratio) - 1, 0), 0)) AS stddev_val,
+    COUNT(*) AS sample_count,
     COUNT(DISTINCT collection_time::date) AS distinct_days
-FROM collect.file_io_baseline, ref
-WHERE {server_filter('server_id')}
-AND   collection_time >= ref.ref_time - INTERVAL '30 days'
-AND   collection_time <  ref.ref_time
+FROM ratios
 GROUP BY 1, 2
 """
 
@@ -464,11 +471,16 @@ SELECT time, 'I/O ms' AS metric, value FROM samples
 ORDER BY 1
 """
 
+
 _ANOMALY_PAD = "5 minutes"
 
 
 def _anomaly_islands_sql(
-    samples_sql: str, value_col: str, buckets_sql: str, abs_floor: float, min_anomaly: float
+    samples_sql: str,
+    value_col: str,
+    buckets_sql: str,
+    abs_floor: float,
+    min_anomaly: float,
 ) -> str:
     """Group one lane's flagged anomaly samples into contiguous events, one row per event:
     (start_time, end_time, sample_count, peak_value). A non-anomalous sample breaks the
@@ -726,7 +738,11 @@ _BLOCKING_CRITICAL = 11
 _BLOCKING_WARNING = 1
 _ALERT_WARNING = 1
 
-_DAILY_STATES = [(1, "Healthy", "green"), (2, "Warning", "yellow"), (3, "Critical", "red")]
+_DAILY_STATES = [
+    (1, "Healthy", "green"),
+    (2, "Warning", "yellow"),
+    (3, "Critical", "red"),
+]
 
 # Upstream ref: DailyHealthBandCalculator.Classify - severity is first-match-wins.
 _BAND_LEVEL = f"""CASE
@@ -937,7 +953,9 @@ LEFT JOIN alerts al ON al.server_id = s.server_id AND al.d = s.d
 # Only the queries CTE changes per tier, exactly as RangeSqlFor swaps it.
 _DAILY = tiered(
     {
-        "raw": _daily_range_sql(_daily_queries_cte(collector("query_stats"), "collection_time")),
+        "raw": _daily_range_sql(
+            _daily_queries_cte(collector("query_stats"), "collection_time")
+        ),
         "hourly": _daily_range_sql(
             _daily_queries_cte(rollup("query_stats", "hourly"), "bucket")
         ),

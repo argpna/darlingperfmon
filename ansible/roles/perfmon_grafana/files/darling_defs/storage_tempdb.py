@@ -105,6 +105,7 @@ _STAT_ROW = [
     },
 ]
 
+
 # File I/O section.
 # Both sub-tabs chart the ten busiest files, ranked on the metric each one is about:
 # latency by I/O count, throughput by bytes moved.

@@ -31,7 +31,9 @@ _OFFLINE_MINUTES = 15
 _ALERT_FOLDER_UID = "perfmon-darling"
 _ALERT_FOLDER_TITLE = "PerformanceMonitor (Darling)"
 
-_NOT_FRESH = f"(m.last_collection_time IS NULL OR m.minutes_since_collection > {_STALE_MINUTES})"
+_NOT_FRESH = (
+    f"(m.last_collection_time IS NULL OR m.minutes_since_collection > {_STALE_MINUTES})"
+)
 
 # GetServerSummaryAsync's window: a fixed trailing hour, not the dashboard's time range.
 _WINDOW = "(now() AT TIME ZONE 'UTC') - INTERVAL '1 hour'"
@@ -263,6 +265,7 @@ fleet AS (
 def _fleet_query(select_sql: str) -> str:
     return f"{_FLEET_CTE}\n{select_sql}"
 
+
 _BAND_TILES = (
     ("Servers", "COUNT(*)", thresholds(("blue", None))),
     (
@@ -342,7 +345,9 @@ _BLOCKING_REASON = (
     "CASE WHEN blocking_severity IN ('Critical', 'Warning') "
     "THEN 'Blocking ' || blocking_count END"
 )
-_DEADLOCK_REASON = "CASE WHEN deadlock_severity = 'Critical' THEN 'Deadlocks ' || deadlock_count END"
+_DEADLOCK_REASON = (
+    "CASE WHEN deadlock_severity = 'Critical' THEN 'Deadlocks ' || deadlock_count END"
+)
 _COLLECTOR_REASON = (
     "CASE WHEN collector_severity = 'Warning' "
     "THEN 'Collectors failing (' || failing_collector_count || ')' END"
@@ -423,7 +428,8 @@ def fleet():
                 col_hidden("server_id"),
                 col_datalink("Server", "Open Overview", _DRILLDOWN_URL),
                 status_colors(
-                    "Severity", {"Critical": "red", "Warning": "yellow", "Offline": "text"}
+                    "Severity",
+                    {"Critical": "red", "Warning": "yellow", "Offline": "text"},
                 ),
                 col_datalinks(
                     "Links",

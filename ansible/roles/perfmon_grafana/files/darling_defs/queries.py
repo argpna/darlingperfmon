@@ -444,7 +444,9 @@ GROUP BY date_trunc('hour', qs.collection_time), srv.name
 def _rank_by(default_expr: str, by_metric: dict[str, str]) -> str:
     """CASE expression ranking a Top-N grid by the shared ${metric} var, falling back
     to default_expr (Duration, present in every ranked query) for any other value."""
-    cases = "\n        ".join(f"WHEN '{label}' THEN {expr}" for label, expr in by_metric.items())
+    cases = "\n        ".join(
+        f"WHEN '{label}' THEN {expr}" for label, expr in by_metric.items()
+    )
     return f"""CASE ${{metric:sqlstring}}
         {cases}
         ELSE {default_expr}
@@ -2004,7 +2006,11 @@ def queries():
                     h,
                     _TOP_QUERIES_COMPARISON_SQL,
                     overrides=[
-                        status_colors("Status", {"NEW": "blue", "GONE": "orange"}, cell_type="color-text")
+                        status_colors(
+                            "Status",
+                            {"NEW": "blue", "GONE": "orange"},
+                            cell_type="color-text",
+                        )
                     ],
                     description="Top 100 (by executions) queries in the current window unioned "
                     "with the top 100 in the baseline window, full-outer-joined so NEW/GONE "
@@ -2073,7 +2079,11 @@ def queries():
                     h,
                     _TOP_PROCEDURES_COMPARISON_SQL,
                     overrides=[
-                        status_colors("Status", {"NEW": "blue", "GONE": "orange"}, cell_type="color-text")
+                        status_colors(
+                            "Status",
+                            {"NEW": "blue", "GONE": "orange"},
+                            cell_type="color-text",
+                        )
                     ],
                 ),
             ),
@@ -2145,7 +2155,11 @@ def queries():
                     h,
                     _QUERY_STORE_COMPARISON_SQL,
                     overrides=[
-                        status_colors("Status", {"NEW": "blue", "GONE": "orange"}, cell_type="color-text")
+                        status_colors(
+                            "Status",
+                            {"NEW": "blue", "GONE": "orange"},
+                            cell_type="color-text",
+                        )
                     ],
                 ),
             ),

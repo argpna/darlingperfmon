@@ -745,7 +745,10 @@ def blocking():
     )
 
     return dashboard(
-        uid("blocking-deadlocks"), "Blocking & Deadlocks", panels, [server_var(), database_var]
+        uid("blocking-deadlocks"),
+        "Blocking & Deadlocks",
+        panels,
+        [server_var(), database_var],
     )
 
 

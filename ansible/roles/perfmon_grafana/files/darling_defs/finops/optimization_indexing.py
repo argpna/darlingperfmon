@@ -455,6 +455,7 @@ WHERE a.is_unused
 ORDER BY a.database_name, a.schema_name, a.table_name, a.index_name
 """
 
+
 def optimization_indexing():
     """Build the FinOps Optimization & Indexing dashboard."""
     reset_id()

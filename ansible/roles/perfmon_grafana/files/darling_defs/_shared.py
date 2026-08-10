@@ -52,32 +52,6 @@ DURATION_STATUS_COLORS = {
     "Stalled": "red",
 }
 
-# collection_time is UTC in a naive `timestamp` column, so $__timeFilter() is correct as-is
-# and the MSSQL line's tz_* helpers have no counterpart here. cpu_utilization_stats'
-# sample_time is the exception - it is server-local and needs the de-skew cpu.py carries.
-
-# Retention tiers - a panel outrunning its table's horizon returns a short series, not an
-# error. Every collector table is purged at its own horizon (30d for most), but only
-# query_stats/procedure_stats/query_store_stats drop raw EARLIER than their rollups reach
-# (4d raw, 21d *_hourly, indefinite *_daily), so tiered() is for those three alone.
-#
-# *_baseline aggregates are NOT a retention tier - they are a separate shape built for
-# anomaly detection (cpu_utilization_baseline carries sum/sumsq/count for stddev). Read
-# them directly, never through rollup().
-#
-# Upstream's router: Darling.Service/Compose/ComposeSourceRouter.cs.
-
-# Delta columns are `delta_` PREFIXED and the rename from the MSSQL schema is not
-# mechanical (waiting_tasks_count_delta -> delta_waiting_tasks). Check the column list
-# before porting a query. Collector tables carry server_name alongside server_id.
-# The per-table cumulative-vs-gauge audit has not been redone for Darling yet.
-
-
-# Collector tables with no collect.v_* view. Re-derive with:
-#   SELECT t.table_name FROM information_schema.tables t
-#   WHERE t.table_schema='collect' AND t.table_type='BASE TABLE'
-#     AND NOT EXISTS (SELECT 1 FROM information_schema.views v
-#                     WHERE v.table_schema='collect' AND v.table_name='v_'||t.table_name);
 _NO_VIEW = frozenset(
     {
         "ag_database_replica_states",

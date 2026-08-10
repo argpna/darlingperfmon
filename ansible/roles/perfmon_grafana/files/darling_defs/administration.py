@@ -719,7 +719,9 @@ def administration():
                     _RUNNING_JOBS_SQL,
                     sort_by=[{"displayName": "Current Duration", "desc": True}],
                     overrides=[
-                        status_colors("Running Long", {"Yes": "red"}, cell_type="color-text"),
+                        status_colors(
+                            "Running Long", {"Yes": "red"}, cell_type="color-text"
+                        ),
                         col_unit("Current Duration", "s"),
                         col_unit("Avg Duration", "s"),
                         col_unit("P95 Duration", "s"),
