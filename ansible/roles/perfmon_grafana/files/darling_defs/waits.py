@@ -13,6 +13,8 @@ ported.
 """
 
 from ._shared import (
+    col_datalink,
+    col_hidden,
     col_unit,
     collector,
     detail_dashboard,
@@ -118,7 +120,7 @@ WHERE $__timeFilter(qs.collection_time)
 _WAIT_DRILL_DOWN_LINK = {
     "title": "View Query Snapshots",
     "url": "/d/darling-wait-drill-down?${__url_time_range}"
-    "&var-server=$server&var-wait_type=$wait_type",
+    "&var-server=$server&${wait_type:queryparam}",
     "targetBlank": False,
 }
 
@@ -130,12 +132,23 @@ WHERE $__timeFilter(qs.collection_time) AND {server_filter('qs.server_id')}
 ORDER BY 1
 """
 
+_QUERY_HISTORY_LINK = col_datalink(
+    "Query Hash",
+    "View query history",
+    "/d/darling-query-stats-history?${__url_time_range}"
+    "&var-server=${__data.fields.server_id}"
+    "&var-database=${__data.fields.Database}"
+    '&var-query_hash=${__data.fields["Query Hash"]}',
+)
+
 _WAIT_DRILL_DOWN_SQL = f"""
 SELECT
     srv.name AS "Server",
+    qs.server_id AS "server_id",
     qs.collection_time AS "Collected",
     qs.session_id AS "SPID",
     qs.database_name AS "Database",
+    qs.query_hash AS "Query Hash",
     qs.login_name AS "Login",
     qs.host_name AS "Host",
     qs.program_name AS "Program",
@@ -163,7 +176,6 @@ SELECT
     qs.transaction_isolation_level AS "Isolation",
     qs.open_transaction_count AS "Open Tran",
     qs.percent_complete AS "% Done",
-    qs.query_hash AS "Query Hash",
     qs.query_text AS "Query Text"
 FROM {collector('query_snapshots')} AS qs
 {server_join('qs.server_id')}
@@ -251,6 +263,7 @@ def wait_stats_section(panels: list[dict], y: int) -> int:
                             "title": "Query Snapshots ($wait_type)",
                             "sql": _SNAPSHOT_COUNT_SQL,
                             "th": thresholds(("blue", None)),
+                            "links": [_WAIT_DRILL_DOWN_LINK],
                         }
                     ],
                     cols=1,
@@ -284,6 +297,8 @@ def wait_drill_down():
                     h,
                     _WAIT_DRILL_DOWN_SQL,
                     overrides=[
+                        col_hidden("server_id"),
+                        _QUERY_HISTORY_LINK,
                         col_unit("CPU (ms)", "ms"),
                         col_unit("Wait (ms)", "ms"),
                     ],

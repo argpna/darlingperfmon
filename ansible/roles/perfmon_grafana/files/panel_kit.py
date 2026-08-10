@@ -535,9 +535,10 @@ class PanelKit:
     def stat_grid(self, specs, cols=2):
         """flow() factory placing stat() panels in a cols-wide sub-grid inside its
         envelope, so small stat cards can share a line with a taller chart.
-        specs: dicts with title/sql/th and optionally unit/fields. fields defaults to
-        "" (numeric-only auto-pick) - a spec whose column is text must pass an explicit
-        fields regex (e.g. "/.*/") or Grafana's stat panel filters it out as "No data"."""
+        specs: dicts with title/sql/th and optionally unit/fields/links. fields defaults
+        to "" (numeric-only auto-pick) - a spec whose column is text must pass an
+        explicit fields regex (e.g. "/.*/") or Grafana's stat panel filters it out as
+        "No data"."""
 
         def factory(x, y, w, h):
             rows = -(-len(specs) // cols)
@@ -552,6 +553,7 @@ class PanelKit:
                     s["sql"],
                     s.get("unit", "short"),
                     s["th"],
+                    links=s.get("links"),
                     fields=s.get("fields", ""),
                 )
                 for i, s in enumerate(specs)

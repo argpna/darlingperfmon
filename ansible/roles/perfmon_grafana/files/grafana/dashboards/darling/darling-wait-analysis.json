@@ -606,6 +606,13 @@
           "rawQuery": true,
           "rawSql": "\nSELECT COUNT(*) AS \"Query Snapshots\"\nFROM collect.v_query_snapshots AS qs\nWHERE $__timeFilter(qs.collection_time)\n  AND qs.server_id IN (${server:csv})\n  AND (cardinality(ARRAY[${wait_type:sqlstring}]::text[]) = 0 OR qs.wait_type = ANY(ARRAY[${wait_type:sqlstring}]::text[]))\n  AND qs.query_text NOT LIKE 'WAITFOR%'\n"
         }
+      ],
+      "links": [
+        {
+          "title": "View Query Snapshots",
+          "url": "/d/darling-wait-drill-down?${__url_time_range}&var-server=$server&${wait_type:queryparam}",
+          "targetBlank": false
+        }
       ]
     },
     {
