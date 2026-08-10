@@ -351,8 +351,9 @@ Both roles are safe to re-run.
 ## Alerting
 
 Grafana Unified Alerting is provisioned with alert rules ported from upstream's
-`DarlingAlertSettings.cs` / `AlertEngine.cs`. Rules evaluate every minute against the Darling
-store, filtered per instance by `server_id`.
+`DarlingAlertSettings.cs` / `AlertEngine.cs`, plus the Availability Group rules ported from
+`AgAlertPolicy.cs`. Rules evaluate every minute against the Darling store, filtered per instance
+by `server_id`.
 
 ### Alert rules
 
@@ -368,10 +369,16 @@ store, filtered per instance by `server_id`.
 | Long-Running Job | current SQL Agent job run >= 3x its average duration |
 | Failed Job | most recent SQL Agent job run was a failure |
 | Collection Stopped | no collector has logged a run for an instance in 30 minutes |
+| AG Failover | an Availability Group replica's role changed since its prior reading |
+| AG Replica Disconnected | a replica's latest `connected_state_desc` is `DISCONNECTED` |
+| AG Database Suspended | a database's latest `is_suspended` reading is true |
+| AG Sync Fell Behind | a database's latest lag >= 300s (redo queue check off by default) |
 
 Blocking is a count of captured events, since Grafana never holds a live SQL Server connection to
 read an in-progress wait's duration. Long-Running Job and Failed Job cover every SQL Agent job on
-the instance. All thresholds are Ansible
+the instance. The AG rules are scoped per reporting server, not deduped fleet-wide across every
+node watching the same Availability Group the way upstream's vantage ranking is - each node
+reports what it can see. All thresholds are Ansible
 variables defined in `roles/perfmon_grafana/defaults/main.yml`. Override per-host in `host_vars/`
 or per-group in `group_vars/`.
 

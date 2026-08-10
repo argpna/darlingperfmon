@@ -12,6 +12,10 @@ apiVersion: 1
 groups:
 {% set _server_host = (item.ds_host | default(item.ansible_host)) | replace("'", "''") %}
 {% set _sid = "(SELECT server_id FROM config.config_monitored_servers WHERE host = '" ~ _server_host ~ "')" %}
+{% set _ag_sync_conditions = [] %}
+{% if perfmon_alert_ag_lag_seconds | int > 0 %}{% set _ = _ag_sync_conditions.append("(latest.secondary_lag_seconds >= " ~ (perfmon_alert_ag_lag_seconds | int) ~ ")") %}{% endif %}
+{% if perfmon_alert_ag_redo_queue_kb | int > 0 %}{% set _ = _ag_sync_conditions.append("(latest.redo_queue_size >= " ~ (perfmon_alert_ag_redo_queue_kb | int) ~ ")") %}{% endif %}
+{% set _ag_sync_where = _ag_sync_conditions | join(' OR ') if _ag_sync_conditions else 'FALSE' %}
   # -----------------------------------------------------------------------
   # High CPU
   # Upstream: DarlingAlertSettings.CpuThresholdPercent / AlertEngine.CheckCpuAsync
@@ -754,3 +758,307 @@ groups:
           summary: >
             Data collection for {{ item.inventory_hostname }} appears to have stopped: no
             collection_log row within the last {{ perfmon_alert_collection_stale_min }} minutes.
+
+  # -----------------------------------------------------------------------
+  # AG Failover
+  # Upstream: AgAlertPolicy.IsFailover / AgAlertPolicy.FailoverMetric
+  # Fires when a replica's role_desc differs from its prior reading. Not deduped across
+  # nodes watching the same AG.
+  # Source: PerformanceMonitor.Common/AgAlertPolicy.cs
+  # Source table: collect.ag_replica_states
+  # -----------------------------------------------------------------------
+  - orgId: 1
+    name: "PerfMon (Darling) - AG Failover"
+    folder: "{{ grafana_darling_folder }}"
+    interval: 1m
+    rules:
+      - uid: "{{ 'darling-ag-failover-' | darling_alert_uid(item.inventory_hostname) }}"
+        title: "AG Failover - {{ item.inventory_hostname }}"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: "{{ perfmon_darling_ds_uid }}"
+            model:
+              datasource:
+                type: grafana-postgresql-datasource
+                uid: "{{ perfmon_darling_ds_uid }}"
+              format: table
+              rawQuery: true
+              rawSql: >
+                WITH ranked AS (
+                    SELECT
+                        role_desc,
+                        LAG(role_desc) OVER (
+                            PARTITION BY ag_name, replica_server_name ORDER BY collection_time
+                        ) AS prev_role_desc,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY ag_name, replica_server_name ORDER BY collection_time DESC
+                        ) AS rn
+                    FROM collect.ag_replica_states
+                    WHERE server_id = {{ _sid }}
+                      AND collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '1 hour'
+                )
+                SELECT COUNT(*) AS failover_count
+                FROM ranked
+                WHERE rn = 1
+                  AND role_desc IS NOT NULL AND role_desc <> ''
+                  AND prev_role_desc IS NOT NULL AND prev_role_desc <> ''
+                  AND role_desc <> prev_role_desc
+              refId: A
+          - refId: C
+            datasourceUid: "-100"
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 1
+                    type: gte
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - A
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: "-100"
+              expression: A
+              refId: C
+              type: threshold
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels:
+          team: perfmon
+          instance: "{{ item.inventory_hostname }}"
+        annotations:
+          summary: >
+            An Availability Group replica role changed on {{ item.inventory_hostname }} -
+            check for a failover in progress.
+
+  # -----------------------------------------------------------------------
+  # AG Replica Disconnected
+  # Upstream: AgAlertPolicy.DecideConnection / IsDisconnected
+  # Fires while the latest connected_state_desc is DISCONNECTED. The resolved notification
+  # covers upstream's separate "AG Replica Reconnected" metric.
+  # Source: PerformanceMonitor.Common/AgAlertPolicy.cs
+  # Source table: collect.ag_replica_states
+  # -----------------------------------------------------------------------
+  - orgId: 1
+    name: "PerfMon (Darling) - AG Replica Disconnected"
+    folder: "{{ grafana_darling_folder }}"
+    interval: 1m
+    rules:
+      - uid: "{{ 'darling-ag-disconnected-' | darling_alert_uid(item.inventory_hostname) }}"
+        title: "AG Replica Disconnected - {{ item.inventory_hostname }}"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: "{{ perfmon_darling_ds_uid }}"
+            model:
+              datasource:
+                type: grafana-postgresql-datasource
+                uid: "{{ perfmon_darling_ds_uid }}"
+              format: table
+              rawQuery: true
+              rawSql: >
+                SELECT COUNT(*) AS disconnected_count
+                FROM (
+                    SELECT DISTINCT ON (ag_name, replica_server_name)
+                        connected_state_desc
+                    FROM collect.ag_replica_states
+                    WHERE server_id = {{ _sid }}
+                      AND collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '1 hour'
+                    ORDER BY ag_name, replica_server_name, collection_time DESC
+                ) latest
+                WHERE UPPER(latest.connected_state_desc) = 'DISCONNECTED'
+              refId: A
+          - refId: C
+            datasourceUid: "-100"
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 1
+                    type: gte
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - A
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: "-100"
+              expression: A
+              refId: C
+              type: threshold
+        noDataState: OK
+        execErrState: Error
+        for: 1m
+        labels:
+          team: perfmon
+          instance: "{{ item.inventory_hostname }}"
+        annotations:
+          summary: >
+            An Availability Group replica reported by {{ item.inventory_hostname }} is
+            DISCONNECTED from its primary.
+
+  # -----------------------------------------------------------------------
+  # AG Database Suspended
+  # Upstream: AgAlertPolicy.DecideSuspension / DatabaseSuspendedMetric
+  # Fires while the latest is_suspended reading is true.
+  # Source: PerformanceMonitor.Common/AgAlertPolicy.cs
+  # Source table: collect.ag_database_replica_states
+  # -----------------------------------------------------------------------
+  - orgId: 1
+    name: "PerfMon (Darling) - AG Database Suspended"
+    folder: "{{ grafana_darling_folder }}"
+    interval: 1m
+    rules:
+      - uid: "{{ 'darling-ag-suspended-' | darling_alert_uid(item.inventory_hostname) }}"
+        title: "AG Database Suspended - {{ item.inventory_hostname }}"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: "{{ perfmon_darling_ds_uid }}"
+            model:
+              datasource:
+                type: grafana-postgresql-datasource
+                uid: "{{ perfmon_darling_ds_uid }}"
+              format: table
+              rawQuery: true
+              rawSql: >
+                SELECT COUNT(*) AS suspended_count
+                FROM (
+                    SELECT DISTINCT ON (ag_name, database_name, replica_server_name)
+                        is_suspended
+                    FROM collect.ag_database_replica_states
+                    WHERE server_id = {{ _sid }}
+                      AND collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '1 hour'
+                    ORDER BY ag_name, database_name, replica_server_name, collection_time DESC
+                ) latest
+                WHERE latest.is_suspended = true
+              refId: A
+          - refId: C
+            datasourceUid: "-100"
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 1
+                    type: gte
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - A
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: "-100"
+              expression: A
+              refId: C
+              type: threshold
+        noDataState: OK
+        execErrState: Error
+        for: 1m
+        labels:
+          team: perfmon
+          instance: "{{ item.inventory_hostname }}"
+        annotations:
+          summary: >
+            Data movement for an Availability Group database reported by
+            {{ item.inventory_hostname }} is suspended.
+
+  # -----------------------------------------------------------------------
+  # AG Sync Fell Behind
+  # Upstream: AgAlertPolicy.JudgeSync / SyncFellBehindMetric
+  # Fires when lag or redo queue crosses its threshold (0 disables a check; default: lag on
+  # at 300s, redo queue off).
+  # Source: PerformanceMonitor.Common/AgAlertPolicy.cs
+  # Source table: collect.ag_database_replica_states
+  # -----------------------------------------------------------------------
+  - orgId: 1
+    name: "PerfMon (Darling) - AG Sync Fell Behind"
+    folder: "{{ grafana_darling_folder }}"
+    interval: 1m
+    rules:
+      - uid: "{{ 'darling-ag-sync-behind-' | darling_alert_uid(item.inventory_hostname) }}"
+        title: "AG Sync Fell Behind - {{ item.inventory_hostname }}"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: "{{ perfmon_darling_ds_uid }}"
+            model:
+              datasource:
+                type: grafana-postgresql-datasource
+                uid: "{{ perfmon_darling_ds_uid }}"
+              format: table
+              rawQuery: true
+              rawSql: >
+                SELECT COUNT(*) AS sync_behind_count
+                FROM (
+                    SELECT DISTINCT ON (ag_name, database_name, replica_server_name)
+                        secondary_lag_seconds, redo_queue_size
+                    FROM collect.ag_database_replica_states
+                    WHERE server_id = {{ _sid }}
+                      AND collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '1 hour'
+                    ORDER BY ag_name, database_name, replica_server_name, collection_time DESC
+                ) latest
+                WHERE {{ _ag_sync_where }}
+              refId: A
+          - refId: C
+            datasourceUid: "-100"
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 1
+                    type: gte
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - A
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: "-100"
+              expression: A
+              refId: C
+              type: threshold
+        noDataState: OK
+        execErrState: Error
+        for: 1m
+        labels:
+          team: perfmon
+          instance: "{{ item.inventory_hostname }}"
+        annotations:
+          summary: >
+            An Availability Group database reported by {{ item.inventory_hostname }} has
+            fallen behind sync (lag >= {{ perfmon_alert_ag_lag_seconds }}s{% if perfmon_alert_ag_redo_queue_kb | int > 0 %} or redo queue >= {{ perfmon_alert_ag_redo_queue_kb }} KB{% endif %}).

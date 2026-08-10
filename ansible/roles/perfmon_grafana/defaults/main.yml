@@ -23,6 +23,8 @@ perfmon_alert_poison_wait_floor_ms: 500
 perfmon_alert_long_running_job_multiplier: 3
 perfmon_alert_failed_job_lookback_min: 60
 perfmon_alert_collection_stale_min: 30
+perfmon_alert_ag_lag_seconds: 300
+perfmon_alert_ag_redo_queue_kb: 0
 
 # Expects perfmon- prefix
 perfmon_alert_mute_timings: []
