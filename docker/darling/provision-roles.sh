@@ -1,7 +1,5 @@
 #!/bin/sh
-# Creates the least-privilege admin/viewer roles Grafana connects as. Demo-stack only:
-# a real store is owned by its operator, and the Ansible role never does this.
-# Fetched from the upstream tag rather than vendored so it cannot drift.
+# Creates the least-privilege admin/viewer roles Grafana connects as.
 set -eu
 
 : "${PERFMON_VERSION:?must be set}"

@@ -1,7 +1,6 @@
 #!/bin/sh
 # Enables collectors that default OFF fleet-wide with no config.config_collector_schedules
-# row (e.g. long_query_completions - see darling_defs/queries.py's _TRACE_STATUS_SQL). Demo
-# stack only: ideally store's schedules are managed through the Viewer/API command plane.
+# row (e.g. long_query_completions - see darling_defs/queries.py's _TRACE_STATUS_SQL).
 set -eu
 
 : "${DARLING_PG_PASSWORD:?must be set}"

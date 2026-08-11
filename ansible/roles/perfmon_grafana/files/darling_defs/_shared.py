@@ -310,6 +310,17 @@ def time_bucket(interval: str, col: str = "collection_time") -> str:
 _SHOWPLAN_NS = "http://schemas.microsoft.com/sqlserver/2004/07/showplan"
 
 
+def gunzip_expr(bytea_col: str) -> str:
+    """Decompress a gzip bytea column via the darling_gunzip() UDF.
+
+    query_plan_gz holds plan XML the collector has stored gzip-compressed since it started
+    leaving query_plan_xml NULL on new rows. darling_gunzip() is a plpython3u function that
+    must be provisioned on the store separately, these panels return nothing for recent
+    plans until it exists. Upstream tracking issue: #2071
+    """
+    return f"public.darling_gunzip({bytea_col})"
+
+
 def plan_parameters_sql(plan_source_sql: str) -> str:
     """Compile-time parameter values parsed out of a stored plan XML."""
     return f"""

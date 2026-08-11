@@ -75,6 +75,9 @@ collecting, and you have an existing Grafana deployment.
   `viewer` role.
 - Grafana with Unified Alerting enabled (`GF_UNIFIED_ALERTING_ENABLED=true`), if you want alert
   rules too.
+- Optional, for Plan XML panels: `plpython3u` and a `public.darling_gunzip(bytea) RETURNS
+  text` function on the store (temporary workaround until we have an upstream fix, tracked
+  [here](https://github.com/erikdarlingdata/PerformanceMonitor/issues/2071)).
 
 ### Step 1: Add the Grafana datasource
 
@@ -137,6 +140,8 @@ the Grafana datasource, dashboards, and alert rules.
   not install the service binary.
 - The store's least-privilege Postgres roles provisioned - see
   `Darling/tools/provision-roles.sql` in the upstream project.
+- Optional, for Plan XML panels: `plpython3u` and a `public.darling_gunzip(bytea) RETURNS
+  text` function on the store.
 - Grafana instance (self-hosted or cloud; the API must be reachable from the Ansible control node)
   with Unified Alerting enabled.
 - `grafana_api_key`: a Grafana service account token with Admin role. Set via vault or group vars.
