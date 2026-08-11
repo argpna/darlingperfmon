@@ -40,7 +40,15 @@ jobs:
       - name: Start stack with darling profile
         run: |
           cp .env.example .env
-          docker compose --profile darling up -d --scale ansible-runner=0 --wait
+          docker compose --profile darling up -d --wait \
+            --scale ansible-runner=0 \
+            --scale darling-provision=0 \
+            --scale darling-collector-config=0 \
+            --scale darling-plan-gunzip=0
+      - name: Run one-shot store setup jobs
+        run: |
+          docker compose --profile darling up -d \
+            darling-provision darling-collector-config darling-plan-gunzip
       - name: Verify the perfmon_darling collector role
         run: |
           docker compose run --rm ansible-runner \
@@ -55,6 +63,11 @@ jobs:
         run: |
           rc=$(docker wait perfmon-darling-collector-config)
           docker logs perfmon-darling-collector-config 2>&1 | tail -40
+          exit "$rc"
+      - name: Wait for plan-gunzip provisioning
+        run: |
+          rc=$(docker wait perfmon-darling-plan-gunzip)
+          docker logs perfmon-darling-plan-gunzip 2>&1 | tail -40
           exit "$rc"
       - name: Deploy Grafana dashboards
         run: |
@@ -79,4 +92,5 @@ jobs:
         run: |
           docker compose --profile darling ps -a
           docker compose --profile darling logs --tail 100 \
-            darling darling-provision darling-collector-config grafana mssql-2022 mssql-2025
+            darling darling-provision darling-collector-config darling-plan-gunzip \
+            grafana mssql-2022 mssql-2025
