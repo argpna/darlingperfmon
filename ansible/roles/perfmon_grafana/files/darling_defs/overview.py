@@ -27,7 +27,6 @@ from ._shared import (
     server_join,
     server_var,
     series_style,
-    stat,
     stat_grid,
     status_colors,
     status_history,

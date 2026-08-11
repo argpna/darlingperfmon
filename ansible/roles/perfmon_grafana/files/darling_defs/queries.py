@@ -33,7 +33,6 @@ from ._shared import (
     server_var,
     SERVER_REGISTRY,
     single_query_var,
-    stat,
     stat_grid,
     status_colors,
     subtab,
