@@ -45,7 +45,7 @@
   no_log: true
   tags: teardown_alerting
 
-- name: Get provisioned alert rules in perfmon folder
+- name: Get provisioned alert rules in Darling folder
   ansible.builtin.uri:
     url: "{{ grafana_url }}/api/v1/provisioning/alert-rules"
     method: GET
@@ -57,10 +57,10 @@
   no_log: true
   tags: teardown_alerting
 
-- name: Remove alert rule groups in perfmon folder
+- name: Remove alert rule groups in Darling folder
   ansible.builtin.uri:
     url: >-
-      {{ grafana_url }}/api/v1/provisioning/folder/{{ grafana_folder_uid
+      {{ grafana_url }}/api/v1/provisioning/folder/{{ grafana_darling_folder_uid
       }}/rule-groups/{{ item | urlencode }}
     method: DELETE
     headers:
@@ -68,7 +68,7 @@
     status_code: [200, 202, 204, 404]
   loop: >-
     {{ _teardown_alert_rules.json
-       | selectattr('folderUID', 'equalto', grafana_folder_uid)
+       | selectattr('folderUID', 'equalto', grafana_darling_folder_uid)
        | map(attribute='ruleGroup')
        | unique | list }}
   loop_control:
@@ -93,27 +93,23 @@
   no_log: true
   tags: teardown_alerting
 
-- name: Remove datasources
+- name: Remove Darling datasource
   ansible.builtin.uri:
-    url: "{{ grafana_url }}/api/datasources/uid/{{ perfmon_ds_uid_prefix }}-{{ item.inventory_hostname }}"
+    url: "{{ grafana_url }}/api/datasources/uid/{{ perfmon_darling_ds_uid }}"
     method: DELETE
     headers:
       Authorization: "Bearer {{ grafana_api_key }}"
     status_code: [200, 204, 404]
-  loop: "{{ perfmon_instances }}"
-  loop_control:
-    label: "{{ item.inventory_hostname }}"
-  changed_when: false
   delegate_to: localhost
   no_log: true
   tags: teardown_datasources
 
-- name: Remove PerformanceMonitor folder and all dashboards
+- name: Remove Darling folder and all dashboards
   community.grafana.grafana_folder:
     grafana_url: "{{ grafana_url }}"
     grafana_api_key: "{{ grafana_api_key }}"
-    title: "{{ grafana_folder }}"
-    uid: "{{ grafana_folder_uid }}"
+    title: "{{ grafana_darling_folder }}"
+    uid: "{{ grafana_darling_folder_uid }}"
     state: absent
   delegate_to: localhost
   no_log: true

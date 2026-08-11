@@ -1,0 +1,6 @@
+---
+- name: Restart darling
+  ansible.builtin.service:
+    name: "{{ perfmon_darling_service_name }}"
+    state: restarted
+  when: perfmon_darling_manage_service | bool

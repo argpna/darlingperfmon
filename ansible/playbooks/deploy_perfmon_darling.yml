@@ -1,0 +1,6 @@
+---
+- name: Configure the Darling collector service
+  hosts: darling
+  gather_facts: false
+  roles:
+    - perfmon_darling

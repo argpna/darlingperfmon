@@ -8,35 +8,10 @@ echo "Bootstrapping Grafana API key..."
 GRAFANA_API_KEY=$(/workspace/bootstrap/setup-grafana-api-key.sh)
 export GRAFANA_API_KEY
 
-# the ad test instance is detected by its network alias; and host lives
-# in the docker-ad overlay inventory, added only when the ad profile is
-# running so the default stack stays ad-free
-INVENTORY_ARGS=(-i /workspace/ansible/inventory/docker)
-if timeout 2 getent ahostsv4 "mssql-ad.${AD_DOMAIN:?}" >/dev/null 2>&1; then
-  echo "AD instance detected; waiting for kerberos bootstrap..."
-  _ad_ready=""
-  for _ in $(seq 1 120); do
-    if sqlcmd -S "mssql-ad.${AD_DOMAIN:?}" -U sa -P "$MSSQL_SA_PASSWORD" -C -b -h -1 \
-        -Q "SET NOCOUNT ON; SELECT IS_SRVROLEMEMBER(N'sysadmin', N'${AD_NETBIOS:?}\\sqladmin');" 2>/dev/null \
-        | grep -q '^ *1'; then
-      _ad_ready=1
-      break
-    fi
-    sleep 5
-  done
-  if [ -z "$_ad_ready" ]; then
-    echo "AD instance never finished its kerberos bootstrap; check perfmon-mssql-ad logs" >&2
-    exit 1
-  fi
-  INVENTORY_ARGS+=(-i /workspace/ansible/inventory/docker-ad)
-else
-  echo "AD profile not running; skipping host sqlad. Enable if needed with: docker compose --profile ad up -d"
-fi
-
 if [ "$#" -gt 0 ]; then
   exec "$@"
 fi
 
 exec ansible-playbook \
-  "${INVENTORY_ARGS[@]}" \
+  -i /workspace/ansible/inventory/docker \
   /workspace/ansible/playbooks/main.yml

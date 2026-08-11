@@ -1,0 +1,229 @@
+{
+  "uid": "darling-finops-recommendations",
+  "title": "FinOps (Darling) - Recommendations",
+  "tags": [
+    "finops-darling"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "refresh": "15m",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "finops-darling"
+      ],
+      "targetBlank": false,
+      "title": "All FinOps (Darling) Dashboards",
+      "type": "dashboards",
+      "url": ""
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon-darling"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon (Darling) Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Cost-Saving Recommendations",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Severity"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "High": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "Medium": {
+                        "color": "yellow",
+                        "index": 1
+                      },
+                      "Low": {
+                        "color": "green",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Confidence"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "High": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "Medium": {
+                        "color": "yellow",
+                        "index": 1
+                      },
+                      "Low": {
+                        "color": "text",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Est. Savings ($/mo)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH \nfacts AS (\n    /* RecommendationsEditionFactsSql. license_cpu_count is the raw logical count the audit\n       prices, NOT the vCore-aware cpu_count the right-sizing checks use. */\n    SELECT DISTINCT ON (server_id)\n           server_id,\n           COALESCE(edition, '') AS edition,\n           COALESCE(split_part(product_version, '.', 1)::int, 0) AS major_version,\n           COALESCE(cpu_count, 0) AS license_cpu_count,\n           COALESCE(NULLIF(trim(ag_replica_role), ''), 'Standalone') AS ag_role,\n           COALESCE(is_hadr_enabled, false) AS is_hadr_enabled,\n           COALESCE(vcore_count, cpu_count, 0) AS cpu_count\n    FROM collect.server_properties\n    WHERE server_id IN (${server:csv})\n    ORDER BY server_id, collection_time DESC\n),\nutil AS (\n    /* GetUtilizationEfficiencyAsync's 24h CPU aggregate. */\n    SELECT server_id,\n           AVG(sqlserver_cpu_utilization::numeric) AS avg_cpu_pct,\n           MAX(sqlserver_cpu_utilization) AS max_cpu_pct,\n           PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY sqlserver_cpu_utilization)::numeric\n               AS p95_cpu_pct\n    FROM collect.v_cpu_utilization_stats\n    WHERE server_id IN (${server:csv}) AND collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '24 hours'\n    GROUP BY server_id\n),\nphys AS (\n    SELECT DISTINCT ON (server_id)\n           server_id, COALESCE(total_physical_memory_mb, 0)::int AS physical_memory_mb\n    FROM collect.v_memory_stats\n    WHERE server_id IN (${server:csv})\n    ORDER BY server_id, collection_time DESC\n),\nmem7 AS (\n    /* RecommendationsMemoryP95Sql. */\n    SELECT server_id,\n           PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY total_server_memory_mb)::int\n               AS p95_mb,\n           COUNT(*) AS sample_count\n    FROM collect.v_memory_stats\n    WHERE server_id IN (${server:csv}) AND collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '7 days'\n    GROUP BY server_id\n),\ncpu7 AS (\n    /* RecommendationsCpuP95Sql plus RecommendationsReservedCapacitySql's mean/stddev. */\n    SELECT server_id,\n           PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY sqlserver_cpu_utilization)::numeric\n               AS p95_cpu,\n           AVG(sqlserver_cpu_utilization)::numeric AS avg_cpu,\n           STDDEV(sqlserver_cpu_utilization)::numeric AS stddev_cpu,\n           COUNT(*) AS sample_count\n    FROM collect.v_cpu_utilization_stats\n    WHERE server_id IN (${server:csv}) AND collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '7 days'\n    GROUP BY server_id\n),\ndb_config AS (\n    /* Latest database-config snapshot. The timestamp column here is capture_time. */\n    SELECT c.*\n    FROM collect.v_database_config AS c\n    WHERE c.server_id IN (${server:csv})\n      AND (c.server_id, c.capture_time) IN (\n          SELECT server_id, MAX(capture_time) FROM collect.v_database_config\n          WHERE server_id IN (${server:csv}) GROUP BY server_id)\n),\ntde AS (\n    /* SelectTdeDatabaseNames - is_encrypted marks a TDE database. */\n    SELECT server_id, array_agg(database_name ORDER BY lower(database_name)) AS names\n    FROM db_config AS c\n    WHERE COALESCE(c.is_encrypted, false)\n      AND upper(COALESCE(c.state_desc, '')) = 'ONLINE'\n      AND c.database_name NOT IN ('master', 'model', 'msdb', 'tempdb')\n    GROUP BY server_id\n),\ndevtest AS (\n    /* MatchDevTestDatabases. */\n    SELECT server_id, array_agg(database_name) AS names\n    FROM db_config AS c\n    WHERE c.database_name NOT IN ('master', 'model', 'msdb', 'tempdb')\n      AND (c.database_name ILIKE '%dev%' OR c.database_name ILIKE '%test%' OR c.database_name ILIKE '%staging%' OR c.database_name ILIKE '%qa%')\n    GROUP BY server_id\n),\nidle AS (SELECT * FROM (\nWITH db_sizes AS (\n    SELECT server_id, database_name,\n           SUM(total_size_mb) AS total_size_mb\n    FROM collect.v_database_size_stats\n    WHERE server_id IN (${server:csv}) AND (server_id, collection_time) IN (SELECT server_id, MAX(collection_time) FROM collect.v_database_size_stats WHERE server_id IN (${server:csv}) GROUP BY server_id)\n    GROUP BY server_id, database_name\n),\ndb_activity AS (\n    SELECT server_id, database_name,\n           SUM(execution_count_sum) AS total_executions\n    FROM collect.query_stats_db_hourly\n    WHERE server_id IN (${server:csv})\n      AND bucket >= (now() AT TIME ZONE 'UTC') - INTERVAL '7 days'\n      AND execution_count_sum IS NOT NULL\n    GROUP BY server_id, database_name\n),\nidle_dbs AS (\n    SELECT ds.server_id, ds.database_name, ds.total_size_mb\n    FROM db_sizes ds\n    LEFT JOIN db_activity a\n           ON a.server_id = ds.server_id AND a.database_name = ds.database_name\n    WHERE COALESCE(a.total_executions, 0) = 0\n      AND ds.database_name NOT IN ('master', 'model', 'msdb', 'tempdb', 'PerformanceMonitor')\n)\nSELECT server_id,\n       COUNT(*) AS idle_count,\n       SUM(total_size_mb) AS idle_size_mb,\n       array_agg(database_name ORDER BY total_size_mb DESC) AS idle_names\nFROM idle_dbs\nGROUP BY server_id\n) AS hourly_tier WHERE COALESCE((SELECT min(bucket) FROM collect.query_stats_db_hourly) <= (now() AT TIME ZONE 'UTC') - INTERVAL '7 days', false)\nUNION ALL\nSELECT * FROM (\nWITH db_sizes AS (\n    SELECT server_id, database_name,\n           SUM(total_size_mb) AS total_size_mb\n    FROM collect.v_database_size_stats\n    WHERE server_id IN (${server:csv}) AND (server_id, collection_time) IN (SELECT server_id, MAX(collection_time) FROM collect.v_database_size_stats WHERE server_id IN (${server:csv}) GROUP BY server_id)\n    GROUP BY server_id, database_name\n),\ndb_activity AS (\n    SELECT server_id, database_name,\n           SUM(delta_execution_count) AS total_executions\n    FROM collect.v_query_stats\n    WHERE server_id IN (${server:csv})\n      AND collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '7 days'\n      AND delta_execution_count IS NOT NULL\n    GROUP BY server_id, database_name\n),\nidle_dbs AS (\n    SELECT ds.server_id, ds.database_name, ds.total_size_mb\n    FROM db_sizes ds\n    LEFT JOIN db_activity a\n           ON a.server_id = ds.server_id AND a.database_name = ds.database_name\n    WHERE COALESCE(a.total_executions, 0) = 0\n      AND ds.database_name NOT IN ('master', 'model', 'msdb', 'tempdb', 'PerformanceMonitor')\n)\nSELECT server_id,\n       COUNT(*) AS idle_count,\n       SUM(total_size_mb) AS idle_size_mb,\n       array_agg(database_name ORDER BY total_size_mb DESC) AS idle_names\nFROM idle_dbs\nGROUP BY server_id\n) AS raw_tier WHERE NOT COALESCE((SELECT min(bucket) FROM collect.query_stats_db_hourly) <= (now() AT TIME ZONE 'UTC') - INTERVAL '7 days', false)),\nsize_totals AS (\n    SELECT server_id, SUM(total_size_mb) AS total_mb\n    FROM collect.v_database_size_stats\n    WHERE server_id IN (${server:csv})\n      AND (server_id, collection_time) IN (\n          SELECT server_id, MAX(collection_time) FROM collect.v_database_size_stats\n          WHERE server_id IN (${server:csv}) GROUP BY server_id)\n    GROUP BY server_id\n),\ncompress AS (\n    /* BuildCompressionRecommendation over GetIndexCleanupInputsAsync' snapshot.\n       data_compression_desc = 'NONE' also excludes columnstore. */\n    SELECT server_id,\n           COUNT(*) AS candidate_count,\n           SUM(reserved_mb) / 1024.0 AS total_gb,\n           array_agg(schema_name || '.' || table_name || ' ('\n                     || to_char(round((reserved_mb / 1024.0)::numeric, 1), 'FM999999990.0') || 'GB)'\n                     ORDER BY reserved_mb DESC) AS items\n    FROM (\n        SELECT DISTINCT ON (server_id, database_id, object_id, index_id)\n               server_id, schema_name, table_name, reserved_mb, data_compression_desc\n        FROM collect.v_index_object_stats\n        WHERE server_id IN (${server:csv})\n        ORDER BY server_id, database_id, object_id, index_id, collection_time DESC\n    ) latest_ix\n    WHERE upper(COALESCE(data_compression_desc, '')) = 'NONE'\n      AND COALESCE(reserved_mb, 0) >= 1024\n    GROUP BY server_id\n),\njobs AS (\n    /* RecommendationsMaintenanceWindowSql. */\n    SELECT server_id,\n           job_name,\n           AVG(current_duration_seconds)::bigint AS avg_duration_seconds,\n           MAX(current_duration_seconds)::bigint AS max_duration_seconds,\n           AVG(avg_duration_seconds)::bigint AS avg_historical,\n           SUM(CASE WHEN is_running_long THEN 1 ELSE 0 END) AS times_ran_long\n    FROM collect.v_running_jobs\n    WHERE server_id IN (${server:csv})\n      AND collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '7 days'\n      AND avg_duration_seconds > 0\n    GROUP BY server_id, job_name\n    HAVING SUM(CASE WHEN is_running_long THEN 1 ELSE 0 END) >= 3\n),\nio7 AS (\n    /* RecommendationsStorageTierSql, with its per-database latency test applied. */\n    SELECT server_id, database_name,\n           SUM(delta_stall_read_ms)::numeric / NULLIF(SUM(delta_reads), 0) AS avg_read_ms,\n           SUM(delta_stall_write_ms)::numeric / NULLIF(SUM(delta_writes), 0) AS avg_write_ms\n    FROM collect.v_file_io_stats\n    WHERE server_id IN (${server:csv}) AND collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '7 days' AND delta_reads > 0\n    GROUP BY server_id, database_name\n    HAVING SUM(delta_reads) > 1000\n),\nlow_latency AS (\n    SELECT server_id,\n           COUNT(*) AS db_count,\n           array_agg(database_name || ' (read ' || to_char(round((avg_read_ms)::numeric, 1), 'FM999999990.0')\n                     || 'ms, write ' || to_char(round((COALESCE(avg_write_ms, 0))::numeric, 1), 'FM999999990.0') || 'ms)'\n                     ORDER BY database_name) AS items\n    FROM io7\n    WHERE avg_read_ms < 5 AND COALESCE(avg_write_ms, 0) < 3\n    GROUP BY server_id\n),\nbudget AS (\n    SELECT server_id, COALESCE(monthly_cost_usd, 0)::numeric AS monthly_cost\n    FROM config.config_monitored_servers\n    WHERE server_id IN (${server:csv})\n),\nserver_facts AS (\n    SELECT f.*,\n           COALESCE(b.monthly_cost, 0) AS monthly_cost,\n           u.avg_cpu_pct, u.max_cpu_pct, u.p95_cpu_pct,\n           p.physical_memory_mb,\n           m.p95_mb AS mem_p95_mb, COALESCE(m.sample_count, 0) AS mem_sample_count,\n           /* VM right-sizing prefers the 7-day P95, falling back to the 24h one. */\n           COALESCE(c7.p95_cpu, u.p95_cpu_pct) AS p95_cpu_7d,\n           c7.avg_cpu AS avg_cpu_7d, c7.stddev_cpu, COALESCE(c7.sample_count, 0) AS cpu_samples_7d,\n           t.names AS tde_names,\n           d.names AS devtest_names,\n           i.idle_count, i.idle_size_mb, i.idle_names,\n           st.total_mb AS total_size_mb,\n           cp.candidate_count AS compress_count, cp.total_gb AS compress_gb,\n           cp.items AS compress_items,\n           ll.db_count AS low_latency_count, ll.items AS low_latency_items\n    FROM facts f\n    LEFT JOIN budget b ON b.server_id = f.server_id\n    LEFT JOIN util u ON u.server_id = f.server_id\n    LEFT JOIN phys p ON p.server_id = f.server_id\n    LEFT JOIN mem7 m ON m.server_id = f.server_id\n    LEFT JOIN cpu7 c7 ON c7.server_id = f.server_id\n    LEFT JOIN tde t ON t.server_id = f.server_id\n    LEFT JOIN devtest d ON d.server_id = f.server_id\n    LEFT JOIN idle i ON i.server_id = f.server_id\n    LEFT JOIN size_totals st ON st.server_id = f.server_id\n    LEFT JOIN compress cp ON cp.server_id = f.server_id\n    LEFT JOIN low_latency ll ON ll.server_id = f.server_id\n),\nfindings AS (\nSELECT s.server_id, 'Licensing' AS category, 'Low' AS severity, 'High' AS confidence,\n       'Enterprise Edition - Availability Group secondary replica' AS finding,\n       'This instance is currently a secondary replica in an Availability Group. Every '\n       || 'replica in an AG must run the same SQL Server edition, so edition and licensing '\n       || 'decisions apply to the whole group and should be evaluated on the primary '\n       || 'replica. A secondary used only for failover may also be covered by Software '\n       || 'Assurance rather than separately licensed.' AS detail,\n       NULL::numeric AS est_savings\nFROM server_facts s\nWHERE s.edition ILIKE '%Enterprise%' AND lower(s.ag_role) = 'secondary'\nUNION ALL\nSELECT s.server_id, 'Licensing', 'High',\n       CASE WHEN (NOT lower(s.ag_role) = 'secondary' AND lower(s.ag_role) = 'primary' AND s.is_hadr_enabled) THEN 'Low' ELSE 'Medium' END,\n       'Enterprise Edition may not be required',\n       'Starting with SQL Server 2019, most previously Enterprise-only features (including '\n       || 'TDE, compression, partitioning, and columnstore) are available in Standard '\n       || 'Edition. Review whether remaining Enterprise-only features (such as Always On '\n       || 'availability groups with multiple secondaries) are in use before considering a '\n       || 'downgrade to Standard Edition.' || CASE WHEN (NOT lower(s.ag_role) = 'secondary' AND lower(s.ag_role) = 'primary' AND s.is_hadr_enabled) THEN\n        ' Note: this instance is the primary replica of an Always On Availability Group.'\n        || ' Standard Edition supports only Basic Availability Groups, which are limited to'\n        || ' two replicas, a single database per group, and provide no readable secondary or'\n        || ' backups on the secondary (see https://learn.microsoft.com/en-us/sql/'\n        || 'database-engine/availability-groups/windows/basic-availability-groups-always-on-'\n        || 'availability-groups#limitations). Factor this into any downgrade decision.'\n    ELSE '' END,\n       CASE WHEN s.monthly_cost > 0\n            THEN s.monthly_cost * 0.40 END\nFROM server_facts s\nWHERE s.edition ILIKE '%Enterprise%' AND NOT lower(s.ag_role) = 'secondary' AND s.major_version >= 15\nUNION ALL\nSELECT s.server_id, 'Licensing', 'High',\n       CASE WHEN (NOT lower(s.ag_role) = 'secondary' AND lower(s.ag_role) = 'primary' AND s.is_hadr_enabled) THEN 'Medium' ELSE 'High' END,\n       CASE WHEN (NOT lower(s.ag_role) = 'secondary' AND lower(s.ag_role) = 'primary' AND s.is_hadr_enabled)\n            THEN 'Enterprise Edition - review Availability Group requirements before '\n                 || 'downgrading'\n            ELSE 'Enterprise Edition with no Enterprise-only features detected' END,\n       'No databases use Transparent Data Encryption (TDE), the only feature still '\n       || 'restricted to Enterprise Edition since SQL Server 2016 SP1. Review whether '\n       || 'Standard Edition would meet workload requirements for potential license savings.'\n       || CASE WHEN (NOT lower(s.ag_role) = 'secondary' AND lower(s.ag_role) = 'primary' AND s.is_hadr_enabled) THEN\n        ' Note: this instance is the primary replica of an Always On Availability Group.'\n        || ' Standard Edition supports only Basic Availability Groups, which are limited to'\n        || ' two replicas, a single database per group, and provide no readable secondary or'\n        || ' backups on the secondary (see https://learn.microsoft.com/en-us/sql/'\n        || 'database-engine/availability-groups/windows/basic-availability-groups-always-on-'\n        || 'availability-groups#limitations). Factor this into any downgrade decision.'\n    ELSE '' END,\n       CASE WHEN s.monthly_cost > 0\n            THEN s.monthly_cost * 0.40 END\nFROM server_facts s\nWHERE s.edition ILIKE '%Enterprise%' AND NOT lower(s.ag_role) = 'secondary' AND s.major_version < 15\n  AND COALESCE(array_length(s.tde_names, 1), 0) = 0\nUNION ALL\nSELECT s.server_id, 'Licensing', 'Low', 'High',\n       'TDE in use - Enterprise Edition downgrade blocker',\n       'The following databases use Transparent Data Encryption: '\n       || array_to_string(s.tde_names[1:20], ', ') || CASE WHEN COALESCE(array_length(s.tde_names, 1), 0) > 20 THEN ' and ' || (array_length(s.tde_names, 1) - 20) || ' more' ELSE '' END\n       || '. TDE must be removed before downgrading to Standard Edition.',\n       NULL::numeric\nFROM server_facts s\nWHERE s.edition ILIKE '%Enterprise%' AND NOT lower(s.ag_role) = 'secondary' AND s.major_version < 15\n  AND COALESCE(array_length(s.tde_names, 1), 0) > 0\nUNION ALL\nSELECT s.server_id, 'Licensing', 'Low', 'Low',\n       'Enterprise to Standard would save ~$'\n       || to_char(s.license_cpu_count * 5000 / 12.0, 'FM999,999,999,990')\n       || '/mo at list pricing (' || s.license_cpu_count || ' cores)',\n       'Based on list pricing differential of ~$5000/core/year '\n       || 'between Enterprise and Standard. Actual savings depend on your licensing '\n       || 'agreement. See Enterprise feature audit for downgrade blockers.',\n       s.license_cpu_count * 5000 / 12.0\nFROM server_facts s\nWHERE s.edition ILIKE '%Enterprise%' AND NOT lower(s.ag_role) = 'secondary' AND s.major_version < 15\n  AND COALESCE(array_length(s.tde_names, 1), 0) > 0 AND s.license_cpu_count > 0\nUNION ALL\nSELECT t.server_id, 'Compute',\n       CASE WHEN t.p95_cpu_pct < 15 THEN 'High' ELSE 'Medium' END, 'Medium',\n       'CPU over-provisioned (' || t.cpu_count || ' cores, P95 = '\n       || to_char(round((t.p95_cpu_pct)::numeric, 1), 'FM999999990.0') || '%)',\n       'P95 CPU utilization is ' || to_char(round((t.p95_cpu_pct)::numeric, 1), 'FM999999990.0') || '% (avg '\n       || to_char(round((t.avg_cpu_pct)::numeric, 1), 'FM999999990.0') || '%, max ' || t.max_cpu_pct || '%) across '\n       || t.cpu_count || ' cores. Consider reducing to ~' || t.target_cores || ' cores.',\n       CASE WHEN t.monthly_cost > 0\n            THEN t.monthly_cost * (1 - t.target_cores::numeric / t.cpu_count) * 0.60 END\nFROM (\n    SELECT s.*,\n           GREATEST(4, trunc(s.cpu_count * (s.p95_cpu_pct / 70.0))::int) AS target_cores\n    FROM server_facts s\n    WHERE s.p95_cpu_pct < 30 AND s.cpu_count > 4\n) t\nUNION ALL\nSELECT t.server_id, 'Memory',\n       CASE WHEN t.mem_ratio < 0.30 THEN 'High' ELSE 'Medium' END, 'Medium',\n       'Memory over-provisioned (P95 SQL memory uses ' || to_char(round(((t.mem_ratio) * 100)::numeric, 0), 'FM999999990') || '%' || ' of '\n       || (t.physical_memory_mb / 1024) || 'GB RAM)',\n       'P95 SQL Server memory over 7 days is ' || to_char(t.mem_p95_mb, 'FM999,999,999,990')\n       || ' MB out of ' || to_char(t.physical_memory_mb, 'FM999,999,999,990') || ' MB physical RAM ('\n       || to_char(round(((t.mem_ratio) * 100)::numeric, 0), 'FM999999990') || '%' || ' utilization). Consider reducing to ~'\n       || (t.target_mb / 1024) || 'GB.',\n       CASE WHEN t.monthly_cost > 0\n            THEN t.monthly_cost\n                 * (1 - t.target_mb::numeric / t.physical_memory_mb) * 0.30 END\nFROM (\n    SELECT s.*,\n           s.mem_p95_mb::numeric / s.physical_memory_mb AS mem_ratio,\n           GREATEST(8192, s.mem_p95_mb * 2) AS target_mb\n    FROM server_facts s\n    WHERE s.physical_memory_mb > 8192\n      AND s.mem_sample_count >= 16\n) t\nWHERE t.mem_ratio < 0.50\nUNION ALL\nSELECT s.server_id, 'Storage',\n       CASE WHEN s.compress_gb > 50 THEN 'High'\n            WHEN s.compress_gb > 10 THEN 'Medium' ELSE 'Low' END, 'High',\n       s.compress_count || ' uncompressed object(s) >= 1GB ('\n       || to_char(round((s.compress_gb)::numeric, 1), 'FM999999990.0') || 'GB total)',\n       'Large uncompressed tables/indexes: ' || array_to_string(s.compress_items[1:5], '; ') || CASE WHEN COALESCE(array_length(s.compress_items, 1), 0) > 5 THEN ' and ' || (array_length(s.compress_items, 1) - 5) || ' more' ELSE '' END\n       || '. Consider PAGE or ROW compression to reduce storage and improve I/O.',\n       NULL::numeric\nFROM server_facts s\nWHERE COALESCE(s.compress_count, 0) > 0\nUNION ALL\nSELECT s.server_id, 'Databases',\n       CASE WHEN s.idle_count >= 3 THEN 'High' ELSE 'Medium' END, 'High',\n       s.idle_count || ' idle database(s) consuming '\n       || to_char(round((s.idle_size_mb / 1024.0)::numeric, 1), 'FM999999990.0') || 'GB',\n       'No query activity in 7 days: ' || array_to_string(s.idle_names[1:5], ', ') || CASE WHEN COALESCE(array_length(s.idle_names, 1), 0) > 5 THEN ' and ' || (array_length(s.idle_names, 1) - 5) || ' more' ELSE '' END\n       || '. Consider archiving or removing these databases.',\n       CASE WHEN s.monthly_cost > 0 AND COALESCE(s.total_size_mb, 0) > 0\n            THEN NULLIF(s.idle_size_mb / s.total_size_mb * s.monthly_cost, 0) END\nFROM server_facts s\nWHERE COALESCE(s.idle_count, 0) > 0\nUNION ALL\nSELECT s.server_id, 'Environment', 'Medium', 'Low',\n       COALESCE(array_length(s.devtest_names, 1), 0)\n       || ' possible dev/test database(s) on production server',\n       'Databases matching dev/test patterns: ' || array_to_string(s.devtest_names[1:10], ', ') || CASE WHEN COALESCE(array_length(s.devtest_names, 1), 0) > 10 THEN ' and ' || (array_length(s.devtest_names, 1) - 10) || ' more' ELSE '' END\n       || '. If these are non-production workloads, consider moving to a lower-cost tier '\n       || 'or separate server.',\n       NULL::numeric\nFROM server_facts s\nWHERE COALESCE(array_length(s.devtest_names, 1), 0) > 0\nUNION ALL\nSELECT j.server_id, 'Maintenance',\n       CASE WHEN j.times_ran_long >= 5 THEN 'Medium' ELSE 'Low' END, 'High',\n       j.job_name || ' ran long ' || j.times_ran_long || ' times in 7 days',\n       'Average duration: ' || CASE\n        WHEN j.avg_duration_seconds >= 3600\n        THEN (j.avg_duration_seconds / 3600)::bigint || 'h ' || ((j.avg_duration_seconds % 3600) / 60)::bigint\n             || 'm ' || (j.avg_duration_seconds % 60)::bigint || 's'\n        WHEN j.avg_duration_seconds >= 60\n        THEN (j.avg_duration_seconds / 60)::bigint || 'm ' || (j.avg_duration_seconds % 60)::bigint || 's'\n        ELSE (j.avg_duration_seconds)::bigint || 's'\n    END || ', max: '\n       || CASE\n        WHEN j.max_duration_seconds >= 3600\n        THEN (j.max_duration_seconds / 3600)::bigint || 'h ' || ((j.max_duration_seconds % 3600) / 60)::bigint\n             || 'm ' || (j.max_duration_seconds % 60)::bigint || 's'\n        WHEN j.max_duration_seconds >= 60\n        THEN (j.max_duration_seconds / 60)::bigint || 'm ' || (j.max_duration_seconds % 60)::bigint || 's'\n        ELSE (j.max_duration_seconds)::bigint || 's'\n    END || ', historical average: '\n       || CASE\n        WHEN j.avg_historical >= 3600\n        THEN (j.avg_historical / 3600)::bigint || 'h ' || ((j.avg_historical % 3600) / 60)::bigint\n             || 'm ' || (j.avg_historical % 60)::bigint || 's'\n        WHEN j.avg_historical >= 60\n        THEN (j.avg_historical / 60)::bigint || 'm ' || (j.avg_historical % 60)::bigint || 's'\n        ELSE (j.avg_historical)::bigint || 's'\n    END\n       || '. Review whether this job''s schedule or operations need tuning.',\n       NULL::numeric\nFROM jobs j\nUNION ALL\nSELECT t.server_id, 'Hardware', 'Medium', 'Medium',\n       'CPU: reduce from ' || t.cpu_count || ' to ' || t.target_cores || ' cores (P95 CPU '\n       || to_char(round((t.p95_cpu_7d)::numeric, 1), 'FM999999990.0') || '%)',\n       'Over the last 7 days, P95 CPU utilization was '\n       || to_char(round((t.p95_cpu_7d)::numeric, 1), 'FM999999990.0') || '%. Current allocation of ' || t.cpu_count\n       || ' cores can safely be reduced to ' || t.target_cores || ' cores.',\n       CASE WHEN t.monthly_cost > 0\n            THEN t.monthly_cost * (1 - t.target_cores::numeric / t.cpu_count) * 0.50 END\nFROM (\n    SELECT s.*,\n           CASE WHEN s.p95_cpu_7d < 15 THEN GREATEST(2, s.cpu_count / 4)\n                WHEN s.p95_cpu_7d < 30 THEN GREATEST(2, s.cpu_count / 2)\n                ELSE 0 END AS target_cores\n    FROM server_facts s\n    WHERE s.cpu_count >= 4 AND s.p95_cpu_7d IS NOT NULL\n) t\nWHERE t.target_cores > 0 AND t.target_cores < t.cpu_count\nUNION ALL\nSELECT t.server_id, 'Hardware', 'Medium', 'Medium',\n       'Memory: reduce from ' || (t.physical_memory_mb / 1024) || 'GB to '\n       || (t.target_mb / 1024) || 'GB (P95 SQL memory uses ' || to_char(round(((t.mem_ratio) * 100)::numeric, 0), 'FM999999990') || '%' || ')',\n       'P95 SQL Server memory over 7 days is ' || to_char(t.mem_p95_mb, 'FM999,999,999,990') || ' MB of '\n       || to_char(t.physical_memory_mb, 'FM999,999,999,990') || ' MB physical RAM (' || to_char(round(((t.mem_ratio) * 100)::numeric, 0), 'FM999999990') || '%'\n       || '). Reducing to ' || (t.target_mb / 1024) || 'GB would still leave headroom.',\n       CASE WHEN t.monthly_cost > 0\n            THEN t.monthly_cost\n                 * (1 - t.target_mb::numeric / t.physical_memory_mb) * 0.30 END\nFROM (\n    SELECT s.*,\n           s.mem_p95_mb::numeric / s.physical_memory_mb AS mem_ratio,\n           CASE WHEN s.mem_p95_mb::numeric / s.physical_memory_mb < 0.25\n                THEN GREATEST(4096, s.physical_memory_mb / 4)\n                WHEN s.mem_p95_mb::numeric / s.physical_memory_mb < 0.40\n                THEN GREATEST(4096, s.physical_memory_mb / 2)\n                ELSE 0 END AS target_mb\n    FROM server_facts s\n    WHERE s.physical_memory_mb >= 4096\n      AND s.mem_sample_count >= 16\n) t\nWHERE t.target_mb > 0 AND t.target_mb < t.physical_memory_mb\nUNION ALL\nSELECT s.server_id, 'Storage', 'Low', 'Medium',\n       s.low_latency_count\n       || ' database(s) with low IO latency - standard storage may suffice',\n       'These databases have avg read latency under 5ms and write under 3ms over '\n       || '7 days: ' || array_to_string(s.low_latency_items[1:10], '; ') || CASE WHEN COALESCE(array_length(s.low_latency_items, 1), 0) > 10 THEN ' and ' || (array_length(s.low_latency_items, 1) - 10) || ' more' ELSE '' END\n       || '. Premium/high-performance storage may not be needed.',\n       NULL::numeric\nFROM server_facts s\nWHERE COALESCE(s.low_latency_count, 0) > 0\nUNION ALL\nSELECT t.server_id, 'Cloud', 'Low',\n       CASE WHEN t.cv < 0.15 THEN 'High' ELSE 'Medium' END,\n       'Stable CPU utilization (avg ' || to_char(round((t.avg_cpu_7d)::numeric, 1), 'FM999999990.0') || '%, CV '\n       || to_char(round((t.cv)::numeric, 2), 'FM999999990.00') || ') - reserved capacity candidate',\n       'CPU utilization is consistently ' || to_char(round((t.avg_cpu_7d)::numeric, 1), 'FM999999990.0')\n       || '% with low variance (+/-' || to_char(round((t.stddev_cpu)::numeric, 1), 'FM999999990.0')\n       || '%). Reserved pricing typically saves 30-40% over pay-as-you-go for predictable '\n       || 'workloads.',\n       NULL::numeric\nFROM (\n    SELECT s.*, s.stddev_cpu / s.avg_cpu_7d AS cv\n    FROM server_facts s\n    WHERE s.cpu_samples_7d >= 24 AND s.avg_cpu_7d > 20 AND s.stddev_cpu > 0\n) t\nWHERE t.cv < 0.3\n)\nSELECT\n    srv.name AS \"Server\",\n    r.category AS \"Category\",\n    r.severity AS \"Severity\",\n    r.confidence AS \"Confidence\",\n    r.finding AS \"Finding\",\n    r.detail AS \"Detail\",\n    round(r.est_savings, 0) AS \"Est. Savings ($/mo)\"\nFROM findings r\nJOIN config.config_monitored_servers AS srv ON srv.server_id = r.server_id\nORDER BY srv.name, CASE r.severity\n        WHEN 'High' THEN 1 WHEN 'Medium' THEN 2 WHEN 'Low' THEN 3 ELSE 4\n    END, r.category\n"
+        }
+      ],
+      "description": "From collected data - no live target. Thresholds and wording are upstream's. Est. Savings is blank until a budget is configured. Upstream's sp_IndexCleanup-existence check is dropped, superseded by the Index Analysis dashboard."
+    }
+  ]
+}

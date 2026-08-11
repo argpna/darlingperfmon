@@ -1,0 +1,787 @@
+{
+  "uid": "darling-finops-workload-contention",
+  "title": "FinOps (Darling) - Workload & Contention",
+  "tags": [
+    "finops-darling"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "refresh": "5m",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "finops-darling"
+      ],
+      "targetBlank": false,
+      "title": "All FinOps (Darling) Dashboards",
+      "type": "dashboards",
+      "url": ""
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon-darling"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon (Darling) Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      },
+      {
+        "name": "database",
+        "label": "Database",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "\nWITH latest AS (\n    SELECT server_id, database_name, MAX(collection_time) AS latest_time\n    FROM collect.v_index_object_stats\n    WHERE server_id IN (${server:csv})\n    GROUP BY server_id, database_name\n)\nSELECT DISTINCT ios.database_name\nFROM collect.v_index_object_stats AS ios\nJOIN latest l ON l.server_id = ios.server_id\n             AND l.database_name = ios.database_name\n             AND l.latest_time = ios.collection_time\nWHERE ios.server_id IN (${server:csv}) AND (\n    COALESCE(ios.row_lock_wait_in_ms, 0) > 0\n    OR COALESCE(ios.page_lock_wait_in_ms, 0) > 0\n    OR COALESCE(ios.page_latch_wait_in_ms, 0) > 0\n    OR COALESCE(ios.page_io_latch_wait_in_ms, 0) > 0\n    OR COALESCE(ios.index_lock_promotion_count, 0) > 0\n)\nORDER BY ios.database_name\n",
+        "definition": "\nWITH latest AS (\n    SELECT server_id, database_name, MAX(collection_time) AS latest_time\n    FROM collect.v_index_object_stats\n    WHERE server_id IN (${server:csv})\n    GROUP BY server_id, database_name\n)\nSELECT DISTINCT ios.database_name\nFROM collect.v_index_object_stats AS ios\nJOIN latest l ON l.server_id = ios.server_id\n             AND l.database_name = ios.database_name\n             AND l.latest_time = ios.collection_time\nWHERE ios.server_id IN (${server:csv}) AND (\n    COALESCE(ios.row_lock_wait_in_ms, 0) > 0\n    OR COALESCE(ios.page_lock_wait_in_ms, 0) > 0\n    OR COALESCE(ios.page_latch_wait_in_ms, 0) > 0\n    OR COALESCE(ios.page_io_latch_wait_in_ms, 0) > 0\n    OR COALESCE(ios.index_lock_promotion_count, 0) > 0\n)\nORDER BY ios.database_name\n",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "refresh": 2,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 0,
+        "description": "Databases with recorded lock or latch contention."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "High Impact Queries",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "High Impact Queries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Score"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 60
+                    },
+                    {
+                      "color": "red",
+                      "value": 80
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU (ms)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Duration (ms)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Memory (MB)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU %"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Duration %"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Reads %"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Writes %"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Memory %"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Executions %"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Score",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH agg AS (\n    SELECT qs.server_id,\n           qs.query_hash,\n           MIN(qs.database_name) AS database_name,\n           SUM(qs.delta_execution_count) AS total_executions,\n           SUM(qs.delta_worker_time) / 1000.0 AS total_cpu_ms,\n           SUM(qs.delta_elapsed_time) / 1000.0 AS total_duration_ms,\n           SUM(qs.delta_logical_reads) AS total_reads,\n           SUM(qs.delta_logical_writes) AS total_writes,\n           SUM(COALESCE(qs.max_grant_kb, 0)) / 1024.0 AS total_memory_mb\n    FROM collect.v_query_stats AS qs\n    WHERE qs.server_id IN (${server:csv})\n      AND $__timeFilter(qs.collection_time)\n      AND qs.query_hash IS NOT NULL AND qs.query_hash <> ''\n      AND qs.delta_execution_count > 0\n    GROUP BY qs.server_id, qs.query_hash\n    HAVING SUM(qs.delta_execution_count) > 0\n),\nper_dimension AS (\n    (SELECT server_id, query_hash,\n            ROW_NUMBER() OVER (PARTITION BY server_id ORDER BY total_cpu_ms DESC) AS rn\n     FROM agg)\nUNION\n    (SELECT server_id, query_hash,\n            ROW_NUMBER() OVER (PARTITION BY server_id ORDER BY total_duration_ms DESC) AS rn\n     FROM agg)\nUNION\n    (SELECT server_id, query_hash,\n            ROW_NUMBER() OVER (PARTITION BY server_id ORDER BY total_reads DESC) AS rn\n     FROM agg)\nUNION\n    (SELECT server_id, query_hash,\n            ROW_NUMBER() OVER (PARTITION BY server_id ORDER BY total_writes DESC) AS rn\n     FROM agg)\nUNION\n    (SELECT server_id, query_hash,\n            ROW_NUMBER() OVER (PARTITION BY server_id ORDER BY total_memory_mb DESC) AS rn\n     FROM agg)\nUNION\n    (SELECT server_id, query_hash,\n            ROW_NUMBER() OVER (PARTITION BY server_id ORDER BY total_executions DESC) AS rn\n     FROM agg)\n),\ninteresting AS (\n    SELECT DISTINCT server_id, query_hash FROM per_dimension WHERE rn <= 10\n),\nfiltered AS (\n    SELECT a.* FROM agg a\n    JOIN interesting i ON i.server_id = a.server_id AND i.query_hash = a.query_hash\n),\nscored AS (\n    SELECT f.*,\n           percent_rank() OVER (PARTITION BY server_id ORDER BY total_cpu_ms) AS cpu_pctl,\n           percent_rank() OVER (PARTITION BY server_id ORDER BY total_duration_ms) AS duration_pctl,\n           percent_rank() OVER (PARTITION BY server_id ORDER BY total_reads) AS reads_pctl,\n           percent_rank() OVER (PARTITION BY server_id ORDER BY total_writes) AS writes_pctl,\n           percent_rank() OVER (PARTITION BY server_id ORDER BY total_memory_mb) AS memory_pctl,\n           percent_rank() OVER (PARTITION BY server_id ORDER BY total_executions) AS executions_pctl,\n           round(100.0 * total_cpu_ms / NULLIF(SUM(total_cpu_ms) OVER (PARTITION BY server_id), 0), 1) AS cpu_share,\n           round(100.0 * total_duration_ms / NULLIF(SUM(total_duration_ms) OVER (PARTITION BY server_id), 0), 1) AS duration_share,\n           round(100.0 * total_reads / NULLIF(SUM(total_reads) OVER (PARTITION BY server_id), 0), 1) AS reads_share,\n           round(100.0 * total_writes / NULLIF(SUM(total_writes) OVER (PARTITION BY server_id), 0), 1) AS writes_share,\n           round(100.0 * total_memory_mb / NULLIF(SUM(total_memory_mb) OVER (PARTITION BY server_id), 0), 1) AS memory_share,\n           round(100.0 * total_executions / NULLIF(SUM(total_executions) OVER (PARTITION BY server_id), 0), 1) AS executions_share\n    FROM filtered f\n)\nSELECT\n    trunc((cpu_pctl + duration_pctl + reads_pctl + writes_pctl + memory_pctl + executions_pctl) / 6.0 * 100) AS \"Score\",\n    srv.name AS \"Server\",\n    s.database_name AS \"Database\",\n    s.total_executions AS \"Executions\",\n    s.executions_share AS \"Executions %\",\n    round(s.total_cpu_ms, 0) AS \"CPU (ms)\",\n    s.cpu_share AS \"CPU %\",\n    round(s.total_duration_ms, 0) AS \"Duration (ms)\",\n    s.duration_share AS \"Duration %\",\n    s.total_reads AS \"Reads\",\n    s.reads_share AS \"Reads %\",\n    s.total_writes AS \"Writes\",\n    s.writes_share AS \"Writes %\",\n    round(s.total_memory_mb, 1) AS \"Memory (MB)\",\n    s.memory_share AS \"Memory %\",\n    left(txt.query_text, 200) AS \"Query Preview\",\n    txt.query_text AS \"Query Text\"\nFROM scored s\nJOIN config.config_monitored_servers AS srv ON srv.server_id = s.server_id\nLEFT JOIN LATERAL (\n    /* Upstream's correlated sample-text subquery. */\n    SELECT qs2.query_text\n    FROM collect.v_query_stats AS qs2\n    WHERE qs2.server_id = s.server_id\n      AND qs2.query_hash = s.query_hash\n      AND $__timeFilter(qs2.collection_time)\n      AND qs2.query_text IS NOT NULL AND qs2.query_text <> ''\n    ORDER BY qs2.delta_execution_count DESC NULLS LAST\n    LIMIT 1\n) txt ON true\nORDER BY 1 DESC\n"
+        }
+      ],
+      "description": "Union of the top 10 by each of CPU, duration, reads, writes, memory and executions; shares and ranks are computed within that set. Rows thin out beyond 3 days, where query text is no longer retained."
+    },
+    {
+      "id": 3,
+      "type": "row",
+      "title": "Application Connections",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 21
+      },
+      "panels": []
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Application Connections (24h)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 22
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg CPU (ms)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Max CPU (ms)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Max Connections",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    srv.name AS \"Server\",\n    s.program_name AS \"Application\",\n    AVG(s.connection_count)::int AS \"Avg Connections\",\n    MAX(s.connection_count) AS \"Max Connections\",\n    AVG(s.running_count)::int AS \"Avg Running\",\n    MAX(s.running_count) AS \"Max Running\",\n    AVG(s.sleeping_count)::int AS \"Avg Sleeping\",\n    MAX(s.sleeping_count) AS \"Max Sleeping\",\n    AVG(s.dormant_count)::int AS \"Avg Dormant\",\n    MAX(s.dormant_count) AS \"Max Dormant\",\n    AVG(s.total_cpu_time_ms)::bigint AS \"Avg CPU (ms)\",\n    MAX(s.total_cpu_time_ms) AS \"Max CPU (ms)\",\n    AVG(s.total_reads)::bigint AS \"Avg Reads\",\n    MAX(s.total_reads) AS \"Max Reads\",\n    AVG(s.total_writes)::bigint AS \"Avg Writes\",\n    MAX(s.total_writes) AS \"Max Writes\",\n    AVG(s.total_logical_reads)::bigint AS \"Avg Logical Reads\",\n    MAX(s.total_logical_reads) AS \"Max Logical Reads\",\n    COUNT(*) AS \"Samples\",\n    MIN(s.collection_time) AS \"First Seen\",\n    MAX(s.collection_time) AS \"Last Seen\"\nFROM collect.v_session_stats AS s\nJOIN config.config_monitored_servers AS srv ON srv.server_id = s.server_id\nWHERE s.server_id IN (${server:csv})\n  AND s.collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '24 hours'\nGROUP BY srv.name, s.program_name\nORDER BY MAX(s.connection_count) DESC\n"
+        }
+      ],
+      "description": "Fixed 24h window, as upstream's is - the range picker does not move it."
+    },
+    {
+      "id": 5,
+      "type": "row",
+      "title": "Locking & Contention",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 42
+      },
+      "panels": []
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Locking & Contention",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 43
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Row Lock Wait ms"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Page Lock Wait ms"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Page Latch Wait ms"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Page IO Latch Wait ms"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Reserved MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Row Lock Wait ms",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH latest AS (\n    SELECT server_id, database_name, MAX(collection_time) AS latest_time\n    FROM collect.v_index_object_stats\n    WHERE server_id IN (${server:csv})\n    GROUP BY server_id, database_name\n),\ncontended AS (\n    SELECT ios.*,\n           COALESCE(ios.row_lock_wait_in_ms, 0)\n    + COALESCE(ios.page_lock_wait_in_ms, 0)\n    + COALESCE(ios.page_latch_wait_in_ms, 0)\n    + COALESCE(ios.page_io_latch_wait_in_ms, 0) AS total_wait_ms,\n           ROW_NUMBER() OVER (\n               PARTITION BY ios.server_id ORDER BY COALESCE(ios.row_lock_wait_in_ms, 0)\n    + COALESCE(ios.page_lock_wait_in_ms, 0)\n    + COALESCE(ios.page_latch_wait_in_ms, 0)\n    + COALESCE(ios.page_io_latch_wait_in_ms, 0) DESC) AS rn\n    FROM collect.v_index_object_stats AS ios\n    JOIN latest l ON l.server_id = ios.server_id\n                 AND l.database_name = ios.database_name\n                 AND l.latest_time = ios.collection_time\n    WHERE ios.server_id IN (${server:csv})\n      AND (\n    COALESCE(ios.row_lock_wait_in_ms, 0) > 0\n    OR COALESCE(ios.page_lock_wait_in_ms, 0) > 0\n    OR COALESCE(ios.page_latch_wait_in_ms, 0) > 0\n    OR COALESCE(ios.page_io_latch_wait_in_ms, 0) > 0\n    OR COALESCE(ios.index_lock_promotion_count, 0) > 0\n)\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR ios.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n)\nSELECT\n    srv.name AS \"Server\",\n    c.database_name AS \"Database\",\n    c.schema_name AS \"Schema\",\n    c.table_name AS \"Table\",\n    COALESCE(c.index_name, '(heap)') AS \"Index\",\n    c.index_type_desc AS \"Type\",\n    COALESCE(c.row_lock_count, 0) AS \"Row Locks\",\n    COALESCE(c.row_lock_wait_count, 0) AS \"Row Lock Waits\",\n    COALESCE(c.row_lock_wait_in_ms, 0) AS \"Row Lock Wait ms\",\n    COALESCE(c.page_lock_count, 0) AS \"Page Locks\",\n    COALESCE(c.page_lock_wait_count, 0) AS \"Page Lock Waits\",\n    COALESCE(c.page_lock_wait_in_ms, 0) AS \"Page Lock Wait ms\",\n    COALESCE(c.index_lock_promotion_count, 0) AS \"Lock Escalations\",\n    COALESCE(c.page_latch_wait_count, 0) AS \"Page Latch Waits\",\n    COALESCE(c.page_latch_wait_in_ms, 0) AS \"Page Latch Wait ms\",\n    COALESCE(c.page_io_latch_wait_count, 0) AS \"Page IO Latch Waits\",\n    COALESCE(c.page_io_latch_wait_in_ms, 0) AS \"Page IO Latch Wait ms\",\n    round(c.reserved_mb, 1) AS \"Reserved MB\",\n    c.total_rows AS \"Rows\"\nFROM contended c\nJOIN config.config_monitored_servers AS srv ON srv.server_id = c.server_id\nWHERE c.rn <= 200\nORDER BY c.total_wait_ms DESC\n"
+        }
+      ],
+      "description": "Top 200 indexes per server by total lock + latch wait, at each database's latest snapshot. Lifetime totals, not rates."
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 ---
 grafana_api_key: "{{ lookup('env', 'GRAFANA_API_KEY') | default('') }}"
+perfmon_darling_pg_password: "{{ lookup('env', 'DARLING_VIEWER_PASSWORD') | default('') }}"
 
-perfmon_fleet_static: false
 perfmon_alert_receiver_name: perfmon-alerts
 
 # Examples for contact points

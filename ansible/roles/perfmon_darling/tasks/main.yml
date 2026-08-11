@@ -1,0 +1,66 @@
+---
+- name: Validate store credentials are set
+  ansible.builtin.assert:
+    that:
+      - perfmon_darling_pg_password | default('') | length > 0
+    fail_msg: "perfmon_darling_pg_password must be set. See README.md."
+    quiet: true
+  no_log: true
+
+- name: Validate SQL-auth credentials for every instance using sql auth
+  vars:
+    resolved_auth: "{{ item.darling_auth | default(perfmon_darling_auth) }}"
+  ansible.builtin.assert:
+    that:
+      - resolved_auth in ['sql', 'integrated']
+      - resolved_auth != 'sql'
+        or (item.darling_sql_username | default(perfmon_darling_sql_username | default(''))) | length > 0
+      - resolved_auth != 'sql'
+        or (item.darling_sql_password | default(perfmon_darling_sql_password | default(''))) | length > 0
+    fail_msg: >-
+      Instance {{ item.inventory_hostname }} resolves to auth '{{ resolved_auth }}'.
+      sql auth needs darling_sql_username and darling_sql_password, set per host or
+      fleet-wide as perfmon_darling_sql_username / perfmon_darling_sql_password.
+    quiet: true
+  loop: "{{ perfmon_darling_instances }}"
+  loop_control:
+    label: "{{ item.inventory_hostname }}"
+  no_log: true
+
+- name: Ensure the config directory exists
+  ansible.builtin.file:
+    path: "{{ perfmon_darling_config_path | dirname }}"
+    state: directory
+    owner: "{{ perfmon_darling_config_owner }}"
+    group: "{{ perfmon_darling_config_group }}"
+    mode: "0750"
+
+- name: Render darling.json
+  ansible.builtin.template:
+    src: darling.json.j2
+    dest: "{{ perfmon_darling_config_path }}"
+    owner: "{{ perfmon_darling_config_owner }}"
+    group: "{{ perfmon_darling_config_group }}"
+    mode: "0600"
+  no_log: true
+  notify: Restart darling
+
+- name: Check whether the store has migrated the monitored-server registry table
+  community.postgresql.postgresql_query:
+    login_host: "{{ perfmon_darling_pg_host }}"
+    port: "{{ perfmon_darling_pg_port }}"
+    login_user: "{{ perfmon_darling_pg_user }}"
+    login_password: "{{ perfmon_darling_pg_password }}"
+    db: "{{ perfmon_darling_pg_database }}"
+    query: SELECT to_regclass('config.config_monitored_servers') IS NOT NULL AS present
+  register: _darling_registry_table
+  delegate_to: localhost
+  become: false
+  no_log: true
+  when: perfmon_darling_register_new | bool or perfmon_darling_prune_orphaned | bool
+
+- name: Reconcile the monitored-server registry
+  ansible.builtin.include_tasks: registry.yml
+  when:
+    - perfmon_darling_register_new | bool or perfmon_darling_prune_orphaned | bool
+    - _darling_registry_table.query_result[0].present | default(false)

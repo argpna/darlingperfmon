@@ -1,0 +1,1037 @@
+{
+  "uid": "darling-finops-optimization-indexing",
+  "title": "FinOps (Darling) - Optimization & Indexing",
+  "tags": [
+    "finops-darling"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "refresh": "15m",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "finops-darling"
+      ],
+      "targetBlank": false,
+      "title": "All FinOps (Darling) Dashboards",
+      "type": "dashboards",
+      "url": ""
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon-darling"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon (Darling) Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Idle Databases",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Idle Databases (no activity in 7 days)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total Size MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Total Size MB",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH i AS (SELECT * FROM (\nWITH db_sizes AS (\n    SELECT server_id, database_name,\n           SUM(total_size_mb) AS total_size_mb,\n           COUNT(*) AS file_count\n    FROM collect.v_database_size_stats\n    WHERE server_id IN (${server:csv}) AND (server_id, collection_time) IN (SELECT server_id, MAX(collection_time) FROM collect.v_database_size_stats WHERE server_id IN (${server:csv}) GROUP BY server_id)\n    GROUP BY server_id, database_name\n),\ndb_activity AS (\n    SELECT server_id, database_name,\n           SUM(execution_count_sum) AS total_executions,\n           MAX(last_execution_time_max) AS last_execution\n    FROM collect.query_stats_db_hourly\n    WHERE server_id IN (${server:csv})\n      AND bucket >= (now() AT TIME ZONE 'UTC') - INTERVAL '7 days'\n      AND execution_count_sum IS NOT NULL\n    GROUP BY server_id, database_name\n),\nidle_dbs AS (\n    SELECT ds.server_id, ds.database_name, ds.total_size_mb,\n           ds.file_count,\n           a.last_execution\n    FROM db_sizes ds\n    LEFT JOIN db_activity a\n           ON a.server_id = ds.server_id AND a.database_name = ds.database_name\n    WHERE COALESCE(a.total_executions, 0) = 0\n      AND ds.database_name NOT IN ('master', 'model', 'msdb', 'tempdb', 'PerformanceMonitor')\n)\nSELECT server_id, database_name, total_size_mb, file_count, last_execution\nFROM idle_dbs\n) AS hourly_tier WHERE COALESCE((SELECT min(bucket) FROM collect.query_stats_db_hourly) <= (now() AT TIME ZONE 'UTC') - INTERVAL '7 days', false)\nUNION ALL\nSELECT * FROM (\nWITH db_sizes AS (\n    SELECT server_id, database_name,\n           SUM(total_size_mb) AS total_size_mb,\n           COUNT(*) AS file_count\n    FROM collect.v_database_size_stats\n    WHERE server_id IN (${server:csv}) AND (server_id, collection_time) IN (SELECT server_id, MAX(collection_time) FROM collect.v_database_size_stats WHERE server_id IN (${server:csv}) GROUP BY server_id)\n    GROUP BY server_id, database_name\n),\ndb_activity AS (\n    SELECT server_id, database_name,\n           SUM(delta_execution_count) AS total_executions,\n           MAX(last_execution_time) AS last_execution\n    FROM collect.v_query_stats\n    WHERE server_id IN (${server:csv})\n      AND collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '7 days'\n      AND delta_execution_count IS NOT NULL\n    GROUP BY server_id, database_name\n),\nidle_dbs AS (\n    SELECT ds.server_id, ds.database_name, ds.total_size_mb,\n           ds.file_count,\n           a.last_execution\n    FROM db_sizes ds\n    LEFT JOIN db_activity a\n           ON a.server_id = ds.server_id AND a.database_name = ds.database_name\n    WHERE COALESCE(a.total_executions, 0) = 0\n      AND ds.database_name NOT IN ('master', 'model', 'msdb', 'tempdb', 'PerformanceMonitor')\n)\nSELECT server_id, database_name, total_size_mb, file_count, last_execution\nFROM idle_dbs\n) AS raw_tier WHERE NOT COALESCE((SELECT min(bucket) FROM collect.query_stats_db_hourly) <= (now() AT TIME ZONE 'UTC') - INTERVAL '7 days', false))\nSELECT\n    srv.name AS \"Server\",\n    i.database_name AS \"Database\",\n    round(i.total_size_mb, 2) AS \"Total Size MB\",\n    i.file_count AS \"Files\",\n    i.last_execution AS \"Last Execution\"\nFROM i\nJOIN config.config_monitored_servers AS srv ON srv.server_id = i.server_id\nORDER BY i.total_size_mb DESC\n"
+        }
+      ],
+      "description": "Fixed 7-day window. System databases and PerformanceMonitor are never counted. Last Execution is the monitored server's local clock."
+    },
+    {
+      "id": 3,
+      "type": "row",
+      "title": "tempdb Pressure",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "panels": []
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "tempdb Pressure",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Current MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Peak 24h MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH latest AS (\n    SELECT DISTINCT ON (server_id)\n           server_id, user_object_reserved_mb, internal_object_reserved_mb,\n           version_store_reserved_mb, total_reserved_mb\n    FROM collect.v_tempdb_stats\n    WHERE server_id IN (${server:csv})\n    ORDER BY server_id, collection_time DESC\n),\npeak AS (\n    SELECT server_id,\n           MAX(user_object_reserved_mb) AS max_user_mb,\n           MAX(internal_object_reserved_mb) AS max_internal_mb,\n           MAX(version_store_reserved_mb) AS max_version_store_mb,\n           MAX(total_reserved_mb) AS max_total_mb\n    FROM collect.v_tempdb_stats\n    WHERE server_id IN (${server:csv}) AND collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '24 hours'\n    GROUP BY server_id\n)\nSELECT\n    srv.name AS \"Server\",\n    m.metric AS \"Metric\",\n    round(m.current_mb, 2) AS \"Current MB\",\n    round(m.peak_mb, 2) AS \"Peak 24h MB\",\n    m.warning AS \"Warning\"\nFROM latest l\nJOIN peak p ON p.server_id = l.server_id\nJOIN config.config_monitored_servers AS srv ON srv.server_id = l.server_id\nCROSS JOIN LATERAL (VALUES\n    ('User Objects', l.user_object_reserved_mb, p.max_user_mb,\n     CASE WHEN p.max_user_mb > 1024 THEN 'High user object usage' ELSE '' END),\n    ('Internal Objects', l.internal_object_reserved_mb, p.max_internal_mb,\n     CASE WHEN p.max_internal_mb > 1024\n          THEN 'High internal object usage (sorts/hashes)' ELSE '' END),\n    ('Version Store', l.version_store_reserved_mb, p.max_version_store_mb,\n     CASE WHEN p.max_version_store_mb > 2048\n          THEN 'Version store pressure - check long-running transactions' ELSE '' END),\n    ('Total Reserved', l.total_reserved_mb, p.max_total_mb, '')\n) AS m(metric, current_mb, peak_mb, warning)\nORDER BY srv.name, m.metric\n"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "row",
+      "title": "Wait Stats Summary",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "panels": []
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Wait Stats Summary",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 19
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total Wait ms"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Top Wait ms"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "% of Total"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Est. Cost ($)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Total Wait ms",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH categorized AS (\n    SELECT ws.server_id,\n           CASE\n        WHEN ws.wait_type IN ('SOS_SCHEDULER_YIELD', 'CXPACKET', 'CXCONSUMER',\n                             'CXSYNC_PORT', 'CXSYNC_CONSUMER') THEN 'CPU'\n        WHEN ws.wait_type ILIKE 'PAGEIOLATCH%'\n          OR ws.wait_type IN ('WRITELOG', 'IO_COMPLETION', 'ASYNC_IO_COMPLETION')\n        THEN 'Storage'\n        WHEN ws.wait_type IN ('RESOURCE_SEMAPHORE', 'RESOURCE_SEMAPHORE_QUERY_COMPILE',\n                             'CMEMTHREAD') THEN 'Memory'\n        WHEN ws.wait_type = 'ASYNC_NETWORK_IO' THEN 'Network'\n        WHEN ws.wait_type ILIKE 'LCK_M_%' THEN 'Locks'\n        ELSE 'Other'\n    END AS category,\n           ws.wait_type,\n           SUM(ws.delta_wait_time_ms) AS wait_time_ms,\n           SUM(ws.delta_waiting_tasks) AS waiting_tasks\n    FROM collect.v_wait_stats AS ws\n    WHERE ws.server_id IN (${server:csv})\n      AND $__timeFilter(ws.collection_time)\n      AND ws.delta_wait_time_ms IS NOT NULL\n      AND ws.delta_wait_time_ms > 0\n    GROUP BY ws.server_id, CASE\n        WHEN ws.wait_type IN ('SOS_SCHEDULER_YIELD', 'CXPACKET', 'CXCONSUMER',\n                             'CXSYNC_PORT', 'CXSYNC_CONSUMER') THEN 'CPU'\n        WHEN ws.wait_type ILIKE 'PAGEIOLATCH%'\n          OR ws.wait_type IN ('WRITELOG', 'IO_COMPLETION', 'ASYNC_IO_COMPLETION')\n        THEN 'Storage'\n        WHEN ws.wait_type IN ('RESOURCE_SEMAPHORE', 'RESOURCE_SEMAPHORE_QUERY_COMPILE',\n                             'CMEMTHREAD') THEN 'Memory'\n        WHEN ws.wait_type = 'ASYNC_NETWORK_IO' THEN 'Network'\n        WHEN ws.wait_type ILIKE 'LCK_M_%' THEN 'Locks'\n        ELSE 'Other'\n    END, ws.wait_type\n),\nranked AS (\n    SELECT c.*,\n           ROW_NUMBER() OVER (\n               PARTITION BY c.server_id, c.category ORDER BY c.wait_time_ms DESC) AS rn\n    FROM categorized c\n),\nby_category AS (\n    SELECT server_id, category,\n           SUM(wait_time_ms) AS total_wait_time_ms,\n           SUM(waiting_tasks) AS total_waiting_tasks,\n           MAX(CASE WHEN rn = 1 THEN wait_type END) AS top_wait_type,\n           MAX(CASE WHEN rn = 1 THEN wait_time_ms END) AS top_wait_time_ms\n    FROM ranked\n    GROUP BY server_id, category\n),\ngrand_total AS (\n    SELECT server_id, NULLIF(SUM(total_wait_time_ms), 0) AS total\n    FROM by_category\n    GROUP BY server_id\n),\nbudget AS (\n    SELECT server_id, COALESCE(monthly_cost_usd, 0)::numeric AS monthly_cost\n    FROM config.config_monitored_servers\n    WHERE server_id IN (${server:csv})\n)\nSELECT\n    srv.name AS \"Server\",\n    bc.category AS \"Category\",\n    bc.total_wait_time_ms AS \"Total Wait ms\",\n    bc.total_waiting_tasks AS \"Waiting Tasks\",\n    round(bc.total_wait_time_ms * 100.0 / gt.total, 1) AS \"% of Total\",\n    bc.top_wait_type AS \"Top Wait Type\",\n    bc.top_wait_time_ms AS \"Top Wait ms\",\n    round(COALESCE(\n        bc.total_wait_time_ms::numeric / gt.total * (b.monthly_cost * (EXTRACT(EPOCH FROM ($__timeTo()::timestamp - $__timeFrom()::timestamp)) / 3600.0) / 730.0), 0), 2)\n        AS \"Est. Cost ($)\"\nFROM by_category bc\nJOIN grand_total gt ON gt.server_id = bc.server_id\nLEFT JOIN budget b ON b.server_id = bc.server_id\nJOIN config.config_monitored_servers AS srv ON srv.server_id = bc.server_id\nORDER BY bc.total_wait_time_ms DESC\n"
+        }
+      ],
+      "description": "Est. Cost is the category's share of the budget, prorated to the dashboard range."
+    },
+    {
+      "id": 7,
+      "type": "row",
+      "title": "Expensive Queries (Top 20 by CPU)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 27
+      },
+      "panels": []
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Expensive Queries (Top 20 by CPU)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 28
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total CPU ms"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg CPU/Exec"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Est. Cost ($)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Total CPU ms",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH top_queries AS (\n    SELECT qs.server_id,\n           qs.database_name,\n           SUM(qs.delta_worker_time) / 1000.0 AS total_cpu_ms,\n           SUM(qs.delta_worker_time) / 1000.0\n               / NULLIF(SUM(qs.delta_execution_count), 0) AS avg_cpu_ms,\n           SUM(qs.delta_logical_reads) AS total_reads,\n           SUM(qs.delta_logical_reads)::numeric\n               / NULLIF(SUM(qs.delta_execution_count), 0) AS avg_reads,\n           SUM(qs.delta_execution_count) AS executions,\n           left(qs.query_text, 200) AS query_preview,\n           qs.query_text AS full_query_text,\n           ROW_NUMBER() OVER (\n               PARTITION BY qs.server_id\n               ORDER BY SUM(qs.delta_worker_time) DESC) AS rn\n    FROM collect.v_query_stats AS qs\n    WHERE qs.server_id IN (${server:csv})\n      AND qs.collection_time >= GREATEST($__timeFrom()::timestamp, (now() AT TIME ZONE 'UTC') - INTERVAL '3 days')\n      AND qs.collection_time <= $__timeTo()::timestamp\n      AND qs.delta_worker_time IS NOT NULL\n      AND qs.delta_worker_time > 0\n    GROUP BY qs.server_id, qs.database_name, qs.sql_handle, qs.query_text\n),\nkept AS (\n    SELECT * FROM top_queries WHERE rn <= 20\n),\ntotals AS (\n    SELECT server_id, NULLIF(SUM(total_cpu_ms), 0) AS total_cpu\n    FROM kept\n    GROUP BY server_id\n),\nbudget AS (\n    SELECT server_id, COALESCE(monthly_cost_usd, 0)::numeric AS monthly_cost\n    FROM config.config_monitored_servers\n    WHERE server_id IN (${server:csv})\n)\nSELECT\n    srv.name AS \"Server\",\n    k.database_name AS \"Database\",\n    round(k.total_cpu_ms, 0) AS \"Total CPU ms\",\n    round(k.avg_cpu_ms, 2) AS \"Avg CPU/Exec\",\n    k.total_reads AS \"Total Reads\",\n    round(k.avg_reads, 0) AS \"Avg Reads/Exec\",\n    k.executions AS \"Executions\",\n    round(COALESCE(k.total_cpu_ms / t.total_cpu * (b.monthly_cost * (EXTRACT(EPOCH FROM ($__timeTo()::timestamp - $__timeFrom()::timestamp)) / 3600.0) / 730.0), 0), 2)\n        AS \"Est. Cost ($)\",\n    k.query_preview AS \"Query Preview\",\n    k.full_query_text AS \"Query Text\"\nFROM kept k\nJOIN totals t ON t.server_id = k.server_id\nLEFT JOIN budget b ON b.server_id = k.server_id\nJOIN config.config_monitored_servers AS srv ON srv.server_id = k.server_id\nORDER BY k.total_cpu_ms DESC\n"
+        }
+      ],
+      "description": "Query text lives only in the raw tier, so this reaches back at most 3 days however wide the range. Upstream's stored-plan viewer has no Grafana equivalent."
+    },
+    {
+      "id": 9,
+      "type": "row",
+      "title": "Memory Grant Efficiency",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 38
+      },
+      "panels": []
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "Memory Grant Efficiency",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 39
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg Granted MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg Used MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Peak Grant MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Wasted MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Efficiency %"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Timeouts"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Forced"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Day",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    mg.collection_time::date AS \"Day\",\n    srv.name AS \"Server\",\n    round(AVG(mg.granted_memory_mb), 1) AS \"Avg Granted MB\",\n    round(AVG(mg.used_memory_mb), 1) AS \"Avg Used MB\",\n    round(AVG(mg.used_memory_mb) * 100.0 / NULLIF(AVG(mg.granted_memory_mb), 0), 1)\n        AS \"Efficiency %\",\n    round(MAX(mg.granted_memory_mb), 1) AS \"Peak Grant MB\",\n    round(AVG(mg.granted_memory_mb) - AVG(mg.used_memory_mb), 1) AS \"Wasted MB\",\n    SUM(mg.grantee_count) AS \"Grantees\",\n    SUM(mg.waiter_count) AS \"Waiters\",\n    SUM(mg.timeout_error_count_delta) AS \"Timeouts\",\n    SUM(mg.forced_grant_count_delta) AS \"Forced\"\nFROM collect.v_memory_grant_stats AS mg\nJOIN config.config_monitored_servers AS srv ON srv.server_id = mg.server_id\nWHERE mg.server_id IN (${server:csv})\n  AND mg.collection_time >= (now() AT TIME ZONE 'UTC') - INTERVAL '24 hours'\nGROUP BY mg.collection_time::date, srv.name\nORDER BY mg.collection_time::date\n"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "row",
+      "title": "Reclaimable Space (overall + per database)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 47
+      },
+      "panels": []
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Reclaimable Space",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 48
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Size GB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "gbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Unused GB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "gbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Unused"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH snapshot AS (\n    SELECT DISTINCT ON (ios.server_id, ios.database_id, ios.object_id, ios.index_id)\n           ios.*,\n           CASE\n        WHEN sp.engine_edition IS NULL THEN true\n        WHEN sp.engine_edition IN (3, 5, 8) THEN true\n        WHEN sp.engine_edition IN (2, 4)\n             THEN COALESCE(split_part(sp.product_version, '.', 1)::int, 0) >= 13\n        ELSE false\n    END AS supports_compression,\n           EXTRACT(EPOCH FROM (LOCALTIMESTAMP - sp.sqlserver_start_time)) / 86400.0 AS uptime_days,\n           COALESCE(ios.user_seeks, 0) + COALESCE(ios.user_scans, 0) + COALESCE(ios.user_lookups, 0) AS reads,\n           (COALESCE(ios.user_seeks, 0) + COALESCE(ios.user_scans, 0) + COALESCE(ios.user_lookups, 0) = 0\n        AND upper(ios.index_type_desc) = 'NONCLUSTERED'\n        AND NOT COALESCE(ios.is_primary_key, false)\n        AND NOT COALESCE(ios.is_unique_constraint, false)\n        AND NOT COALESCE(ios.is_unique, false)\n        AND NOT COALESCE(ios.is_foreign_key_reference, false)\n        AND ios.index_id <> 1) AS is_unused_candidate,\n           (CASE\n        WHEN sp.engine_edition IS NULL THEN true\n        WHEN sp.engine_edition IN (3, 5, 8) THEN true\n        WHEN sp.engine_edition IN (2, 4)\n             THEN COALESCE(split_part(sp.product_version, '.', 1)::int, 0) >= 13\n        ELSE false\n    END\n        AND ios.index_id > 0\n        AND upper(COALESCE(ios.data_compression_desc, '')) = 'NONE') AS can_compress\n    FROM collect.v_index_object_stats AS ios\n    LEFT JOIN (\n        SELECT DISTINCT ON (server_id) server_id, engine_edition, product_version,\n               sqlserver_start_time\n        FROM collect.server_properties\n        ORDER BY server_id, collection_time DESC\n    ) sp ON sp.server_id = ios.server_id\n    WHERE ios.server_id IN (${server:csv})\n      AND NOT COALESCE(ios.is_disabled, false)\n      AND COALESCE(ios.index_name, '') <> ''\n      AND upper(ios.index_type_desc) IN ('CLUSTERED', 'NONCLUSTERED')\n    ORDER BY ios.server_id, ios.database_id, ios.object_id, ios.index_id,\n             ios.collection_time DESC\n),\nanalyzed AS (\n    SELECT s.*,\n           /* Dedupe-only at <= 7 days uptime suppresses Rule 1. */\n           s.is_unused_candidate\n               AND COALESCE(s.uptime_days, 999) > 7 AS is_unused\n    FROM snapshot s\n),\nbase_rows AS (\n    SELECT DISTINCT ON (server_id, database_id, object_id)\n           server_id, database_name, total_rows\n    FROM analyzed\n    WHERE index_id <= 1\n    ORDER BY server_id, database_id, object_id, index_id\n),\nper_db AS (\n    SELECT a.server_id,\n           a.database_name,\n           COUNT(DISTINCT a.object_id) AS tables_analyzed,\n           COUNT(*) AS index_count,\n           SUM(COALESCE(a.reserved_mb, 0)) / 1024.0 AS total_size_gb,\n           COUNT(*) FILTER (WHERE a.is_unused) AS unused_indexes,\n           COALESCE(SUM(COALESCE(a.reserved_mb, 0)) FILTER (WHERE a.is_unused), 0)\n               / 1024.0 AS unused_size_gb,\n           COUNT(*) FILTER (WHERE a.can_compress) AS compressable_indexes,\n           SUM(COALESCE(a.user_seeks, 0)) AS user_seeks,\n           SUM(COALESCE(a.user_scans, 0)) AS user_scans,\n           SUM(COALESCE(a.user_lookups, 0)) AS user_lookups,\n           SUM(COALESCE(a.user_updates, 0)) AS total_writes,\n           SUM(COALESCE(a.row_lock_wait_count, 0)\n               + COALESCE(a.page_lock_wait_count, 0)) AS lock_wait_count,\n           SUM(COALESCE(a.row_lock_wait_in_ms, 0)\n               + COALESCE(a.page_lock_wait_in_ms, 0)) AS lock_wait_ms,\n           SUM(COALESCE(a.page_latch_wait_count, 0)\n               + COALESCE(a.page_io_latch_wait_count, 0)) AS latch_wait_count,\n           SUM(COALESCE(a.page_latch_wait_in_ms, 0)\n               + COALESCE(a.page_io_latch_wait_in_ms, 0)) AS latch_wait_ms,\n           MIN(a.uptime_days) AS uptime_days\n    FROM analyzed a\n    GROUP BY a.server_id, a.database_name\n),\ndb_rows AS (\n    SELECT server_id, database_name, SUM(COALESCE(total_rows, 0)) AS total_rows\n    FROM base_rows\n    GROUP BY server_id, database_name\n),\nscoped AS (\n    /* ProjectRollups' order: one ALL DATABASES total per server, then a row per database.\n       GROUPING() marks the total, which renders sp_IndexCleanup's SUMMARY-level 'N/A'. */\n    SELECT p.server_id,\n           GROUPING(p.database_name) AS is_overall,\n           CASE WHEN GROUPING(p.database_name) = 1\n                THEN 'ALL DATABASES' ELSE p.database_name END AS scope,\n           SUM(p.tables_analyzed) AS tables_analyzed,\n           SUM(p.index_count) AS index_count,\n           SUM(p.total_size_gb) AS total_size_gb,\n           SUM(p.unused_indexes) AS unused_indexes,\n           SUM(p.unused_size_gb) AS unused_size_gb,\n           SUM(p.compressable_indexes) AS compressable_indexes,\n           SUM(p.user_seeks) AS user_seeks,\n           SUM(p.user_scans) AS user_scans,\n           SUM(p.user_lookups) AS user_lookups,\n           SUM(p.total_writes) AS total_writes,\n           SUM(p.lock_wait_count) AS lock_wait_count,\n           SUM(p.lock_wait_ms) AS lock_wait_ms,\n           SUM(p.latch_wait_count) AS latch_wait_count,\n           SUM(p.latch_wait_ms) AS latch_wait_ms,\n           SUM(r.total_rows) AS total_rows,\n           MIN(p.uptime_days) AS uptime_days\n    FROM per_db p\n    LEFT JOIN db_rows r\n           ON r.server_id = p.server_id AND r.database_name = p.database_name\n    GROUP BY p.server_id, ROLLUP(p.database_name)\n)\nSELECT\n    srv.name AS \"Server\",\n    s.scope AS \"Database\",\n    s.tables_analyzed AS \"Tables\",\n    s.index_count AS \"Indexes\",\n    round(s.total_size_gb, 2) AS \"Size GB\",\n    s.total_rows AS \"Rows\",\n    s.unused_indexes AS \"Unused\",\n    round(s.unused_size_gb, 2) AS \"Unused GB\",\n    s.compressable_indexes AS \"Compressable\",\n    CASE WHEN s.is_overall = 1 THEN 'N/A'\n         ELSE to_char(s.user_seeks + s.user_scans + s.user_lookups, 'FM999,999,999,990')\n              || ' (' || to_char(s.user_seeks, 'FM999,999,999,990') || ' seeks, '\n              || to_char(s.user_scans, 'FM999,999,999,990') || ' scans, '\n              || to_char(s.user_lookups, 'FM999,999,999,990') || ' lookups)' END AS \"Reads\",\n    CASE WHEN s.is_overall = 1 THEN 'N/A' ELSE to_char(s.total_writes, 'FM999,999,999,990') END AS \"Writes\",\n    CASE WHEN s.is_overall = 1 THEN 'N/A'\n         ELSE to_char(s.lock_wait_count, 'FM999,999,999,990') END AS \"Lock Waits\",\n    CASE WHEN s.is_overall = 1 THEN 'N/A'\n         WHEN s.lock_wait_count > 0\n         THEN round(s.lock_wait_ms::numeric / s.lock_wait_count, 2)::text\n         ELSE '0' END AS \"Avg Lock Wait ms\",\n    CASE WHEN s.is_overall = 1 THEN 'N/A'\n         ELSE to_char(s.latch_wait_count, 'FM999,999,999,990') END AS \"Latch Waits\",\n    CASE WHEN s.is_overall = 1 THEN 'N/A'\n         WHEN s.latch_wait_count > 0\n         THEN round(s.latch_wait_ms::numeric / s.latch_wait_count, 2)::text\n         ELSE '0' END AS \"Avg Latch Wait ms\",\n    CASE\n        WHEN s.uptime_days IS NULL THEN 'Uptime unknown'\n        WHEN s.uptime_days <= 7\n        THEN 'Uptime ' || round(s.uptime_days, 1)\n             || 'd - dedupe-only, unused indexes not reported'\n        WHEN s.uptime_days < 14\n        THEN 'Uptime ' || round(s.uptime_days, 1)\n             || 'd - usage counters may be incomplete'\n        ELSE ''\n    END AS \"Note\"\nFROM scoped s\nJOIN config.config_monitored_servers AS srv ON srv.server_id = s.server_id\nORDER BY srv.name, s.is_overall DESC, s.scope\n"
+        }
+      ],
+      "description": "From each server's latest snapshot - no live proc. ALL DATABASES renders the workload columns N/A, as sp_IndexCleanup does."
+    },
+    {
+      "id": 13,
+      "type": "row",
+      "title": "Unused Indexes",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 57
+      },
+      "panels": []
+    },
+    {
+      "id": 14,
+      "type": "table",
+      "title": "Unused Indexes",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 58
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Size GB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "gbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Compressable"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Yes": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "No": {
+                        "color": "text",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Size GB",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH snapshot AS (\n    SELECT DISTINCT ON (ios.server_id, ios.database_id, ios.object_id, ios.index_id)\n           ios.*,\n           CASE\n        WHEN sp.engine_edition IS NULL THEN true\n        WHEN sp.engine_edition IN (3, 5, 8) THEN true\n        WHEN sp.engine_edition IN (2, 4)\n             THEN COALESCE(split_part(sp.product_version, '.', 1)::int, 0) >= 13\n        ELSE false\n    END AS supports_compression,\n           EXTRACT(EPOCH FROM (LOCALTIMESTAMP - sp.sqlserver_start_time)) / 86400.0 AS uptime_days,\n           COALESCE(ios.user_seeks, 0) + COALESCE(ios.user_scans, 0) + COALESCE(ios.user_lookups, 0) AS reads,\n           (COALESCE(ios.user_seeks, 0) + COALESCE(ios.user_scans, 0) + COALESCE(ios.user_lookups, 0) = 0\n        AND upper(ios.index_type_desc) = 'NONCLUSTERED'\n        AND NOT COALESCE(ios.is_primary_key, false)\n        AND NOT COALESCE(ios.is_unique_constraint, false)\n        AND NOT COALESCE(ios.is_unique, false)\n        AND NOT COALESCE(ios.is_foreign_key_reference, false)\n        AND ios.index_id <> 1) AS is_unused_candidate,\n           (CASE\n        WHEN sp.engine_edition IS NULL THEN true\n        WHEN sp.engine_edition IN (3, 5, 8) THEN true\n        WHEN sp.engine_edition IN (2, 4)\n             THEN COALESCE(split_part(sp.product_version, '.', 1)::int, 0) >= 13\n        ELSE false\n    END\n        AND ios.index_id > 0\n        AND upper(COALESCE(ios.data_compression_desc, '')) = 'NONE') AS can_compress\n    FROM collect.v_index_object_stats AS ios\n    LEFT JOIN (\n        SELECT DISTINCT ON (server_id) server_id, engine_edition, product_version,\n               sqlserver_start_time\n        FROM collect.server_properties\n        ORDER BY server_id, collection_time DESC\n    ) sp ON sp.server_id = ios.server_id\n    WHERE ios.server_id IN (${server:csv})\n      AND NOT COALESCE(ios.is_disabled, false)\n      AND COALESCE(ios.index_name, '') <> ''\n      AND upper(ios.index_type_desc) IN ('CLUSTERED', 'NONCLUSTERED')\n    ORDER BY ios.server_id, ios.database_id, ios.object_id, ios.index_id,\n             ios.collection_time DESC\n),\nanalyzed AS (\n    SELECT s.*,\n           /* Dedupe-only at <= 7 days uptime suppresses Rule 1. */\n           s.is_unused_candidate\n               AND COALESCE(s.uptime_days, 999) > 7 AS is_unused\n    FROM snapshot s\n)\nSELECT\n    srv.name AS \"Server\",\n    a.database_name AS \"Database\",\n    a.schema_name AS \"Schema\",\n    a.table_name AS \"Table\",\n    a.index_name AS \"Index\",\n    CASE WHEN COALESCE(a.uptime_days, 999) < 14\n         THEN 'Unused Index (uptime < 14 days)' ELSE 'Unused Index' END AS \"Rule\",\n    round(COALESCE(a.reserved_mb, 0) / 1024.0, 3) AS \"Size GB\",\n    a.total_rows AS \"Rows\",\n    a.reads AS \"Reads\",\n    COALESCE(a.user_updates, 0) AS \"Writes\",\n    a.index_type_desc AS \"Type\",\n    /* OriginalIndexDefinition's inputs. */\n    a.key_columns AS \"Key Columns\",\n    COALESCE(a.included_columns, '') AS \"Included Columns\",\n    COALESCE(a.filter_definition, '') AS \"Filter\",\n    COALESCE(a.data_compression_desc, '') AS \"Compression\",\n    CASE WHEN a.can_compress THEN 'Yes' ELSE 'No' END AS \"Compressable\"\nFROM analyzed a\nJOIN config.config_monitored_servers AS srv ON srv.server_id = a.server_id\nWHERE a.is_unused\nORDER BY a.database_name, a.schema_name, a.table_name, a.index_name\n"
+        }
+      ],
+      "description": "Nonclustered, non-unique, non-PK/UC/FK-referenced indexes with no reads. Empty on a server up 7 days or less, where upstream switches to dedupe-only."
+    }
+  ]
+}

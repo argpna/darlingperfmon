@@ -1,0 +1,635 @@
+{
+  "uid": "darling-query-store-history",
+  "title": "Perfmon (Darling) - Query Store History",
+  "tags": [
+    "perfmon-darling-detail",
+    "nav-only"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "refresh": "",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon-darling"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon (Darling) Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      },
+      {
+        "name": "database",
+        "label": "Database",
+        "type": "textbox",
+        "current": {
+          "text": "*",
+          "value": "*"
+        },
+        "options": [
+          {
+            "text": "*",
+            "value": "*"
+          }
+        ],
+        "hide": 0
+      },
+      {
+        "name": "query_id",
+        "label": "Query ID",
+        "type": "textbox",
+        "current": {
+          "text": "*",
+          "value": "*"
+        },
+        "options": [
+          {
+            "text": "*",
+            "value": "*"
+          }
+        ],
+        "hide": 0
+      },
+      {
+        "name": "plan_id",
+        "label": "Plan ID",
+        "type": "textbox",
+        "current": {
+          "text": "*",
+          "value": "*"
+        },
+        "options": [
+          {
+            "text": "*",
+            "value": "*"
+          }
+        ],
+        "hide": 0
+      },
+      {
+        "name": "qs_history_metric",
+        "label": "Chart Metric",
+        "type": "custom",
+        "query": "Avg CPU (ms),Avg Duration (ms),Avg Reads,Avg Rows,Executions,Total CPU (ms),Total Duration (ms)",
+        "current": {
+          "text": "Avg CPU (ms)",
+          "value": "Avg CPU (ms)"
+        },
+        "options": [
+          {
+            "text": "Avg CPU (ms)",
+            "value": "Avg CPU (ms)",
+            "selected": true
+          },
+          {
+            "text": "Avg Duration (ms)",
+            "value": "Avg Duration (ms)",
+            "selected": false
+          },
+          {
+            "text": "Avg Reads",
+            "value": "Avg Reads",
+            "selected": false
+          },
+          {
+            "text": "Avg Rows",
+            "value": "Avg Rows",
+            "selected": false
+          },
+          {
+            "text": "Executions",
+            "value": "Executions",
+            "selected": false
+          },
+          {
+            "text": "Total CPU (ms)",
+            "value": "Total CPU (ms)",
+            "selected": false
+          },
+          {
+            "text": "Total Duration (ms)",
+            "value": "Total Duration (ms)",
+            "selected": false
+          }
+        ],
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "description": "Metric the trend chart plots."
+      },
+      {
+        "name": "plan_shape",
+        "label": "Plan Shape",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "\nSELECT\n    'Plan ' || qsd.plan_id AS __text,\n    qsd.plan_id::text AS __value\nFROM collect.v_query_store_stats AS qsd\nWHERE \nqsd.server_id IN (${server:csv})\n  AND (${database:sqlstring} = '*' OR ${database:sqlstring} = '' OR qsd.database_name = ${database:sqlstring})\n  AND (${query_id:sqlstring} = '*' OR ${query_id:sqlstring} = '' OR qsd.query_id::text = ${query_id:sqlstring})\n  AND $__timeFilter(qsd.collection_time)\n\nGROUP BY qsd.plan_id\nORDER BY MAX(qsd.last_execution_time) DESC\n",
+        "definition": "\nSELECT\n    'Plan ' || qsd.plan_id AS __text,\n    qsd.plan_id::text AS __value\nFROM collect.v_query_store_stats AS qsd\nWHERE \nqsd.server_id IN (${server:csv})\n  AND (${database:sqlstring} = '*' OR ${database:sqlstring} = '' OR qsd.database_name = ${database:sqlstring})\n  AND (${query_id:sqlstring} = '*' OR ${query_id:sqlstring} = '' OR qsd.query_id::text = ${query_id:sqlstring})\n  AND $__timeFilter(qsd.collection_time)\n\nGROUP BY qsd.plan_id\nORDER BY MAX(qsd.last_execution_time) DESC\n",
+        "current": {},
+        "options": [],
+        "refresh": 2,
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "sort": 0,
+        "description": "Query Store plan_id to show XML/parameters for, among those seen in the current time range (independent of the $plan_id filter above)."
+      },
+      {
+        "name": "query_text",
+        "label": "Query Text",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "\nSELECT REPLACE(REPLACE(qsd.query_text, E'\\r\\n', E'\\n'), E'\\r', E'\\n') AS __text,\n    REPLACE(REPLACE(qsd.query_text, E'\\r\\n', E'\\n'), E'\\r', E'\\n') AS __value\nFROM collect.v_query_store_stats AS qsd\nWHERE \nqsd.server_id IN (${server:csv})\n  AND (${database:sqlstring} = '*' OR ${database:sqlstring} = '' OR qsd.database_name = ${database:sqlstring})\n  AND (${query_id:sqlstring} = '*' OR ${query_id:sqlstring} = '' OR qsd.query_id::text = ${query_id:sqlstring})\n  AND (${plan_id:sqlstring} = '*' OR ${plan_id:sqlstring} = '' OR qsd.plan_id::text = ${plan_id:sqlstring})\n  AND $__timeFilter(qsd.collection_time)\n\n  AND qsd.query_text IS NOT NULL\nORDER BY qsd.collection_time DESC\nLIMIT 1\n",
+        "definition": "\nSELECT REPLACE(REPLACE(qsd.query_text, E'\\r\\n', E'\\n'), E'\\r', E'\\n') AS __text,\n    REPLACE(REPLACE(qsd.query_text, E'\\r\\n', E'\\n'), E'\\r', E'\\n') AS __value\nFROM collect.v_query_store_stats AS qsd\nWHERE \nqsd.server_id IN (${server:csv})\n  AND (${database:sqlstring} = '*' OR ${database:sqlstring} = '' OR qsd.database_name = ${database:sqlstring})\n  AND (${query_id:sqlstring} = '*' OR ${query_id:sqlstring} = '' OR qsd.query_id::text = ${query_id:sqlstring})\n  AND (${plan_id:sqlstring} = '*' OR ${plan_id:sqlstring} = '' OR qsd.plan_id::text = ${plan_id:sqlstring})\n  AND $__timeFilter(qsd.collection_time)\n\n  AND qsd.query_text IS NOT NULL\nORDER BY qsd.collection_time DESC\nLIMIT 1\n",
+        "current": {},
+        "options": [],
+        "refresh": 2,
+        "hide": 2,
+        "multi": false,
+        "includeAll": false,
+        "sort": 0,
+        "description": "Backs the Query Text panel - not shown in the variable picker."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "History",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "${qs_history_metric} over time (one dot per plan)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "points",
+            "lineInterpolation": "smooth",
+            "lineWidth": 0,
+            "fillOpacity": 0,
+            "showPoints": "always",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "pointSize": 5
+          },
+          "unit": "short",
+          "links": [
+            {
+              "title": "Show this plan shape below",
+              "url": "/d/darling-query-store-history?${__url_time_range}&var-server=$server&var-database=$database&var-query_id=$query_id&var-plan_id=$plan_id&var-plan_shape=${__field.name}",
+              "targetBlank": false
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    qsd.collection_time AS time,\n    qsd.plan_id::text AS metric,\n    CASE ${qs_history_metric:sqlstring}\n    WHEN 'Avg CPU (ms)' THEN qsd.avg_cpu_time_us / 1000.0\n    WHEN 'Avg Duration (ms)' THEN qsd.avg_duration_us / 1000.0\n    WHEN 'Avg Reads' THEN qsd.avg_logical_io_reads::double precision\n    WHEN 'Avg Rows' THEN qsd.avg_rowcount::double precision\n    WHEN 'Executions' THEN qsd.execution_count::double precision\n    WHEN 'Total CPU (ms)' THEN qsd.execution_count * qsd.avg_cpu_time_us / 1000.0\n    WHEN 'Total Duration (ms)' THEN qsd.execution_count * qsd.avg_duration_us / 1000.0\n    ELSE qsd.avg_duration_us / 1000.0\nEND AS value\nFROM collect.v_query_store_stats AS qsd\nWHERE \nqsd.server_id IN (${server:csv})\n  AND (${database:sqlstring} = '*' OR ${database:sqlstring} = '' OR qsd.database_name = ${database:sqlstring})\n  AND (${query_id:sqlstring} = '*' OR ${query_id:sqlstring} = '' OR qsd.query_id::text = ${query_id:sqlstring})\n  AND (${plan_id:sqlstring} = '*' OR ${plan_id:sqlstring} = '' OR qsd.plan_id::text = ${plan_id:sqlstring})\n  AND $__timeFilter(qsd.collection_time)\n\nORDER BY 1\n"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "text",
+      "title": "Query Text",
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "options": {
+        "mode": "code",
+        "code": {
+          "language": "sql",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "${query_text}"
+      }
+    },
+    {
+      "id": 4,
+      "type": "row",
+      "title": "History Grid",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 15
+      },
+      "panels": []
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Query Store history",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 16,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Forced"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "true": {
+                        "color": "blue",
+                        "index": 0
+                      },
+                      "false": {
+                        "color": "text",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Collection Time",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    qsd.collection_time AS \"Collection Time\",\n    qsd.plan_id AS \"Plan ID\",\n    qsd.execution_type_desc AS \"Exec Type\",\n    qsd.first_execution_time AS \"First Execution\",\n    qsd.last_execution_time AS \"Last Execution\",\n    qsd.module_name AS \"Module\",\n    qsd.execution_count AS \"Executions\",\n    qsd.execution_count * qsd.avg_duration_us / 1000.0 AS \"Total Duration (ms)\",\n    qsd.avg_duration_us / 1000.0 AS \"Avg Duration (ms)\",\n    qsd.min_duration_us / 1000.0 AS \"Min Duration (ms)\",\n    qsd.max_duration_us / 1000.0 AS \"Max Duration (ms)\",\n    qsd.execution_count * qsd.avg_cpu_time_us / 1000.0 AS \"Total CPU (ms)\",\n    qsd.avg_cpu_time_us / 1000.0 AS \"Avg CPU (ms)\",\n    qsd.min_cpu_time_us / 1000.0 AS \"Min CPU (ms)\",\n    qsd.max_cpu_time_us / 1000.0 AS \"Max CPU (ms)\",\n    qsd.avg_clr_time_us / 1000.0 AS \"Avg CLR (ms)\",\n    qsd.min_clr_time_us / 1000.0 AS \"Min CLR (ms)\",\n    qsd.max_clr_time_us / 1000.0 AS \"Max CLR (ms)\",\n    qsd.avg_logical_io_reads AS \"Avg Reads\",\n    qsd.min_logical_io_reads AS \"Min Reads\",\n    qsd.max_logical_io_reads AS \"Max Reads\",\n    qsd.avg_logical_io_writes AS \"Avg Writes\",\n    qsd.min_logical_io_writes AS \"Min Writes\",\n    qsd.max_logical_io_writes AS \"Max Writes\",\n    qsd.avg_log_bytes_used / 1048576.0 AS \"Avg Log (MB)\",\n    qsd.min_log_bytes_used / 1048576.0 AS \"Min Log (MB)\",\n    qsd.max_log_bytes_used / 1048576.0 AS \"Max Log (MB)\",\n    qsd.avg_physical_io_reads AS \"Avg Phys Reads\",\n    qsd.min_physical_io_reads AS \"Min Phys Reads\",\n    qsd.max_physical_io_reads AS \"Max Phys Reads\",\n    qsd.avg_num_physical_io_reads AS \"Avg Num Phys Reads\",\n    qsd.min_num_physical_io_reads AS \"Min Num Phys Reads\",\n    qsd.max_num_physical_io_reads AS \"Max Num Phys Reads\",\n    qsd.avg_rowcount AS \"Avg Rows\",\n    qsd.min_rowcount AS \"Min Rows\",\n    qsd.max_rowcount AS \"Max Rows\",\n    qsd.avg_query_max_used_memory * 8.0 / 1024.0 AS \"Avg Mem (MB)\",\n    qsd.min_query_max_used_memory * 8.0 / 1024.0 AS \"Min Mem (MB)\",\n    qsd.max_query_max_used_memory * 8.0 / 1024.0 AS \"Max Mem (MB)\",\n    qsd.avg_tempdb_space_used * 8.0 / 1024.0 AS \"Avg tempdb (MB)\",\n    qsd.min_tempdb_space_used * 8.0 / 1024.0 AS \"Min tempdb (MB)\",\n    qsd.max_tempdb_space_used * 8.0 / 1024.0 AS \"Max tempdb (MB)\",\n    qsd.min_dop AS \"Min DOP\",\n    qsd.max_dop AS \"Max DOP\",\n    qsd.plan_type AS \"Plan Type\",\n    qsd.is_forced_plan AS \"Forced\",\n    qsd.force_failure_count AS \"Force Failures\",\n    qsd.last_force_failure_reason AS \"Last Failure Reason\",\n    qsd.plan_forcing_type AS \"Forcing Type\",\n    qsd.compatibility_level AS \"Compat Level\",\n    qsd.query_hash AS \"Query Hash\",\n    qsd.query_plan_hash AS \"Query Plan Hash\"\nFROM collect.v_query_store_stats AS qsd\nWHERE \nqsd.server_id IN (${server:csv})\n  AND (${database:sqlstring} = '*' OR ${database:sqlstring} = '' OR qsd.database_name = ${database:sqlstring})\n  AND (${query_id:sqlstring} = '*' OR ${query_id:sqlstring} = '' OR qsd.query_id::text = ${query_id:sqlstring})\n  AND (${plan_id:sqlstring} = '*' OR ${plan_id:sqlstring} = '' OR qsd.plan_id::text = ${plan_id:sqlstring})\n  AND $__timeFilter(qsd.collection_time)\n\nORDER BY qsd.collection_time\n"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "row",
+      "title": "Plan Shapes",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 32
+      },
+      "panels": []
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Plan shapes seen in range",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 33
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Forced"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "true": {
+                        "color": "blue",
+                        "index": 0
+                      },
+                      "false": {
+                        "color": "text",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Last Execution",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    qsd.plan_id AS \"Plan ID\",\n    MIN(qsd.first_execution_time) AS \"First Execution\",\n    MAX(qsd.last_execution_time) AS \"Last Execution\",\n    SUM(qsd.execution_count)::bigint AS \"Executions\",\n    AVG(qsd.avg_duration_us::double precision) / 1000.0 AS \"Avg Duration (ms)\",\n    AVG(qsd.avg_cpu_time_us::double precision) / 1000.0 AS \"Avg CPU (ms)\",\n    bool_or(qsd.is_forced_plan) AS \"Forced\",\n    bool_or(qsd.query_plan_text IS NOT NULL) AS \"Has Plan XML\"\nFROM collect.v_query_store_stats AS qsd\nWHERE \nqsd.server_id IN (${server:csv})\n  AND (${database:sqlstring} = '*' OR ${database:sqlstring} = '' OR qsd.database_name = ${database:sqlstring})\n  AND (${query_id:sqlstring} = '*' OR ${query_id:sqlstring} = '' OR qsd.query_id::text = ${query_id:sqlstring})\n  AND $__timeFilter(qsd.collection_time)\n\nGROUP BY qsd.plan_id\nORDER BY MAX(qsd.last_execution_time) DESC\n"
+        }
+      ],
+      "description": "plan_id is Query Store's own distinct-plan-shape id, independent of the $plan_id filter above - this list always shows every shape for the query in range. Pick one with the Plan Shape variable."
+    },
+    {
+      "id": 8,
+      "type": "logs",
+      "title": "Plan XML (${plan_shape})",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 41
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogLines": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": false,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT qsd.collection_time AS time, qsd.query_plan_text AS \"Line\"\nFROM collect.v_query_store_stats AS qsd\nWHERE \nqsd.server_id IN (${server:csv})\n  AND (${database:sqlstring} = '*' OR ${database:sqlstring} = '' OR qsd.database_name = ${database:sqlstring})\n  AND (${query_id:sqlstring} = '*' OR ${query_id:sqlstring} = '' OR qsd.query_id::text = ${query_id:sqlstring})\n  AND $__timeFilter(qsd.collection_time)\n\n  AND qsd.plan_id::text = ${plan_shape:sqlstring}\n  AND qsd.query_plan_text IS NOT NULL\nORDER BY qsd.collection_time DESC\nLIMIT 1\n"
+        }
+      ],
+      "description": "Compiled plan from sys.query_store_plan - not an actual/runtime plan, since Grafana has no live SQL Server access here."
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Compile-time parameters",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 45
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH plan AS ( \n    SELECT qsd.query_plan_text AS plan_xml\n    FROM collect.v_query_store_stats AS qsd\n    WHERE \nqsd.server_id IN (${server:csv})\n  AND (${database:sqlstring} = '*' OR ${database:sqlstring} = '' OR qsd.database_name = ${database:sqlstring})\n  AND (${query_id:sqlstring} = '*' OR ${query_id:sqlstring} = '' OR qsd.query_id::text = ${query_id:sqlstring})\n  AND $__timeFilter(qsd.collection_time)\n\n      AND qsd.plan_id::text = ${plan_shape:sqlstring}\n      AND qsd.query_plan_text IS NOT NULL\n    ORDER BY qsd.collection_time DESC\n    LIMIT 1\n ),\nparsed AS (SELECT plan_xml::xml AS doc FROM plan WHERE plan_xml IS NOT NULL),\nns AS (SELECT ARRAY[ARRAY['sp', 'http://schemas.microsoft.com/sqlserver/2004/07/showplan']] AS n),\nparams AS (\n    SELECT unnest(xpath('//sp:ParameterList/sp:ColumnReference', doc, ns.n)) AS node\n    FROM parsed, ns\n)\nSELECT\n    (xpath('/*/@Column', node))[1]::text AS \"Parameter\",\n    (xpath('/*/@ParameterCompiledValue', node))[1]::text AS \"Compiled Value\",\n    (xpath('/*/@ParameterRuntimeValue', node))[1]::text AS \"Runtime Value\"\nFROM params\n"
+        }
+      ],
+      "description": "Parsed from the plan XML's ParameterList. Runtime Value is only ever populated on an actual (post-execution) plan, which this stored plan is not - expect it blank here."
+    }
+  ]
+}

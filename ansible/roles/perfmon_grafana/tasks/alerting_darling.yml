@@ -1,0 +1,12 @@
+---
+# Renders rules-instance-darling.yaml.j2, reading collect.* through the single Postgres
+# datasource, into its own Grafana folder.
+
+- name: Provision alert contact points, mute timings, and notification route
+  ansible.builtin.import_tasks: alerting_contacts.yml
+
+- name: Provision alert rule groups
+  ansible.builtin.import_tasks: alerting_rulegroups.yml
+  vars:
+    _alerting_template_path: "{{ role_path }}/templates/alerting/rules-instance-darling.yaml.j2"
+    _alerting_folder_uid: "{{ grafana_darling_folder_uid }}"

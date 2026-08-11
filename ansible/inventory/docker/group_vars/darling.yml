@@ -1,0 +1,8 @@
+---
+perfmon_darling_pg_host: darling-pg
+perfmon_darling_pg_user: darling
+perfmon_darling_pg_password: "{{ lookup('env', 'DARLING_PG_PASSWORD') | default('') }}"
+
+perfmon_darling_auth: sql
+perfmon_darling_sql_username: sa
+perfmon_darling_sql_password: "{{ lookup('env', 'MSSQL_SA_PASSWORD') | default('') }}"

@@ -1,0 +1,353 @@
+{
+  "uid": "darling-finops-object-sizes",
+  "title": "FinOps (Darling) - Object Sizes & Growth",
+  "tags": [
+    "perfmon-darling-detail",
+    "nav-only"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "refresh": "",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon-darling"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon (Darling) Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      },
+      {
+        "name": "database",
+        "label": "Database",
+        "type": "textbox",
+        "current": {
+          "text": "*",
+          "value": "*"
+        },
+        "options": [
+          {
+            "text": "*",
+            "value": "*"
+          }
+        ],
+        "hide": 0
+      },
+      {
+        "name": "window",
+        "label": "Window (days)",
+        "type": "custom",
+        "query": "30,7,90",
+        "current": {
+          "text": "30",
+          "value": "30"
+        },
+        "options": [
+          {
+            "text": "30",
+            "value": "30",
+            "selected": true
+          },
+          {
+            "text": "7",
+            "value": "7",
+            "selected": false
+          },
+          {
+            "text": "90",
+            "value": "90",
+            "selected": false
+          }
+        ],
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "description": "Object-growth lookback, upstream's 7/30/90-day combo."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Object Reserved Footprint (daily)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "unit": "mbytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\n\nWITH bounds AS (\n    SELECT MAX(collection_time) AS latest_time, MIN(collection_time) AS earliest_time\n    FROM collect.v_index_object_stats AS ios\n    WHERE ios.server_id IN (${server:csv})\n      AND (${database:sqlstring} = '*' OR ${database:sqlstring} = '' OR ios.database_name = ${database:sqlstring})\n      AND ios.collection_time >= (now() AT TIME ZONE 'UTC') - (${window} || ' days')::interval\n),\nlatest AS (\n    SELECT ios.schema_name, ios.table_name,\n           SUM(ios.reserved_mb) AS cur_reserved_mb,\n           SUM(ios.used_mb) AS cur_used_mb,\n           MAX(ios.total_rows) AS cur_rows,\n           COUNT(*) AS index_count\n    FROM collect.v_index_object_stats AS ios\n    WHERE ios.server_id IN (${server:csv})\n      AND (${database:sqlstring} = '*' OR ${database:sqlstring} = '' OR ios.database_name = ${database:sqlstring})\n      AND ios.collection_time = (SELECT latest_time FROM bounds)\n    GROUP BY ios.schema_name, ios.table_name\n),\nearliest AS (\n    SELECT ios.schema_name, ios.table_name, SUM(ios.reserved_mb) AS e_reserved_mb\n    FROM collect.v_index_object_stats AS ios\n    WHERE ios.server_id IN (${server:csv})\n      AND (${database:sqlstring} = '*' OR ${database:sqlstring} = '' OR ios.database_name = ${database:sqlstring})\n      AND ios.collection_time = (SELECT earliest_time FROM bounds)\n    GROUP BY ios.schema_name, ios.table_name\n),\nranked AS (\n    SELECT l.*,\n           l.cur_reserved_mb - COALESCE(e.e_reserved_mb, l.cur_reserved_mb) AS growth_mb\n    FROM latest l\n    LEFT JOIN earliest e\n           ON e.schema_name = l.schema_name AND e.table_name = l.table_name\n    ORDER BY growth_mb DESC, l.schema_name, l.table_name\n    LIMIT 20\n)\nSELECT\n    date_trunc('day', ios.collection_time) AS time,\n    ios.schema_name || '.' || ios.table_name AS metric,\n    SUM(ios.reserved_mb) AS reserved_mb\nFROM collect.v_index_object_stats AS ios\nJOIN ranked r ON r.schema_name = ios.schema_name AND r.table_name = ios.table_name\nWHERE ios.server_id IN (${server:csv})\n  AND (${database:sqlstring} = '*' OR ${database:sqlstring} = '' OR ios.database_name = ${database:sqlstring})\n  AND ios.collection_time >= (now() AT TIME ZONE 'UTC') - (${window} || ' days')::interval\nGROUP BY 1, 2\nORDER BY 1, 2\n"
+        }
+      ],
+      "description": "Top 20 objects by growth over the selected window. This is per-object reservation, not file allocation, so it may not fully explain file-level growth."
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Object Growth Detail",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Table"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Show indexes",
+                    "url": "/d/darling-finops-index-usage?${__url_time_range}&var-server=${server}&var-database=${database}&var-schema=${__data.fields.Schema}&var-table=${__data.fields.Table}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Reserved MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Used MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Growth MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Daily Rate MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Growth %"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 10
+                    },
+                    {
+                      "color": "red",
+                      "value": 25
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Growth MB",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\n\nWITH bounds AS (\n    SELECT MAX(collection_time) AS latest_time, MIN(collection_time) AS earliest_time\n    FROM collect.v_index_object_stats AS ios\n    WHERE ios.server_id IN (${server:csv})\n      AND (${database:sqlstring} = '*' OR ${database:sqlstring} = '' OR ios.database_name = ${database:sqlstring})\n      AND ios.collection_time >= (now() AT TIME ZONE 'UTC') - (${window} || ' days')::interval\n),\nlatest AS (\n    SELECT ios.schema_name, ios.table_name,\n           SUM(ios.reserved_mb) AS cur_reserved_mb,\n           SUM(ios.used_mb) AS cur_used_mb,\n           MAX(ios.total_rows) AS cur_rows,\n           COUNT(*) AS index_count\n    FROM collect.v_index_object_stats AS ios\n    WHERE ios.server_id IN (${server:csv})\n      AND (${database:sqlstring} = '*' OR ${database:sqlstring} = '' OR ios.database_name = ${database:sqlstring})\n      AND ios.collection_time = (SELECT latest_time FROM bounds)\n    GROUP BY ios.schema_name, ios.table_name\n),\nearliest AS (\n    SELECT ios.schema_name, ios.table_name, SUM(ios.reserved_mb) AS e_reserved_mb\n    FROM collect.v_index_object_stats AS ios\n    WHERE ios.server_id IN (${server:csv})\n      AND (${database:sqlstring} = '*' OR ${database:sqlstring} = '' OR ios.database_name = ${database:sqlstring})\n      AND ios.collection_time = (SELECT earliest_time FROM bounds)\n    GROUP BY ios.schema_name, ios.table_name\n),\nranked AS (\n    SELECT l.*,\n           l.cur_reserved_mb - COALESCE(e.e_reserved_mb, l.cur_reserved_mb) AS growth_mb\n    FROM latest l\n    LEFT JOIN earliest e\n           ON e.schema_name = l.schema_name AND e.table_name = l.table_name\n    ORDER BY growth_mb DESC, l.schema_name, l.table_name\n    LIMIT 20\n)\nSELECT\n    r.schema_name AS \"Schema\",\n    r.table_name AS \"Table\",\n    round(r.cur_reserved_mb, 1) AS \"Reserved MB\",\n    round(r.cur_used_mb, 1) AS \"Used MB\",\n    r.cur_rows AS \"Rows\",\n    r.index_count AS \"Indexes\",\n    round(r.growth_mb, 1) AS \"Growth MB\",\n    round(CASE\n        WHEN r.cur_reserved_mb - r.growth_mb > 0\n        THEN r.growth_mb * 100.0 / (r.cur_reserved_mb - r.growth_mb)\n        ELSE 0\n    END, 1) AS \"Growth %\",\n    round(r.growth_mb / NULLIF(${window}::numeric, 0), 2) AS \"Daily Rate MB\"\nFROM ranked r\nORDER BY r.growth_mb DESC, r.schema_name, r.table_name\n"
+        }
+      ],
+      "description": "Index/object stats are collected daily, so a window shorter than two collections shows no growth."
+    }
+  ]
+}

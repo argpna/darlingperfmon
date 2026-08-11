@@ -1,0 +1,11 @@
+---
+# Generate the Darling dashboard JSON files from the Python builder embedded in the role.
+
+- name: Generate Darling dashboard JSON files
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ role_path }}/files/build-darling-dashboards.py"
+  delegate_to: localhost
+  become: false
+  changed_when: true # always reports changed

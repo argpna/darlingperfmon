@@ -1,5 +1,0 @@
----
-perfmon_admin_sql_user: sa
-perfmon_admin_sql_password: "{{ lookup('env', 'MSSQL_SA_PASSWORD') }}"
-
-perfmon_local_patches_dir: /workspace/patches

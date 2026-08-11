@@ -1,0 +1,492 @@
+{
+  "uid": "darling-finops-capacity-growth",
+  "title": "FinOps (Darling) - Capacity & Growth",
+  "tags": [
+    "finops-darling"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "refresh": "15m",
+  "weekStart": "",
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Fleet Overview",
+      "icon": "dashboard",
+      "type": "link",
+      "url": "/d/darling-fleet?${__url_time_range}",
+      "keepTime": true,
+      "includeVars": false,
+      "targetBlank": false
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "finops-darling"
+      ],
+      "targetBlank": false,
+      "title": "All FinOps (Darling) Dashboards",
+      "type": "dashboards",
+      "url": ""
+    },
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "perfmon-darling"
+      ],
+      "targetBlank": false,
+      "title": "All PerfMon (Darling) Dashboards",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "server",
+        "label": "Server",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "SELECT name AS __text, server_id AS __value FROM config.config_monitored_servers WHERE is_enabled ORDER BY name",
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "sort": 1,
+        "description": "Monitored SQL Server instance, from Darling's fleet registry."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Database Sizes",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Database Sizes",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total Size MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Used Size MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Free Space MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Used %"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Volume Total MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Volume Free MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Monthly Cost ($)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Total Size MB",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH latest AS (\n    SELECT *\n    FROM collect.v_database_size_stats\n    WHERE server_id IN (${server:csv}) AND (server_id, collection_time) IN (SELECT server_id, MAX(collection_time) FROM collect.v_database_size_stats WHERE server_id IN (${server:csv}) GROUP BY server_id)\n),\nserver_totals AS (\n    /* Cost share is by size within the server, so the denominator is per server. */\n    SELECT server_id, NULLIF(SUM(total_size_mb), 0) AS total_mb\n    FROM latest\n    GROUP BY server_id\n),\nbudget AS (\n    SELECT server_id, COALESCE(monthly_cost_usd, 0)::numeric AS monthly_cost\n    FROM config.config_monitored_servers\n    WHERE server_id IN (${server:csv})\n)\nSELECT\n    srv.name AS \"Server\",\n    s.database_name AS \"Database\",\n    s.file_type_desc AS \"File Type\",\n    s.file_name AS \"File Name\",\n    round(s.total_size_mb, 2) AS \"Total Size MB\",\n    round(s.used_size_mb, 2) AS \"Used Size MB\",\n    round(s.total_size_mb - s.used_size_mb, 2) AS \"Free Space MB\",\n    round(s.used_size_mb * 100.0 / NULLIF(s.total_size_mb, 0), 1) AS \"Used %\",\n    s.volume_mount_point AS \"Volume\",\n    round(s.volume_total_mb, 0) AS \"Volume Total MB\",\n    round(s.volume_free_mb, 0) AS \"Volume Free MB\",\n    s.recovery_model_desc AS \"Recovery Model\",\n    CASE\n        WHEN s.is_percent_growth IS NULL THEN '-'\n        WHEN s.is_percent_growth THEN\n            CASE WHEN s.growth_pct IS NULL THEN '-'\n                 ELSE s.growth_pct || '%' END\n        WHEN COALESCE(s.auto_growth_mb, 0) = 0 THEN 'Disabled'\n        ELSE to_char(s.auto_growth_mb, 'FM999,999,999,990') || ' MB'\n    END AS \"Auto Growth\",\n    CASE\n        WHEN upper(s.file_type_desc) = 'LOG'\n        THEN COALESCE(s.vlf_count::text, '-')\n        ELSE 'N/A'\n    END AS \"VLF Count\",\n    round(COALESCE(s.total_size_mb / t.total_mb * b.monthly_cost, 0), 2)\n        AS \"Monthly Cost ($)\"\nFROM latest s\nJOIN server_totals t ON t.server_id = s.server_id\nLEFT JOIN budget b ON b.server_id = s.server_id\nJOIN config.config_monitored_servers AS srv ON srv.server_id = s.server_id\nORDER BY s.total_size_mb DESC, s.database_name, s.file_type_desc, s.file_name\n"
+        }
+      ],
+      "description": "Latest snapshot, one row per file. Monthly Cost is the file's share of the server budget by size, 0 until one is configured."
+    },
+    {
+      "id": 3,
+      "type": "row",
+      "title": "Storage Growth",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 21
+      },
+      "panels": []
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Storage Growth",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 22
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "server_id"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Database"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Show objects",
+                    "url": "/d/darling-finops-object-sizes?${__url_time_range}&var-server=${__data.fields.server_id}&var-database=${__data.fields.Database}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Current Size MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Size 7d Ago MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Size 30d Ago MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Growth 7d MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Growth 30d MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Daily Rate MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Growth % 30d"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 10
+                    },
+                    {
+                      "color": "red",
+                      "value": 25
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Growth 30d MB",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH latest AS (\n    SELECT server_id, database_name, SUM(total_size_mb) AS size_mb\n    FROM collect.v_database_size_stats\n    WHERE server_id IN (${server:csv}) AND (server_id, collection_time) IN (SELECT server_id, MAX(collection_time) FROM collect.v_database_size_stats WHERE server_id IN (${server:csv}) GROUP BY server_id)\n    GROUP BY server_id, database_name\n),\npast_7d AS (\n    SELECT server_id, database_name, SUM(total_size_mb) AS size_mb\n    FROM collect.v_database_size_stats\n    WHERE server_id IN (${server:csv}) AND (server_id, collection_time) IN (SELECT server_id, MAX(collection_time) FROM collect.v_database_size_stats WHERE server_id IN (${server:csv}) AND collection_time <= (now() AT TIME ZONE 'UTC') - INTERVAL '7 days' GROUP BY server_id)\n    GROUP BY server_id, database_name\n),\npast_30d AS (\n    SELECT server_id, database_name, SUM(total_size_mb) AS size_mb\n    FROM collect.v_database_size_stats\n    WHERE server_id IN (${server:csv}) AND (server_id, collection_time) IN (SELECT server_id, MAX(collection_time) FROM collect.v_database_size_stats WHERE server_id IN (${server:csv}) AND collection_time <= (now() AT TIME ZONE 'UTC') - INTERVAL '30 days' GROUP BY server_id)\n    GROUP BY server_id, database_name\n)\nSELECT\n    l.server_id AS \"server_id\",\n    srv.name AS \"Server\",\n    l.database_name AS \"Database\",\n    round(l.size_mb, 2) AS \"Current Size MB\",\n    round(p7.size_mb, 2) AS \"Size 7d Ago MB\",\n    round(p30.size_mb, 2) AS \"Size 30d Ago MB\",\n    round(l.size_mb - COALESCE(p7.size_mb, l.size_mb), 2) AS \"Growth 7d MB\",\n    round(l.size_mb - COALESCE(p30.size_mb, l.size_mb), 2) AS \"Growth 30d MB\",\n    round(CASE\n        WHEN p30.size_mb IS NOT NULL THEN (l.size_mb - p30.size_mb) / 30.0\n        WHEN p7.size_mb IS NOT NULL THEN (l.size_mb - p7.size_mb) / 7.0\n        ELSE 0\n    END, 2) AS \"Daily Rate MB\",\n    round(CASE\n        WHEN p30.size_mb IS NOT NULL AND p30.size_mb > 0\n        THEN (l.size_mb - p30.size_mb) * 100.0 / p30.size_mb\n        ELSE 0\n    END, 1) AS \"Growth % 30d\"\nFROM latest l\nLEFT JOIN past_7d p7 ON p7.server_id = l.server_id AND p7.database_name = l.database_name\nLEFT JOIN past_30d p30\n       ON p30.server_id = l.server_id AND p30.database_name = l.database_name\nJOIN config.config_monitored_servers AS srv ON srv.server_id = l.server_id\nORDER BY l.size_mb - COALESCE(p30.size_mb, l.size_mb) DESC\n"
+        }
+      ],
+      "description": "Allocated size now versus 7 and 30 days ago; a database with no snapshot that far back shows no growth. Click one to drill in."
+    }
+  ]
+}

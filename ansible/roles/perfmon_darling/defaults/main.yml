@@ -1,0 +1,36 @@
+---
+# Where the Darling service reads its config. The service resolves DARLING_CONFIG, then
+# darling.json beside the binary.
+perfmon_darling_config_path: /etc/darling/darling.json
+perfmon_darling_config_owner: root
+perfmon_darling_config_group: root
+
+# Monitored instances, same inventory group the Grafana role reads.
+perfmon_darling_instances: "{{ groups['sql_servers'] | default([]) | map('extract', hostvars) | list }}"
+
+# Store connection the service collects as. This is the owner role, not the Grafana viewer.
+perfmon_darling_pg_host: darling-pg
+perfmon_darling_pg_port: 5432
+perfmon_darling_pg_database: darling
+perfmon_darling_pg_user: darling
+# perfmon_darling_pg_password: set in inventory group_vars or vault
+
+# Per-instance auth default: sql or integrated. Override per host with darling_auth.
+perfmon_darling_auth: sql
+# perfmon_darling_sql_username / perfmon_darling_sql_password: required when auth is sql
+
+perfmon_darling_capture_plans: true
+perfmon_darling_alerts_enabled: false
+perfmon_darling_analysis_enabled: true
+
+# servers[] in darling.json seeds the store only while config_monitored_servers is empty.
+# With this set, instances added to inventory later are inserted into the registry directly
+# so they start collecting without recreating the store.
+perfmon_darling_register_new: true
+
+# Disable registry rows whose instance has left the inventory. Off by default.
+perfmon_darling_prune_orphaned: false
+
+# The service unit to restart when darling.json changes. Off by default.
+perfmon_darling_manage_service: false
+perfmon_darling_service_name: darling

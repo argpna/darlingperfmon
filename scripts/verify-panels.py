@@ -75,7 +75,7 @@ def _is_v2_dashboard(dash: dict) -> bool:
     return dash.get("kind") == "Dashboard" and "spec" in dash
 
 
-def _dashboard_subs(dash: dict) -> dict[str, str]:
+def _dashboard_subs(dash: dict, ds_uid: str | None = None) -> dict[str, str]:
     """Build the ${name} -> escaped-only value table for one dashboard, derived from
     its own variable list (v1 templating.list or v2 spec.variables) instead of a
     hand-maintained global dict."""
@@ -102,8 +102,65 @@ def _dashboard_subs(dash: dict) -> dict[str, str]:
                 value = value[0] if value else ""
             if value == ALL_VARIABLE_VALUE:
                 value = var.get("allValue") or ""
+            if not value and kind == "query" and ds_uid:
+                value = _resolve_query_var(var, ds_uid)
         subs[name] = str(value)
     return subs
+
+
+def _resolve_query_var(var: dict, ds_uid: str) -> str:
+    """Resolve a query-backed variable by running its query, the way Grafana does.
+
+    Their options populate at dashboard load, so `current` is empty in the generated JSON
+    and panels filtering on one would otherwise be tested with an empty token.
+    """
+    query = var.get("query")
+    if isinstance(query, dict):
+        query = query.get("rawSql") or query.get("query")
+    if not isinstance(query, str) or not query.strip():
+        return ""
+    return _first_variable_value(ds_uid, query)
+
+
+def _first_variable_value(ds_uid: str, query: str) -> str:
+    """Return the first __value (or first column) the variable query yields."""
+    body = json.dumps(
+        {
+            "queries": [
+                {
+                    "refId": "A",
+                    "datasource": {"type": ds_type(ds_uid), "uid": ds_uid},
+                    "format": "table",
+                    "rawQuery": True,
+                    "rawSql": query,
+                    "intervalMs": 60000,
+                    "maxDataPoints": 500,
+                }
+            ],
+            "from": "now-3h",
+            "to": "now",
+        }
+    ).encode()
+    req = urllib.request.Request(
+        f"{GRAFANA}/api/ds/query",
+        data=body,
+        headers={"Content-Type": "application/json", "Authorization": AUTH_HEADER},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT_SECONDS) as resp:
+            r = json.load(resp)
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
+        print(f"  (could not resolve variable query: {e})")
+        return ""
+    frames = r.get("results", {}).get("A", {}).get("frames", [])
+    for fr in frames:
+        fields = [f.get("name") for f in fr.get("schema", {}).get("fields", [])]
+        values = fr.get("data", {}).get("values", [])
+        if not values or not values[0]:
+            continue
+        idx = fields.index("__value") if "__value" in fields else len(values) - 1
+        return str(values[idx][0])
+    return ""
 
 
 def _apply_subs(sql: str, subs: dict[str, str]) -> str:
@@ -163,13 +220,31 @@ def iter_queries(dash: dict):
                 )
 
 
+_DS_TYPES: dict[str, str] = {}
+
+
+def ds_type(ds_uid: str) -> str:
+    """Look up a datasource's plugin type, cached per uid."""
+    if ds_uid not in _DS_TYPES:
+        req = urllib.request.Request(
+            f"{GRAFANA}/api/datasources/uid/{ds_uid}",
+            headers={"Authorization": AUTH_HEADER},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT_SECONDS) as resp:
+                _DS_TYPES[ds_uid] = json.load(resp).get("type", "mssql")
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+            _DS_TYPES[ds_uid] = "mssql"
+    return _DS_TYPES[ds_uid]
+
+
 def run_query(ds_uid: str, sql: str, fmt: str):
     body = json.dumps(
         {
             "queries": [
                 {
                     "refId": "A",
-                    "datasource": {"type": "mssql", "uid": ds_uid},
+                    "datasource": {"type": ds_type(ds_uid), "uid": ds_uid},
                     "format": fmt,
                     "rawQuery": True,
                     "rawSql": sql,
@@ -240,7 +315,7 @@ def main() -> None:
         / "files"
         / "grafana"
         / "dashboards"
-        / "perfmon"
+        / "darling"
     )
     dashboard_dir = (
         pathlib.Path(os.environ["PERFMON_DASHBOARD_DIR"])
@@ -255,7 +330,7 @@ def main() -> None:
             failures += 1
             continue
         name = f.name
-        subs = _dashboard_subs(dash)
+        subs = _dashboard_subs(dash, DS_UIDS[0])
         extracted = 0
         for title, fmt, sql in iter_queries(dash):
             extracted += 1

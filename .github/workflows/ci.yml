@@ -30,18 +30,6 @@ jobs:
         run: git ls-files '*.py' | xargs pylint
       - name: ansible-lint
         run: ansible-lint
-      - name: Time-macro static check
-        run: python3 scripts/check-time-macros.py
-      - name: Committed dashboard JSON matches generated output
-        run: |
-          python3 ansible/roles/perfmon_grafana/files/build-dashboards.py
-          drift=$(git status --porcelain -- ansible/roles/perfmon_grafana/files/grafana/dashboards)
-          if [ -n "$drift" ]; then
-            echo "$drift"
-            git diff -- ansible/roles/perfmon_grafana/files/grafana/dashboards | head -80
-            echo "::error::committed dashboard JSON is stale - run build-dashboards.py and commit the result"
-            exit 1
-          fi
 
   e2e:
     runs-on: ubuntu-latest
@@ -49,60 +37,60 @@ jobs:
     needs: static
     steps:
       - uses: actions/checkout@v4
-      - name: Start stack
+      - name: Start stack with darling profile
         run: |
           cp .env.example .env
-          docker compose up -d
-      - name: Wait for playbook run
+          docker compose --profile darling up -d --wait \
+            --scale ansible-runner=0 \
+            --scale darling-provision=0 \
+            --scale darling-collector-config=0 \
+            --scale darling-plan-gunzip=0
+      - name: Run one-shot store setup jobs
         run: |
-          rc=$(docker wait perfmon-ansible-runner)
-          docker logs perfmon-ansible-runner 2>&1 | tail -40
+          docker compose --profile darling up -d \
+            darling-provision darling-collector-config darling-plan-gunzip
+      - name: Verify the perfmon_darling collector role
+        run: |
+          docker compose run --rm ansible-runner \
+            ansible-playbook -i /workspace/ansible/inventory/docker \
+            /workspace/ansible/playbooks/deploy_perfmon_darling.yml
+      - name: Wait for the Darling store to migrate and provision roles
+        run: |
+          rc=$(docker wait perfmon-darling-provision)
+          docker logs perfmon-darling-provision 2>&1 | tail -40
           exit "$rc"
-      - name: Assert datasources, auth, alert rules
-        run: python3 scripts/e2e-checks.py perfmon-ds-sql2022:sql perfmon-ds-sql2025:sql
+      - name: Wait for collector schedule provisioning
+        run: |
+          rc=$(docker wait perfmon-darling-collector-config)
+          docker logs perfmon-darling-collector-config 2>&1 | tail -40
+          exit "$rc"
+      - name: Wait for plan-gunzip provisioning
+        run: |
+          rc=$(docker wait perfmon-darling-plan-gunzip)
+          docker logs perfmon-darling-plan-gunzip 2>&1 | tail -40
+          exit "$rc"
+      - name: Deploy Grafana dashboards
+        run: |
+          docker compose run --rm ansible-runner \
+            ansible-playbook -i /workspace/ansible/inventory/docker \
+            /workspace/ansible/playbooks/deploy_perfmon_grafana.yml
+      - name: Assert datasource, auth, alert rules
+        run: python3 scripts/e2e-checks.py
       - name: Smoke-test every panel query
         run: |
           GRAFANA_API_KEY=$(grep '^GRAFANA_API_KEY=' .env | cut -d= -f2-)
           export GRAFANA_API_KEY
-          python3 scripts/verify-panels.py perfmon-ds-sql2022 perfmon-ds-sql2025
-      # scripts are idempotent: a second full playbook run must succeed
-      - name: Playbook re-run succeeds
-        run: docker compose run --rm ansible-runner
+          python3 scripts/verify-panels.py darling
+      # scripts are idempotent: a second full deploy must succeed
+      - name: Deploy re-run succeeds
+        run: |
+          docker compose run --rm ansible-runner \
+            ansible-playbook -i /workspace/ansible/inventory/docker \
+            /workspace/ansible/playbooks/deploy_perfmon_grafana.yml
       - name: Diagnostics
         if: failure()
         run: |
-          docker compose ps -a
-          docker compose logs --tail 100 ansible-runner grafana mssql-2022 mssql-2025
-
-  e2e-ad:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    needs: static
-    steps:
-      - uses: actions/checkout@v4
-      - name: Start stack with AD profile
-        run: |
-          cp .env.example .env
-          docker compose --profile ad up -d
-      - name: Wait for playbook run
-        run: |
-          rc=$(docker wait perfmon-ansible-runner)
-          docker logs perfmon-ansible-runner 2>&1 | tail -40
-          exit "$rc"
-      - name: Assert datasources, auth, alert rules
-        run: >-
-          python3 scripts/e2e-checks.py
-          perfmon-ds-sql2022:sql perfmon-ds-sql2025:sql perfmon-ds-sqlad:windows
-      - name: Smoke-test every panel query
-        run: |
-          GRAFANA_API_KEY=$(grep '^GRAFANA_API_KEY=' .env | cut -d= -f2-)
-          export GRAFANA_API_KEY
-          python3 scripts/verify-panels.py perfmon-ds-sql2022 perfmon-ds-sql2025 perfmon-ds-sqlad
-      - name: Playbook re-run succeeds
-        run: docker compose --profile ad run --rm ansible-runner
-      - name: Diagnostics
-        if: failure()
-        run: |
-          docker compose --profile ad ps -a
-          docker compose --profile ad logs --tail 100 ansible-runner grafana samba-ad mssql-ad
+          docker compose --profile darling ps -a
+          docker compose --profile darling logs --tail 100 \
+            darling darling-provision darling-collector-config darling-plan-gunzip \
+            grafana mssql-2022 mssql-2025

@@ -1,44 +1,19 @@
 ---
 grafana_url: "http://localhost:3000"
 
-grafana_folder: PerformanceMonitor
-grafana_folder_uid: perfmon
-
-perfmon_ds_name_prefix: PerfMon
-perfmon_ds_uid_prefix: perfmon-ds
-
-# datasource auth mode: sql or windows. Set fleet-wide here or in group_vars or
-# per-host in inventory for a mixed fleet. A host-level value wins for that
-# instance's datasource.
-perfmon_reader_auth_mode: sql
-
-# Ignored when the resolved auth mode is "windows" - perfmon_reader_windows_upn
-# is used instead.
-perfmon_reader_login_name: grafana_reader
-
-# AD credentials for the datasource when the resolved auth mode is "windows". The
-# UPN form user@REALM is required by Grafana's kerberos username field.
-# perfmon_reader_windows_upn: set in inventory group_vars or vault
-# perfmon_reader_windows_password: set in inventory group_vars or vault
-
-# path on the Grafana host to a Kerberos client config (krb5.conf) pointing at the
-# domain's KDC. Only used when the resolved auth mode is windows.
-grafana_krb5_conf_path: /etc/krb5.conf
-
-# Auto-discovered from the sql_servers inventory group. override with an explicit list
+# Auto-discovered from the sql_servers inventory group. override with an explicit list.
+# Used by alerting_rulegroups.yml to render one alert-rule-group set per instance.
 perfmon_instances: "{{ groups['sql_servers'] | default([]) | map('extract', hostvars) | list }}"
 
-# Set to true to regenerate the fleet baked in static mode
-perfmon_fleet_static: false
-
-# Delete PerfMon-managed datasources/mute timings that exist in Grafana but aren't
-# in this run's inventory/config. Off by default: a run against a partial inventory
-# would otherwise delete datasources for every other instance. Only set true for a
-# run whose inventory is the complete, current fleet.
+# Delete PerfMon-managed dashboards/mute timings/alert rules that exist in Grafana but
+# aren't produced by this run - dashboards/mute timings no longer generated or configured,
+# alert rules for an instance no longer in perfmon_instances. Off by default: a run against
+# a partial inventory would otherwise delete another instance's alert rules.
+# Only set true for a run whose inventory is the complete, current fleet.
 perfmon_prune_orphaned: false
 
-perfmon_alert_cpu_pct: 90
-perfmon_alert_blocking_s: 30
+perfmon_alert_cpu_pct: 80
+perfmon_alert_blocking_count: 1
 perfmon_alert_deadlock_count: 1
 perfmon_alert_tempdb_pct: 80
 perfmon_alert_disk_free_pct: 10
@@ -48,6 +23,8 @@ perfmon_alert_poison_wait_floor_ms: 500
 perfmon_alert_long_running_job_multiplier: 3
 perfmon_alert_failed_job_lookback_min: 60
 perfmon_alert_collection_stale_min: 30
+perfmon_alert_ag_lag_seconds: 300
+perfmon_alert_ag_redo_queue_kb: 0
 
 # Expects perfmon- prefix
 perfmon_alert_mute_timings: []
@@ -58,10 +35,23 @@ perfmon_alert_contact_points: []
 
 # Receiver the team=perfmon route targets. Matches the contact point name below so no
 # extra config is needed once perfmon_alert_contact_points is set. The route is only
-# provisioned when perfmon_alert_contact_points is non-empty - see alerting.yml.
+# provisioned when perfmon_alert_contact_points is non-empty - see alerting_contacts.yml.
 perfmon_alert_receiver_name: perfmon-alerts
 
 perfmon_alert_group_wait: 30s
 perfmon_alert_group_interval: 5m
 perfmon_alert_repeat_interval: 4h
 perfmon_alert_group_by: "team,instance,alertname"
+
+# Darling store connection.
+grafana_darling_folder: "PerformanceMonitor (Darling)"
+grafana_darling_folder_uid: perfmon-darling
+
+perfmon_darling_ds_name: Darling
+perfmon_darling_ds_uid: darling
+perfmon_darling_pg_host: darling-pg
+perfmon_darling_pg_port: 5432
+perfmon_darling_pg_database: darling
+perfmon_darling_pg_user: viewer
+# perfmon_darling_pg_password: set in inventory group_vars or vault
+perfmon_darling_pg_sslmode: disable
