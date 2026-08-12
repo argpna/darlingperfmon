@@ -11,6 +11,7 @@ from ._shared import (
     col_datalink,
     col_datalinks,
     col_hidden,
+    col_pills,
     dashboard,
     server_filter,
     server_var,
@@ -375,6 +376,10 @@ _COLLECTION_URL = (
     f"/d/{uid('collection-health')}?${{__url_time_range}}"
     "&var-server=${__data.fields.server_id}"
 )
+_QUERIES_URL = (
+    f"/d/{uid('queries')}?${{__url_time_range}}"
+    "&var-server=${__data.fields.server_id}"
+)
 
 _WORST_COUNT = 5
 
@@ -383,7 +388,7 @@ _NEEDS_ATTENTION_SQL = _fleet_query(f"""SELECT
     server_id,
     fleet_band AS "Severity",
     {_REASON_SQL} AS "Reason",
-    'Open' AS "Links"
+    'Open' AS "Quick Links"
 FROM fleet
 WHERE fleet_band <> 'Healthy'
 ORDER BY fleet_score DESC
@@ -431,12 +436,14 @@ def fleet():
                     "Severity",
                     {"Critical": "red", "Warning": "yellow", "Offline": "text"},
                 ),
+                col_pills("Reason"),
                 col_datalinks(
-                    "Links",
+                    "Quick Links",
                     [
                         ("Open CPU, Memory & Sessions", _CPU_MEM_URL),
                         ("Open Blocking & Deadlocks", _BLOCKING_URL),
                         ("Open Collection Health", _COLLECTION_URL),
+                        ("Open Queries", _QUERIES_URL),
                     ],
                 ),
             ],

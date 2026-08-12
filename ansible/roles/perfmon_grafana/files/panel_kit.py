@@ -654,6 +654,14 @@ def col_hidden(col):
     }
 
 
+def col_pills(col):
+    """Table override: render a column's comma-separated values as colored pills."""
+    return {
+        "matcher": {"id": "byName", "options": col},
+        "properties": [{"id": "custom.cellOptions", "value": {"type": "pill"}}],
+    }
+
+
 def col_datalink(col, title, url):
     """Table field override that attaches a data link to a single column."""
     return {
