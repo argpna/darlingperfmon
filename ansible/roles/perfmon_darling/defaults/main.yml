@@ -31,6 +31,8 @@ perfmon_darling_register_new: true
 # Disable registry rows whose instance has left the inventory. Off by default.
 perfmon_darling_prune_orphaned: false
 
-# The service unit to restart when darling.json changes. Off by default.
+# Whether to restart perfmon_darling_service_name (a systemd unit) when darling.json changes.
+# Off by default - a Docker-hosted collector watches its own config and restarts itself (see
+# docker/darling/entrypoint.sh), and a host install may manage its own lifecycle.
 perfmon_darling_manage_service: false
 perfmon_darling_service_name: darling

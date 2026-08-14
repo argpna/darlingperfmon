@@ -7,7 +7,7 @@ Darling is a headless collector service that polls one or more SQL Server instan
 into a central PostgreSQL/TimescaleDB store. The Grafana dashboards read that store through a
 single Postgres datasource that serves every monitored instance.
 
-Screenshots of all dashboards can be viewed at: [argpna.github.io/screenshot-gallery/darlingperfmon](https://argpna.github.io/screenshot-gallery/darlingperfmon/)
+Screenshots of all dashboards can be viewed at: [screenshot-gallery/darlingperfmon](https://argpna.github.io/screenshot-gallery/projects/darlingperfmon/index.html)
 
 ## Dashboards
 
@@ -18,8 +18,8 @@ analysis (FinOps). Both groups share the `$server` template variable and link to
 
 | Dashboard | Description |
 |---|---|
-| **Fleet Overview** | **Always start here**. One sortable table, every monitored server, worst-first. Six per-server health signals (CPU, threads, memory, blocking, deadlocks, collectors) plus an overall severity band and a "Needs Attention" panel highlighting the worst few. Click a server to open its Overview. |
-| **Overview** | Correlated timeline lanes (CPU, blocking, file I/O) with baseline/anomaly bands, a status stat row, and a rolled-up daily history. |
+| **Fleet Overview** | **Always start here**. Sortable monitored servers, worst appears at the top. Per-server health signals (CPU, threads, memory, blocking, deadlocks, collectors). Click a server to open its Overview. |
+| **Overview** | Correlated timeline lanes (CPU, blocking, file I/O) with baseline/anomaly bands, and a rolled-up daily history. |
 | **Query Performance** | Query CPU trends, active query snapshots, top queries by CPU/reads, procedure stats, parameter sensitivity, Query Store, long-running queries. |
 | **Wait Analysis** | Wait stats by type, latch and spinlock contention. |
 | **Storage & tempdb** | File I/O latency and throughput, tempdb space and contention. |
@@ -142,8 +142,7 @@ the Grafana datasource, dashboards, and alert rules.
   `Darling/tools/provision-roles.sql` in the upstream project.
 - Optional, for Plan XML panels: `plpython3u` and a `public.darling_gunzip(bytea) RETURNS
   text` function on the store.
-- Grafana instance (self-hosted or cloud; the API must be reachable from the Ansible control node)
-  with Unified Alerting enabled.
+- Grafana instance with Unified Alerting enabled.
 - `grafana_api_key`: a Grafana service account token with Admin role. Set via vault or group vars.
 
 Install the required Ansible collections once:
@@ -174,11 +173,16 @@ grafana:
       grafana_url: http://grafana.example.com:3000
 ```
 
-Set credentials in group vars or an Ansible Vault file: `perfmon_darling_pg_password` (the store's
-collector role) and `perfmon_darling_sql_username`/`perfmon_darling_sql_password` (SQL auth to each
-instance) for `perfmon_darling`; `grafana_api_key` and `perfmon_darling_pg_password` (the store's
-`viewer` role - same variable name, different role, different default) for `perfmon_grafana`. See
-the [perfmon_darling](ansible/roles/perfmon_darling/README.md) and
+Set credentials in group vars or an Ansible Vault file:
+
+- `perfmon_darling` Ansible role: `perfmon_darling_pg_password` (password for the store's Postgres
+  collector role), plus `perfmon_darling_sql_username`/`perfmon_darling_sql_password` for each
+  instance using SQL auth.
+- `perfmon_grafana` Ansible role: `grafana_api_key` and `perfmon_darling_pg_password` (same
+  variable name as above, but here it's the password for the store's Postgres `viewer` role -
+  different default from the collector one).
+
+See the [perfmon_darling](ansible/roles/perfmon_darling/README.md) and
 [perfmon_grafana](ansible/roles/perfmon_grafana/README.md) role docs for the full variable list.
 
 ### Step 2: Deploy
@@ -190,7 +194,7 @@ ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/main.yml
 Or run steps separately:
 
 ```bash
-ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/deploy_perfmon_darling.yml # collector config + registry
+ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/deploy_perfmon_darling.yml # collector config and registry
 ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/deploy_perfmon_grafana.yml  # Grafana only
 ```
 
@@ -379,13 +383,7 @@ by `server_id`.
 | AG Database Suspended | a database's latest `is_suspended` reading is true |
 | AG Sync Fell Behind | a database's latest lag >= 300s (redo queue check off by default) |
 
-Blocking is a count of captured events, since Grafana never holds a live SQL Server connection to
-read an in-progress wait's duration. Long-Running Job and Failed Job cover every SQL Agent job on
-the instance. The AG rules are scoped per reporting server, not deduped fleet-wide across every
-node watching the same Availability Group the way upstream's vantage ranking is - each node
-reports what it can see. All thresholds are Ansible
-variables defined in `roles/perfmon_grafana/defaults/main.yml`. Override per-host in `host_vars/`
-or per-group in `group_vars/`.
+All thresholds are Ansible variables defined in `roles/perfmon_grafana/defaults/main.yml`. Override per-host in `host_vars/` or per-group in `group_vars/`.
 
 ### Default behavior: silent
 

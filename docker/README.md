@@ -16,7 +16,7 @@ See `docker-compose.yml` at the repo root for the full service definition.
 | `grafana` | `perfmon-grafana` | 3000 | Grafana UI with provisioned dashboards |
 | `ansible-runner` | `perfmon-ansible-runner` | - | Runs the Ansible playbook that configures Grafana |
 | `darling-pg` (profile `darling`) | `perfmon-darling-pg` | - | Central TimescaleDB store the collector writes into |
-| `darling` (profile `darling`) | `perfmon-darling` | - | The Darling collector service, monitoring both SQL Server instances |
+| `darling` (profile `darling`) | `perfmon-darling` | - | The Darling collector service, monitoring SQL Server instances |
 | `darling-provision` (profile `darling`) | `perfmon-darling-provision` | - | One-shot: waits for the store to migrate, then provisions the `darling`/`viewer` roles |
 | `darling-collector-config` (profile `darling`) | `perfmon-darling-collector-config` | - | One-shot: waits for the store to migrate, then enables collectors that default off fleet-wide |
 
@@ -28,7 +28,7 @@ All SQL Server instances run as Developer Edition with SQL Agent enabled.
 - ~6 GB free RAM, approximately 2 GB per SQL Server instance
 - Ports 14333, 14334, and 3000 free on the host
 
-## Quick start
+## Quickstart
 
 ```bash
 cp .env.example .env
@@ -39,16 +39,16 @@ docker compose --profile darling up -d
 `ansible-runner` waits for the SQL Server instances, Grafana, and the Darling store to all be
 healthy, then runs the full Ansible playbook (`ansible/playbooks/main.yml`), configuring the
 Darling collector role and provisioning Grafana's datasource, dashboards, and alert rules. The
-`darling` container waits in a poll loop until this run renders its config onto the shared
-`darling-config` volume, then starts collecting; `darling-provision` and `darling-collector-config`
+`darling` container waits in a poll loop until the config is rendered onto the shared
+`darling-config` volume, then starts collecting data; `darling-provision` and `darling-collector-config`
 likewise wait for `darling` to migrate the store before running their own SQL.
 
 ```bash
 docker compose logs -f ansible-runner # watch provisioning progress
 ```
 
-Grafana starts at **http://localhost:3000**. Panels show "datasource not found" until
-`ansible-runner` completes. Start at **Fleet Overview** once it exits.
+Grafana starts at **http://localhost:3000**. Panels may show "datasource not found" until
+`ansible-runner` completes. Start at **Fleet Overview** once the runner exits.
 
 ## Environment variables
 
@@ -62,23 +62,16 @@ Defined in `.env`:
 | `DARLING_PG_PASSWORD` | Password for the store's `darling` (owner/collector) Postgres role |
 | `DARLING_VIEWER_PASSWORD` | Password for the store's `viewer` (read-only) Postgres role, used by Grafana's datasource |
 
-The SA password must meet SQL Server's complexity requirements (uppercase, lowercase, digit,
-symbol; minimum 8 characters).
-
-## SQL Server version notes
-
-Both instances use `mssql-tools18` at `/opt/mssql-tools18/bin/sqlcmd` for their healthchecks and
-connect with TLS using `tlsSkipVerify`. The Darling collector and the workload generators are the
-only things that connect to them - there is no Ansible role installing anything onto SQL Server
-itself.
-
 ## Darling store
 
 `darling-pg` is a TimescaleDB container the `darling` service migrates on first start. The
 `darling` container builds from `docker/darling/Dockerfile` (which fetches the pinned
 `PERFMON_VERSION` collector release) and waits on `docker/darling/entrypoint.sh` for
 `darling.json` to appear on the shared `darling-config` volume - see
-[Ansible inventory](#ansible-inventory) below for where that file comes from.
+[Ansible inventory](#ansible-inventory) below for where that file comes from. `entrypoint.sh` keeps
+watching the file afterward and restarts the collector process (not the container) whenever it
+changes, so re-running Ansible after adding an instance takes effect with no manual restart - see
+`perfmon_darling`'s README, "Restarting the collector," for why a restart is needed at all.
 
 `darling-provision` and `darling-collector-config` are one-shot containers (`restart: "no"`) that
 each poll until the service has migrated the schema they depend on, then run their SQL and exit:
@@ -107,15 +100,11 @@ have active workload so the Darling store has data to display.
 
 ## Re-running Ansible
 
-To re-provision after changing Ansible roles or inventory; for example, after modifying alerting
-variables:
+To re-provision after changing Ansible roles or inventory, run:
 
 ```bash
 docker compose run --rm ansible-runner
 ```
-
-`ansible-runner` has `restart: "no"`, so its container exits after each run; `docker compose run`
-starts a fresh one.
 
 ## Stopping and cleanup
 
@@ -126,7 +115,7 @@ docker compose down -v # stop containers and delete all data volumes
 
 ## Connecting directly
 
-From the host (using `sqlcmd` from mssql-tools18):
+From the host:
 
 ```bash
 sqlcmd -S localhost,14333 -U sa -P "$MSSQL_SA_PASSWORD" -C # 2022
@@ -164,5 +153,3 @@ After provisioning completes, run the panel smoke test against the Darling datas
 ```bash
 GRAFANA_API_KEY=$(grep '^GRAFANA_API_KEY=' .env | cut -d= -f2-) python3 scripts/verify-panels.py darling
 ```
-
-A SQL error prints `FAIL` and causes a non-zero exit. Zero rows is not a failure.
