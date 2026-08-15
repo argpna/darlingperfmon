@@ -136,16 +136,17 @@ the Grafana datasource, dashboards, and alert rules.
 
 - Ansible control node with `psycopg2` installed (the `community.postgresql` collection needs it
   for registry reconciliation).
-- The Darling collector service already installed on its host - this role configures it, it does
-  not install the service binary.
+- The Darling collector service and TimescaleDB store already installed. See
+  [docker/compose.darling.yml](docker/README.md#standalone-darling-stack) for a dockerized
+  solution - if you'd like to adapt it further.
 - The store's least-privilege Postgres roles provisioned - see
-  `Darling/tools/provision-roles.sql` in the upstream project.
+  `Darling/tools/provision-roles.sql` in the upstream project (included in the dockerized setup here).
 - Optional, for Plan XML panels: `plpython3u` and a `public.darling_gunzip(bytea) RETURNS
-  text` function on the store.
+  text` function on the store (also included in the dockerized setup here).
 - Grafana instance with Unified Alerting enabled.
 - `grafana_api_key`: a Grafana service account token with Admin role. Set via vault or group vars.
 
-Install the required Ansible collections once:
+Install the required Ansible collections:
 
 ```bash
 ansible-galaxy collection install -r requirements.yml
@@ -153,8 +154,8 @@ ansible-galaxy collection install -r requirements.yml
 
 ### Step 1: Edit the inventory
 
-Add your SQL Server instances under `sql_servers` - both roles read this same group. Add a
-`darling` group with the host where the collector service runs, and a `grafana` group with your
+Add your SQL Server instances under `sql_servers` - both Ansible roles read this group. Add
+a `darling` group with the host where the collector service runs, and a `grafana` group with your
 Grafana host. For example, see [ansible/inventory/hosts.yml](ansible/inventory/hosts.yml):
 
 ```yaml
@@ -198,13 +199,13 @@ ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/deploy_perfmon
 ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/deploy_perfmon_grafana.yml  # Grafana only
 ```
 
-What this does:
+This will
 
-- Renders the collector's config file and registers new instances in the store's
+- Render the collector's config file and register new instances in the store's
   `config.config_monitored_servers` registry
-- Generates dashboard JSON and imports it into Grafana's Darling folder
-- Creates or updates the single Postgres datasource Grafana uses for every server
-- Provisions Grafana alert rules per instance (see [Alerting](#alerting))
+- Generate dashboard JSON and imports it into Grafana's Darling folder
+- Create or update the single Postgres datasource Grafana uses for every server
+- Provision Grafana alert rules per instance (see [Alerting](#alerting))
 
 All steps are safe to re-run. To add an instance later: add it to `hosts.yml` and re-run
 `main.yml`.
@@ -220,14 +221,14 @@ cp .env.example .env
 docker compose --profile darling up -d
 ```
 
-What you get:
+This will
 
-- Two SQL Server instances (2022 on port 14333, 2025 on port 14334) with active workload
+- Create two mssql containers (2022 on port 14333, 2025 on port 14334) with active workload
   generators, monitored by a Darling collector writing into a TimescaleDB store
 - Grafana at **http://localhost:3000** with all dashboards in the **PerformanceMonitor (Darling)**
   folder
 
-Panels show "datasource not found" until `ansible-runner` completes. Start at **Fleet Overview**.
+Panels may show "datasource not found" until `ansible-runner` completes. Start at **Fleet Overview**.
 
 See [docker/README.md](docker/README.md) for the full service breakdown and troubleshooting.
 
@@ -237,12 +238,12 @@ To stop: `docker compose down`. Add `-v` to also delete data volumes.
 
 ## Upgrading
 
-`perfmon_darling` role configures an already-installed collector service - renders its config, manages
-the store's registry, restarts it on change - but it does not fetch or install the service binary.
+`perfmon_darling` Ansible role configures an already-installed collector service - renders its
+config and manages the store's registry.
 Upgrading the collector version itself (a new container image, a new package, however it's
-deployed) is a step you take outside this repo; re-run `perfmon_darling` afterward to reconcile its
-config and registry against the new version. What this repo's own upgrade path covers is the panel
-SQL, if the newer version changed the store's schema:
+deployed) is a separate step that should be taken outside this repo. Re-run `perfmon_darling`
+afterward to reconcile its config and registry against the new version. This repo's own
+upgrade path covers the panel SQL, if the newer version changed the store's schema:
 
 1. With the stack running, smoke-test every panel query:
 
@@ -284,7 +285,7 @@ The JSON files in `ansible/roles/perfmon_grafana/files/grafana/dashboards/darlin
 artifacts. The canonical source is
 `ansible/roles/perfmon_grafana/files/build-darling-dashboards.py`, which imports per-dashboard
 Python modules under `files/darling_defs/`. Every panel, query, variable, row, link, and threshold
-is defined in Python and serialized to JSON when you run the builder:
+is defined in Python and serialized to JSON when the builder is run:
 
 ```bash
 ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/deploy_perfmon_grafana.yml --tags generate
@@ -295,7 +296,7 @@ be hand-edited - the next builder run overwrites them completely. After regenera
 role with `--tags dashboards` to push the updates.
 
 `scripts/verify-panels.py` executes every panel's SQL against a live datasource and reports the
-result. A SQL error fails; zero rows is not a failure. Run this after modifying panel SQL.
+result.
 
 ### The `$server` variable and datasource naming
 
@@ -303,10 +304,10 @@ Every dashboard declares a `$server` template variable, populated by a live quer
 `config.config_monitored_servers` in the store. Selecting a server filters every panel's query by
 that server's `server_id`.
 
-`server_id` is a deterministic hash of the server's storage name (host, plus database for Azure
-SQL, plus a read-only-intent suffix), computed identically by the Ansible role and the collector
-service so a row either side writes is the row the other reads. See the
-[perfmon_darling](ansible/roles/perfmon_darling/README.md) role doc for the full registry model.
+`server_id` is a deterministic hash of the server's storage name (host, database name, and
+a read-only-intent suffix), computed identically by the Ansible role and the collector
+service so there is no discrepancy. See the [perfmon_darling](ansible/roles/perfmon_darling/README.md)
+role doc for the full registry model.
 
 The Grafana datasource UID must be `perfmon_darling_ds_uid` (default `darling`); it's baked into
 the generated dashboard JSON. Changing it requires regenerating the dashboards with a matching
@@ -314,9 +315,9 @@ UID.
 
 ### Fleet Overview and severity
 
-The Fleet Overview computes six per-server health signals over a fixed trailing hour, independent
-of the dashboard's selected time range: CPU, threads, memory, blocking, deadlocks, and collectors.
-Each is scored Healthy, Warning, or Critical by its own thresholds; the worst of the six becomes
+The Fleet Overview computes per-server health signals over a fixed trailing hour, independent
+of the dashboard's selected time range for: CPU, threads, memory, blocking, deadlocks, and collectors.
+Each is scored Healthy, Warning, or Critical by its own thresholds; the worst of all signals become
 that server's overall severity. A freshness check (no collection in the last 2 minutes = Stale,
 15 minutes = Offline) can independently push a server to Warning or Offline regardless of its
 metric severity. The table sorts worst-first by a composite score (band rank, then per-signal
@@ -329,13 +330,12 @@ most rise to the top.
 renders its config file from `perfmon_darling_instances` (derived from the `sql_servers`
 inventory group), restarts the service on change, and reconciles the store's
 `config.config_monitored_servers` registry - inserting newly-inventoried instances, optionally
-disabling ones that have left inventory.
+disabling ones that have no longer in inventory.
 
 **[`perfmon_grafana`](ansible/roles/perfmon_grafana/README.md)** provisions the Grafana side via
 the Grafana HTTP API: generates dashboard JSON and imports it into a folder, creates the single
 Postgres datasource, and provisions Unified Alerting rule groups (one set per SQL Server
-instance), contact points, mute timings, and the notification policy tree - all via the
-Provisioning API, no file provisioning.
+instance), contact points, mute timings, and the notification policy tree.
 
 Both roles are safe to re-run.
 
