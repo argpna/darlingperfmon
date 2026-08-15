@@ -81,6 +81,48 @@ jobs:
           GRAFANA_API_KEY=$(grep '^GRAFANA_API_KEY=' .env | cut -d= -f2-)
           export GRAFANA_API_KEY
           python3 scripts/verify-panels.py darling
+      # docker/darling/entrypoint.sh: adding a SQL-auth instance must not
+      # require a manual `docker restart` of the darling container.
+      - name: Capture the collector's server count before adding a new instance
+        run: |
+          docker logs perfmon-darling > /tmp/darling-log-before.txt 2>&1
+          baseline_count=$(grep -oP 'Loaded configuration from \S+: \K[0-9]+(?= server)' /tmp/darling-log-before.txt | tail -1)
+          echo "baseline_count=$baseline_count" >> "$GITHUB_ENV"
+      - name: Add a new SQL-auth instance and re-run the collector role
+        run: |
+          cat > ansible/inventory/docker/ci-extra-instance.yml <<'EOF'
+          ---
+          all:
+            children:
+              sql_servers:
+                hosts:
+                  sql-e2e-extra:
+                    ds_host: nonexistent-sql-host
+                    darling_name: SQL2022-EXTRA
+          EOF
+          docker compose run --rm ansible-runner \
+            ansible-playbook -i /workspace/ansible/inventory/docker \
+            -i /workspace/ansible/inventory/docker/ci-extra-instance.yml \
+            /workspace/ansible/playbooks/deploy_perfmon_darling.yml
+          rm -f ansible/inventory/docker/ci-extra-instance.yml
+      - name: Assert the collector auto-restarted and picked up the new instance
+        run: |
+          for i in $(seq 1 18); do
+            docker logs perfmon-darling > /tmp/darling-log-after.txt 2>&1
+            grep -q "darling.json changed, restarting the collector" /tmp/darling-log-after.txt && break
+            sleep 5
+          done
+          grep -q "darling.json changed, restarting the collector" /tmp/darling-log-after.txt || {
+            echo "entrypoint never observed the darling.json change"
+            tail -60 /tmp/darling-log-after.txt
+            exit 1
+          }
+          new_count=$(grep -oP 'Loaded configuration from \S+: \K[0-9]+(?= server)' /tmp/darling-log-after.txt | tail -1)
+          if [ "$new_count" != "$((baseline_count + 1))" ]; then
+            echo "expected a fresh process to load $((baseline_count + 1)) server(s), got ${new_count:-<none>}"
+            tail -60 /tmp/darling-log-after.txt
+            exit 1
+          fi
       # scripts are idempotent: a second full deploy must succeed
       - name: Deploy re-run succeeds
         run: |
