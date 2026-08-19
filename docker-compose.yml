@@ -154,13 +154,6 @@ services:
       retries: 12
       start_period: 20s
 
-  darling:
-    depends_on:
-      mssql-2022:
-        condition: service_healthy
-      mssql-2025:
-        condition: service_healthy
-
 volumes:
   mssql-2022-data:
   mssql-2025-data:
