@@ -1,0 +1,86 @@
+name: darlingperfmon
+
+services:
+  # Darling store - Timescale or plain Postgres
+  darling-pg:
+    build: ./darling-pg
+    container_name: perfmon-darling-pg
+    environment:
+      POSTGRES_USER: darling
+      POSTGRES_PASSWORD: ${DARLING_PG_PASSWORD}
+      POSTGRES_DB: darling
+    volumes:
+      - darling-pg-data:/var/lib/postgresql/data
+    # -h forces TCP: pg_isready passes on the unix socket mid-init, before TCP listens.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U darling -d darling -h 127.0.0.1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+    profiles: ["darling"]
+
+  darling:
+    build:
+      context: ./darling
+      args:
+        PERFMON_VERSION: ${PERFMON_VERSION:-v3.4.0}
+    container_name: perfmon-darling
+    depends_on:
+      darling-pg:
+        condition: service_healthy
+    volumes:
+      - darling-config:/etc/darling:ro
+    restart: unless-stopped
+    profiles: ["darling"]
+
+  # One-shot: provisions the store's admin/viewer roles once the service has migrated it.
+  darling-provision:
+    image: postgres:17-alpine
+    container_name: perfmon-darling-provision
+    depends_on:
+      darling-pg:
+        condition: service_healthy
+    environment:
+      PERFMON_VERSION: ${PERFMON_VERSION:-v3.4.0}
+      DARLING_PG_PASSWORD: ${DARLING_PG_PASSWORD}
+      DARLING_VIEWER_PASSWORD: ${DARLING_VIEWER_PASSWORD}
+    volumes:
+      - ./darling/provision-roles.sh:/provision-roles.sh:ro
+    entrypoint: ["/bin/sh", "/provision-roles.sh"]
+    restart: "no"
+    profiles: ["darling"]
+
+  darling-collector-config:
+    image: postgres:17-alpine
+    container_name: perfmon-darling-collector-config
+    depends_on:
+      darling-pg:
+        condition: service_healthy
+    environment:
+      DARLING_PG_PASSWORD: ${DARLING_PG_PASSWORD}
+    volumes:
+      - ./darling/provision-collector-schedules.sh:/provision-collector-schedules.sh:ro
+    entrypoint: ["/bin/sh", "/provision-collector-schedules.sh"]
+    restart: "no"
+    profiles: ["darling"]
+
+  # One-shot: enables plpython3u and the darling_gunzip() UDF Grafana's Plan XML panels need.
+  darling-plan-gunzip:
+    image: postgres:17-alpine
+    container_name: perfmon-darling-plan-gunzip
+    depends_on:
+      darling-pg:
+        condition: service_healthy
+    environment:
+      DARLING_PG_PASSWORD: ${DARLING_PG_PASSWORD}
+    volumes:
+      - ./darling/provision-plan-gunzip.sh:/provision-plan-gunzip.sh:ro
+    entrypoint: ["/bin/sh", "/provision-plan-gunzip.sh"]
+    restart: "no"
+    profiles: ["darling"]
+
+volumes:
+  darling-pg-data:
+  darling-config:
