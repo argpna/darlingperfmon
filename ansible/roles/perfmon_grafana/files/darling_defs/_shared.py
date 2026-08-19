@@ -566,7 +566,7 @@ def finops_dashboard(
         panels,
         variables,
         ["finops-darling"],
-        [_FLEET_LINK, _FINOPS_DROPDOWN, _DASHBOARDS_DROPDOWN],
+        [_FLEET_LINK, _DASHBOARDS_DROPDOWN, _FINOPS_DROPDOWN],
         time_from,
         refresh,
         1,

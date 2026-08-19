@@ -34,10 +34,10 @@
       "includeVars": true,
       "keepTime": true,
       "tags": [
-        "finops-darling"
+        "perfmon-darling"
       ],
       "targetBlank": false,
-      "title": "All FinOps (Darling) Dashboards",
+      "title": "All PerfMon (Darling) Dashboards",
       "type": "dashboards",
       "url": ""
     },
@@ -47,10 +47,10 @@
       "includeVars": true,
       "keepTime": true,
       "tags": [
-        "perfmon-darling"
+        "finops-darling"
       ],
       "targetBlank": false,
-      "title": "All PerfMon (Darling) Dashboards",
+      "title": "All FinOps (Darling) Dashboards",
       "type": "dashboards",
       "url": ""
     }
