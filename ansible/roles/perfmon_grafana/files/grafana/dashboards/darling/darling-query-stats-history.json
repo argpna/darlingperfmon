@@ -286,7 +286,7 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "${query_text}"
+        "content": "${query_text:raw}"
       }
     },
     {

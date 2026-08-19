@@ -181,8 +181,7 @@ class PanelKit:
         """Build a text panel: markdown by default, or a read-only syntax-highlighted
         code editor when code_language is given (e.g. "sql"). Text panels have no
         datasource of their own to query, so dynamic content comes through a ${var}
-        reference to a query-backed template variable - Grafana interpolates variables
-        into this field the same way for both modes.
+        reference to a query-backed template variable.
         """
         if code_language:
             options = {
