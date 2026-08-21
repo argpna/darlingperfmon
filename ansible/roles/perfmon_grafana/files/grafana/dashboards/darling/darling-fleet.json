@@ -44,7 +44,7 @@
   },
   "panels": [
     {
-      "id": 30,
+      "id": 31,
       "type": "stat",
       "title": "Servers",
       "datasource": {
@@ -105,7 +105,7 @@
       ]
     },
     {
-      "id": 31,
+      "id": 32,
       "type": "stat",
       "title": "Healthy",
       "datasource": {
@@ -166,7 +166,7 @@
       ]
     },
     {
-      "id": 32,
+      "id": 33,
       "type": "stat",
       "title": "Warning",
       "datasource": {
@@ -231,7 +231,7 @@
       ]
     },
     {
-      "id": 33,
+      "id": 34,
       "type": "stat",
       "title": "Critical",
       "datasource": {
@@ -296,7 +296,7 @@
       ]
     },
     {
-      "id": 34,
+      "id": 35,
       "type": "stat",
       "title": "Offline",
       "datasource": {
@@ -361,7 +361,7 @@
       ]
     },
     {
-      "id": 35,
+      "id": 36,
       "type": "alertlist",
       "title": "Active Alerts",
       "gridPos": {
@@ -396,7 +396,7 @@
       "description": "Grafana-managed alert rules currently firing or pending across the fleet (folder: PerformanceMonitor (Darling))."
     },
     {
-      "id": 36,
+      "id": 37,
       "type": "table",
       "title": "Needs Attention",
       "datasource": {
@@ -572,7 +572,7 @@
       "description": "Worst-first, capped at the 5 servers needing attention most (see the Critical/Warning tiles above and the full Fleet health table below for the rest). Empty when every monitored server is healthy. Click Links to pick a destination dashboard for the reasons named in this row."
     },
     {
-      "id": 37,
+      "id": 38,
       "type": "table",
       "title": "Fleet health",
       "datasource": {

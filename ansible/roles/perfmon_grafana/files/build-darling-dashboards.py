@@ -27,7 +27,10 @@ from darling_defs.collection_health import (  # noqa: E402
     collection_health,
     collection_log_detail,
 )
-from darling_defs.cpu_memory_sessions import cpu_memory_sessions  # noqa: E402
+from darling_defs.cpu_memory_sessions import (  # noqa: E402
+    cpu_memory_drill_down,
+    cpu_memory_sessions,
+)
 from darling_defs.fleet import fleet  # noqa: E402
 from darling_defs.overview import overview  # noqa: E402
 from darling_defs.queries import (  # noqa: E402
@@ -59,6 +62,7 @@ DASHBOARDS = [
     deadlock_detail,
     collection_health,
     collection_log_detail,
+    cpu_memory_drill_down,
     cpu_memory_sessions,
     fleet,
     overview,
@@ -70,9 +74,6 @@ DASHBOARDS = [
     system_events,
     wait_analysis,
     wait_drill_down,
-    # FinOps: Recommendations stays the unchanged landing page; the rest are consolidated
-    # groups, plus the two Storage Growth drill-down levels (object_sizes, index_usage)
-    # reached from its data links.
     capacity_growth,
     index_usage,
     object_sizes,

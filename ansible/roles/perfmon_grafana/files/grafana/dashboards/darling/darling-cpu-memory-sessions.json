@@ -1681,6 +1681,74 @@
     },
     {
       "id": 28,
+      "type": "stat",
+      "title": "Query Snapshots",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 107
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT COUNT(*) AS \"Query Snapshots\"\nFROM collect.v_query_snapshots AS qs\nWHERE $__timeFilter(qs.collection_time)\n  AND qs.server_id IN (${server:csv})\n  AND qs.query_text NOT LIKE 'WAITFOR%'\n"
+        }
+      ],
+      "links": [
+        {
+          "title": "View Query Snapshots",
+          "url": "/d/darling-cpu-memory-drill-down?${__url_time_range}&var-server=$server",
+          "targetBlank": false
+        }
+      ]
+    },
+    {
+      "id": 29,
       "type": "row",
       "title": "Perfmon Counters",
       "collapsed": false,
@@ -1688,12 +1756,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 107
+        "y": 111
       },
       "panels": []
     },
     {
-      "id": 29,
+      "id": 30,
       "type": "timeseries",
       "title": "Perfmon Counters",
       "datasource": {
@@ -1704,7 +1772,7 @@
         "h": 14,
         "w": 24,
         "x": 0,
-        "y": 108
+        "y": 112
       },
       "fieldConfig": {
         "defaults": {
