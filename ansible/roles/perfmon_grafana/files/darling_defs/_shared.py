@@ -1,7 +1,23 @@
-"""Shared helpers for the Darling (PostgreSQL) dashboards.
+"""Shared helpers for the Darling dashboards.
 
-One datasource for the whole store; instance selection is the $server variable.
-Read the column and retention notes below before writing panel SQL.
+Column and retention notes:
+
+Retention tiers: raw data ages out fastest, so a panel reading further back than
+RAW_MAX_AGE_DAYS needs to route through a rollup - tiered()/tier_guard().
+Only tables in _CAGG_DIMENSIONS have rollups to route to.
+
+*_baseline tables (wait_stats_baseline, blocked_process_baseline) are different:
+Query them directly instead of rollup().
+
+Delta columns are prefixed with `delta_` and they do not map 1:1 to the MSSQL column
+names they derive from. Check the actual column list before porting a query. Collector
+tables carry both server_id and server_name.
+
+Tables with no collect.v_* view. Re-derive with:
+SELECT t.table_name FROM information_schema.tables t
+WHERE t.table_schema='collect' AND t.table_type='BASE TABLE'
+  AND NOT EXISTS (SELECT 1 FROM information_schema.views v
+                  WHERE v.table_schema='collect' AND v.table_name='v_'||t.table_name);
 """
 
 import pathlib
@@ -18,6 +34,7 @@ from panel_kit import (  # noqa: E402
     col_pills,
     col_thresholds,
     col_unit,
+    col_width,
     series_style,
     status_colors,
     text_var,
@@ -77,14 +94,10 @@ _NO_VIEW = frozenset(
 _ROLLUP_TIERS = ("hourly", "daily")
 
 # Route thresholds, aliased from upstream RetentionTierRouter (RawMaxAge/HourlyMaxAge).
-# Each sits a day inside its tier's retention so a lagging chunk drop can never leave the
-# chosen tier missing the window's oldest point.
 RAW_MAX_AGE_DAYS = 3
 HOURLY_MAX_AGE_DAYS = 20
 
-# Which raw tables have rollups, and the dimensions those rollups GROUP BY. A panel may
-# route to a CAGG only when every dimension it groups or filters on is covered here -
-# otherwise the rollup cannot reproduce the result. server_id/server_name lead every CAGG.
+# Which raw tables have rollups, and the dimensions those rollups GROUP BY.
 _CAGG_DIMENSIONS = {
     "query_stats": {"database_name", "query_hash", "sql_handle"},
     "query_stats_db": {"database_name"},
@@ -92,19 +105,17 @@ _CAGG_DIMENSIONS = {
     "query_store_stats": {"database_name", "module_name", "query_hash"},
 }
 
-# collection_time on a raw table; every CAGG's time dimension is the bucket it produced.
 CAGG_TIME_COL = "bucket"
 
 # Where a CAGG family's raw table is named differently: query_stats_db_* aggregates
 # query_stats, and there is no collect.query_stats_db to measure a raw floor on.
 _CAGG_RAW_BASE = {"query_stats_db": "query_stats"}
 
-# Store timestamps are naive UTC, so "now" is taken in UTC too.
 UTC_NOW = "(now() AT TIME ZONE 'UTC')"
 
 
 def collector(base: str) -> str:
-    """Resolve the relation for a raw collector table, preferring its v_* view."""
+    """Resolve the relation for a raw collector table, prefer v_* view."""
     return f"collect.{base}" if base in _NO_VIEW else f"collect.v_{base}"
 
 
@@ -132,9 +143,14 @@ _TIERS = (("raw", 0), ("hourly", RAW_MAX_AGE_DAYS), ("daily", HOURLY_MAX_AGE_DAY
 def _tier_bands(present: set[str]) -> dict[str, tuple[int, int | None]]:
     """Assign each age band to a present tier, returning per-tier (lo, hi) day bounds.
 
-    A band whose own tier is absent falls to the next coarser tier present, since that one
-    still retains the window; only when no coarser tier exists does it fall back to a finer
-    one. Bands assigned to a tier are contiguous, so each becomes one range.
+    A band whose own tier is absent falls to the next coarser present tier. When no
+    coarser tier exists, it falls back to a finer one. Bands assigned to the same tier
+    are contiguous, so they collapse into one range.
+
+    Example:
+        now-6h  -> raw
+        now-7d  -> hourly rollup
+        now-25d -> daily rollup
     """
     order = [name for name, _ in _TIERS]
     bands: dict[str, tuple[int, int | None]] = {}
@@ -151,11 +167,13 @@ def _tier_bands(present: set[str]) -> dict[str, tuple[int, int | None]]:
 
 
 def tier_guard(tier: str, present: set[str] | None = None) -> str:
-    """Predicate selecting exactly one tier, by the age of the window's oldest point.
+    """Build a predicate that matches only one tier, based on the age of the
+    window's oldest point.
 
-    Routing is by age, not by display grain: a purely historical window must reach the tier
-    that still retains it. Grafana substitutes a literal for $__timeFrom(), so the predicate
-    constant-folds to a One-Time Filter and an unselected branch is never executed.
+    Routing by age, not by display grain - a purely historical window has to reach
+    whichever tier still retains it. Grafana substitutes a literal for $__timeFrom(),
+    so this predicate constant-folds to a One-Time Filter, and branches that doesn't
+    match won't run.
     """
     present = present or {name for name, _ in _TIERS}
     if tier not in present:
@@ -170,11 +188,11 @@ def tier_guard(tier: str, present: set[str] | None = None) -> str:
 
 
 def _floor(base: str, tier: str) -> str:
-    """How far back a tier has actually materialized, as an uncorrelated scalar subquery.
+    """How far back a tier's data actually goes, as a scalar subquery.
 
-    Keep it uncorrelated: Postgres lifts it into an InitPlan, so a guard built from these
-    still collapses to a One-Time Filter and an unrouted branch is never executed. Tie it to
-    an outer-query column and that folding stops.
+    Uncorrelated and no reference to an outer-query column, so Postgres evaluates it
+    once (InitPlan) instead of per row. That's what lets a guard built from these
+    still fold into a One-Time Filter (see tier_guard()).
     """
     if tier == "raw":
         return (
@@ -185,18 +203,14 @@ def _floor(base: str, tier: str) -> str:
 
 
 def _resolved_tier(base: str, present: set[str]) -> str:
-    """Expression yielding the tier that can actually answer the window.
+    """Expression yielding the tier that actually has the data, not just the
+    one age picked.
 
-    Age picks a tier; measured coverage can then demote it. A rollup built WITH NO DATA over
-    pre-existing history serves only what it materialized, so age alone routes windows onto a
-    rollup that answers them EMPTY while raw still holds every row. The demotion is
-    comparative, never absolute: a tier is abandoned only when a lower one is measured to
-    reach further back, which keeps a healthy store (raw ~4 days against the rollups' weeks)
-    from dropping to raw and returning less.
+    Example: daily rollup only has 2 days of data (fresh instance), but the
+    window reaches back 30 days -> demotes from daily to whichever of hourly/raw
+    reaches back the furthest.
 
-    Upstream ref: RetentionTierRouter.Resolve, TierCoverage (#1759). The availability half of
-    upstream's gate (#1664) is not portable here - a store without the rollups cannot even
-    parse SQL naming them, so that one needs a build-time decision, not a runtime predicate.
+    Upstream ref: RetentionTierRouter.Resolve, TierCoverage.
     """
     covers = {t: f"{_floor(base, t)} <= $__timeFrom()" for t in present}
     infinity = "'infinity'::timestamp"
@@ -227,20 +241,8 @@ def _resolved_tier(base: str, present: set[str]) -> str:
 
 
 def tiered(branches: dict[str, str], base: str | None = None) -> str:
-    """Combine per-tier SELECTs into one query, guarded so exactly one tier runs.
-
-    branches maps tier ("raw"/"hourly"/"daily") to a complete SELECT. Each is wrapped in its
-    guard rather than the caller appending one, so a branch cannot escape routing and
-    duplicate the result. An omitted tier's age range falls to the next coarser branch.
-
-    base names the raw collector table the branches read. Pass it whenever the rollups exist,
-    so routing is gated on measured coverage as well as age - see _resolved_tier(). Age-only
-    routing is what returns an empty panel on a store whose rollups have not yet materialized
-    the window.
-
-    Branch projections must agree on column names and order; the CAGGs reshape their metrics
-    (delta columns become *_sum/*_min/*_max over CAGG_TIME_COL), so each branch spells out
-    its own mapping - see rollup() and cagg_covers() for what a tier can serve.
+    """Combine per-tier SELECTs into one query, guarded so only one branch
+    actually runs.
     """
     unknown = set(branches) - {name for name, _ in _TIERS}
     if unknown:
@@ -260,7 +262,8 @@ def tiered(branches: dict[str, str], base: str | None = None) -> str:
 def server_filter(col: str = "server_id") -> str:
     """Filter to the instance(s) selected in $server.
 
-    :csv, not :sqlstring - server_id is an integer, and quoting would fail the comparison.
+    :csv, instead of :sqlstring b/c server_id is an integer, and quoting would
+    fail the comparison.
     """
     return f"{col} IN (${{server:csv}})"
 
@@ -269,11 +272,7 @@ SERVER_REGISTRY = "config.config_monitored_servers"
 
 
 def server_join(col: str, alias: str = "srv") -> str:
-    """Join the fleet registry for the server name to label a series or column with.
-
-    collect.* denormalizes server_name as the HOST; the registry's name is what $server
-    shows, so labels come from there and the two always agree.
-    """
+    """Join the fleet registry for the server name to label a series or column with."""
     return f"JOIN {SERVER_REGISTRY} AS {alias} ON {alias}.server_id = {col}"
 
 
@@ -304,7 +303,7 @@ def duration_ms(expr: str) -> str:
 
 
 def time_bucket(interval: str, col: str = "collection_time") -> str:
-    """TimescaleDB time_bucket() - takes arbitrary intervals, unlike date_trunc."""
+    """TimescaleDB time_bucket() - accepts arbitrary intervals"""
     return f"time_bucket(INTERVAL '{interval}', {col})"
 
 
@@ -313,11 +312,7 @@ _SHOWPLAN_NS = "http://schemas.microsoft.com/sqlserver/2004/07/showplan"
 
 def gunzip_expr(bytea_col: str) -> str:
     """Decompress a gzip bytea column via the darling_gunzip() UDF.
-
-    query_plan_gz holds plan XML the collector has stored gzip-compressed since it started
-    leaving query_plan_xml NULL on new rows. darling_gunzip() is a plpython3u function that
-    must be provisioned on the store separately, these panels return nothing for recent
-    plans until it exists. Upstream tracking issue: #2071
+    Upstream tracking issue: #2071
     """
     return f"public.darling_gunzip({bytea_col})"
 
@@ -341,7 +336,7 @@ FROM params
 
 
 def target(sql: str, fmt: str = "time_series", ref: str = "A") -> dict:
-    """Build a Grafana query target. No SQL rewriting: no tz shim, no dirty-read hint."""
+    """Build a Grafana query target."""
     return {
         "refId": ref,
         "datasource": DS,
@@ -376,11 +371,9 @@ reflow = _kit.reflow
 def server_var(multi: bool = False):
     """Build the $server template variable, from Darling's fleet registry.
 
-    Single-select by default: every dashboard in this suite is a per-server investigation
-    tool. Pass multi=True only where cross-server comparison is the dashboard's purpose
-    (Fleet Overview) or a reporter-per-row design depends on it (Availability Groups).
-
-    __text/__value so the label is the server name and panels filter on the indexed id.
+    Single-select by default. Pass multi=True only where cross-server comparison
+    is valid (Fleet Overview) or a reporter-per-row design depends on it
+    (Availability Groups).
     """
     return {
         "name": "server",
@@ -430,12 +423,7 @@ def query_var(
 
 
 def single_query_var(name: str, label: str, query: str, description: str):
-    """Build a single-select query-backed variable, auto-selecting the first row.
-
-    Unlike query_var(), there is no "All" option - for a picker where exactly one value
-    (e.g. one plan shape) must drive the panels below. refresh=2 (on time-range change)
-    since the option list is itself time-bounded (only shapes seen in the current window).
-    """
+    """Build a single-select query-backed variable, auto-selecting the first row."""
     return {
         "name": name,
         "label": label,
@@ -606,6 +594,7 @@ __all__ = [
     "col_pills",
     "col_thresholds",
     "col_unit",
+    "col_width",
     "collector",
     "custom_var",
     "dashboard",

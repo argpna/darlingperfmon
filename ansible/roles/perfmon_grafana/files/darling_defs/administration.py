@@ -137,8 +137,7 @@ WHERE {server_filter('dc.server_id')}
 ORDER BY 1
 """
 
-# The 27 setting columns the wide sys.databases snapshot carries, unpivoted one row per
-# changed setting so setting_name is the literal column name. Upstream ref:
+# Upstream ref:
 # ConfigChangeDiff.DatabaseConfigChangeSettingNames.
 _DB_SETTINGS = (
     "state_desc",
@@ -187,10 +186,6 @@ def _db_unpivot() -> str:
     )
 
 
-# window_end/since are parameterized so the same diff logic serves both the change-history
-# tables (bounded by the dashboard's own time range) and the stat row's fixed 24h count
-# (independent of it, like Wait Analysis's and Collection Health's "right now" tiles). since
-# is a column-name -> predicate function (_dashboard_time_filter / _last_24h_filter below).
 def _server_changes_sql(window_end: str, since) -> str:
     return f"""
 WITH walked AS (
@@ -297,11 +292,6 @@ ORDER BY w.capture_time DESC, w.database_name, w.setting_name
 """
 
 
-# A trace-flag row exists only while the flag is enabled, so this is a SET-diff of consecutive
-# captures rather than a per-key value walk: appearing is `enabled`, vanishing is `disabled`,
-# a status or scope move is `modified`. A vanished flag has no row to walk from, so the diff
-# runs over a (capture x flag) grid with both captures outer-joined onto it - that is what
-# makes an absence visible at all.
 def _trace_flag_changes_sql(window_end: str, since) -> str:
     return f"""
 WITH captures AS (
@@ -399,7 +389,7 @@ WHERE {server_filter('dc.server_id')}
 ORDER BY 1
 """
 
-# Upstream ref: ShouldShowMsdbBanner - PERMISSIONS status only, not any-error.
+# Upstream ref: ShouldShowMsdbBanner.
 _MSDB_STATUS_SQL = f"""
 SELECT DISTINCT ON (cl.server_id)
     srv.name AS "Server",
@@ -411,7 +401,7 @@ WHERE cl.collector_name = 'running_jobs'
 ORDER BY cl.server_id, cl.collection_time DESC
 """
 
-# Upstream ref: RunningJobsSql, extended to a per-server latest snapshot for multi-select $server.
+# Upstream ref: RunningJobsSql, extended to a per-server latest snapshot.
 _RUNNING_JOBS_SQL = f"""
 WITH latest AS (
     SELECT
@@ -442,11 +432,6 @@ ORDER BY rj.current_duration_seconds DESC
 """
 
 # Stat row: non-default config count, config changes in the last 24h, currently running jobs.
-# A short trailing window, not $__timeFilter - "right now" snapshot tiles, matching Wait
-# Analysis's and Collection Health's stat rows. Darling collects configured vs in-use values,
-# not SQL Server's shipped defaults, so "non-default" is approximated as configured-but-not-
-# yet-applied drift (the same condition the Server Configuration grid's "Values Match" column
-# already flags) rather than a true default-value comparison.
 _PENDING_RESTART_SQL = f"""
 SELECT COUNT(*) AS v
 FROM {collector('server_config')} AS sc

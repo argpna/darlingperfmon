@@ -1,11 +1,8 @@
-"""Wait Analysis dashboard - merges Wait Stats and Latches &
-Spinlocks dashboards: three angles ("what is the engine waiting on") on one page.
+"""Wait Analysis dashboard - merges Wait Stats and Latches & Spinlocks
+dashboards on one page.
 
 Upstream ref: ViewerServerTab.Waits.cs / ViewerDataService.Waits.cs,
-ViewerDataService.LatchSpinlock.cs / ViewerServerTab.LatchSpinlock.cs. The Wait Stats
-section's own module (waits.py) still carries the $wait_type-scoped SQL and the Wait
-Drill-Down nav-only dashboard it links to; this module composes that section with the
-Latches & Spinlocks section it never needed to share anything with.
+ViewerDataService.LatchSpinlock.cs / ViewerServerTab.LatchSpinlock.cs.
 """
 
 from ._shared import (
@@ -29,8 +26,6 @@ from .waits import wait_stats_section, wait_type_var
 
 def _rate_sql(base: str, dimension: str, delta: str) -> str:
     """Per-second rate for the five heaviest classes, on upstream's truncate-then-diff idiom.
-
-    $server is single-select, so the legend is just the class - no server label needed.
     """
     return f"""
 WITH top_classes AS (
@@ -121,8 +116,6 @@ _SPINLOCK_SNAPSHOT_SQL = _snapshot_sql(
 )
 
 # Stat row: top wait type, total wait ms/sec, latch wait count, spinlock collision rate.
-# A short trailing window, not $__timeFilter - "right now" snapshot tiles, matching
-# Overview's and Collection Health's stat rows.
 _TOP_WAIT_TYPE_SQL = f"""
 SELECT wait_type AS v
 FROM {collector('wait_stats')}

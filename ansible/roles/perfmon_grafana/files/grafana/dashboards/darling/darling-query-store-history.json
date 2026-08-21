@@ -219,7 +219,7 @@
     {
       "id": 2,
       "type": "timeseries",
-      "title": "${qs_history_metric} over time (one dot per plan)",
+      "title": "${qs_history_metric} over time",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "darling"

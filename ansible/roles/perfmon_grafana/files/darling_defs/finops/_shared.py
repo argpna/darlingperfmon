@@ -64,11 +64,7 @@ def window_budget(monthly_cost: str = "b.monthly_cost") -> str:
 
 
 def latest_per_server(relation: str, extra: str = "") -> str:
-    """Restrict a collector relation to each server's newest snapshot.
-
-    Matched per server, not against one global MAX: $server is multi-select, and a global
-    MAX would hide every server but the most recently collected one.
-    """
+    """Restrict a collector relation to each server's newest snapshot."""
     return (
         "(server_id, collection_time) IN ("
         f"SELECT server_id, MAX(collection_time) FROM {relation} "

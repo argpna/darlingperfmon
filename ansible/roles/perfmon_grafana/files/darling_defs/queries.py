@@ -3,9 +3,8 @@
 Upstream ref: ViewerServerTab.Queries.cs, ViewerDataService.QueryStats.cs, .ProcedureStats.cs,
 .QueryStore.cs, .QueryStoreRegressions.cs, .QuerySnapshots.cs, .QueryTrends.cs,
 .QueryHeatmap.cs (Darling.Viewer), ViewerServerTab.LongQueries.cs,
-ViewerDataService.LongQueries.cs. Eight sub-tabs (seven upstream Queries sub-tabs plus Long
-Queries). Current Active Queries (LIVE) is not ported: it needs a live DMV connection to the
-monitored server via config_command, and Grafana here talks only to Postgres.
+ViewerDataService.LongQueries.cs. Eight sub-tabs (seven Queries sub-tabs plus Long Queries).
+Current Active Queries (LIVE) is not ported: Grafana talks only to the Postgres datasource.
 """
 
 from ._shared import (
@@ -14,6 +13,7 @@ from ._shared import (
     col_gauge_bar,
     col_hidden,
     col_unit,
+    col_width,
     collector,
     custom_var,
     dashboard,
@@ -50,8 +50,6 @@ _HOURLY_SECONDS = 3600.0
 _DAILY_SECONDS = 86400.0
 
 # Upstream ref: ViewerServerTab.History.cs (WireHistoryDrillDowns)
-# Double-click becomes a data link on the identity column; server_id travels as a hidden
-# column since $server is multi-select but each history window is single-server.
 _QUERY_HISTORY_LINK = col_datalink(
     "Query Hash",
     "View query history",
@@ -242,10 +240,7 @@ _window AS (
 
 # Performance Trends: 4 tiered per-second-rate charts.
 # Upstream ref: QueryDurationTrendSql / ProcedureDurationTrendSql / QueryStoreDurationTrendSql /
-# ExecutionCountTrendSql (ViewerDataService.QueryTrends.cs). Raw mirrors upstream's per-snapshot
-# LAG(collection_time) rate exactly (partitioned by server for a multi-$server selection);
-# hourly/daily divide the CAGG bucket's pre-summed metric by the bucket's fixed width instead,
-# since a CAGG bucket has no "previous snapshot" to LAG against.
+# ExecutionCountTrendSql (ViewerDataService.QueryTrends.cs).
 def _trend_sql(base, raw_value_expr, hourly_value_expr, daily_value_expr):
     """Tiered rate trend, grouped/labelled per server via server_join()."""
     raw_sql = f"""
@@ -1275,6 +1270,8 @@ _QUERY_HEATMAP_COMPANION_SQL = f"""
 WITH base AS (
     SELECT
         {_HEATMAP_METRIC_EXPR} AS metric_value,
+        server_id,
+        database_name,
         query_hash,
         delta_execution_count AS exec_count
     FROM {collector('query_stats')}
@@ -1294,19 +1291,19 @@ bucketed AS (
             WHEN metric_value < 100000 THEN 5
             ELSE 6
         END AS bucket_index,
-        query_hash, metric_value, exec_count
+        server_id, database_name, query_hash, metric_value, exec_count
     FROM base
     WHERE metric_value IS NOT NULL
 ),
 per_query AS (
-    SELECT bucket_index, query_hash,
+    SELECT bucket_index, server_id, database_name, query_hash,
         SUM(metric_value * exec_count) AS total_impact,
         COUNT(*) AS query_count
     FROM bucketed
-    GROUP BY bucket_index, query_hash
+    GROUP BY bucket_index, server_id, database_name, query_hash
 ),
 ranked AS (
-    SELECT bucket_index, query_hash,
+    SELECT bucket_index, server_id, database_name, query_hash,
         ROW_NUMBER() OVER (PARTITION BY bucket_index ORDER BY total_impact DESC, query_hash) AS rn
     FROM per_query
 ),
@@ -1318,6 +1315,9 @@ bucket_total AS (
 SELECT
     {_heatmap_bucket_label('bt.bucket_index')} AS "Bucket",
     bt.total_queries AS "Count",
+    r.server_id AS server_id,
+    r.database_name AS "Database",
+    r.query_hash AS "Query Hash",
     qt.query_preview AS "Top Query"
 FROM bucket_total bt
 JOIN ranked r ON r.bucket_index = bt.bucket_index AND r.rn = 1
@@ -1325,6 +1325,8 @@ LEFT JOIN LATERAL (
     SELECT LEFT(query_text, 300) AS query_preview
     FROM {collector('query_stats')}
     WHERE {server_filter()}
+      AND server_id = r.server_id
+      AND database_name = r.database_name
       AND query_hash = r.query_hash
       AND $__timeFilter(collection_time)
       AND delta_execution_count > 0
@@ -1915,7 +1917,7 @@ def queries():
                 24,
                 14,
                 lambda x, y, w, h: table(
-                    "Active queries (stored sp_WhoIsActive-style snapshots)",
+                    "Active queries (sp_WhoIsActive-style snapshots)",
                     x,
                     y,
                     w,
@@ -1923,8 +1925,7 @@ def queries():
                     _ACTIVE_QUERIES_SQL,
                     sort_by=[{"displayName": "Collected", "desc": True}],
                     description="Historical snapshots from collect.query_snapshots, bound by the "
-                    "dashboard time range. Current Active Queries (live DMV query against the "
-                    "monitored server) is not portable here.",
+                    "dashboard time range. Current Active Queries is not portable here.",
                 ),
             ),
         ],
@@ -1987,9 +1988,7 @@ def queries():
                         col_unit("Total Duration (ms)", "ms"),
                         col_unit("Total Reads", "short"),
                     ],
-                    description="Ranked and capped server-side by the selected Metric var. "
-                    "Clicking a different column header only resorts these already-selected "
-                    "rows - it does not refetch a true top-N by that column.",
+                    description="Ranked and capped server-side by the selected Metric var. ",
                 ),
             ),
         ],
@@ -2016,8 +2015,7 @@ def queries():
                         )
                     ],
                     description="Top 100 (by executions) queries in the current window unioned "
-                    "with the top 100 in the baseline window, full-outer-joined so NEW/GONE "
-                    "queries surface.",
+                    "with the top 100 in the baseline window.",
                 ),
             ),
         ],
@@ -2060,9 +2058,7 @@ def queries():
                     h,
                     _TOP_PROCEDURES_SQL,
                     overrides=[col_hidden("server_id"), _PROCEDURE_HISTORY_LINK],
-                    description="Ranked and capped server-side by the selected Metric var. "
-                    "Clicking a different column header only resorts these already-selected "
-                    "rows - it does not refetch a true top-N by that column.",
+                    description="Ranked and capped server-side by the selected Metric var. ",
                 ),
             ),
         ],
@@ -2134,11 +2130,7 @@ def queries():
                         _QUERY_STORE_HISTORY_LINK,
                         status_colors("Forced", {"true": "blue", "false": "text"}),
                     ],
-                    description="replica_role is a GROUP BY key, not aggregated away, so a "
-                    "shared AG Query Store shows one row per replica role instead of blending "
-                    "primary and secondary workload. Ranked and capped server-side by the "
-                    "selected Metric var - clicking a different column header only resorts "
-                    "these already-selected rows.",
+                    description="Ranked and capped server-side by the selected Metric var. ",
                 ),
             ),
         ],
@@ -2213,7 +2205,7 @@ def queries():
         y,
         [
             (
-                16,
+                14,
                 12,
                 lambda x, y, w, h: heatmap(
                     "Query heatmap (${metric} distribution over time)",
@@ -2224,11 +2216,11 @@ def queries():
                     _QUERY_HEATMAP_SQL,
                     description="Each cell = number of query executions in that metric bucket "
                     "for the 5-minute window. Duration/CPU buckets are in ms; Reads/Writes in "
-                    "pages. Y-axis runs 0 (fastest/smallest) to 6 (slowest/largest). Raw-only.",
+                    "pages. Y-axis runs 0 (fastest/smallest) to 6 (slowest/largest).",
                 ),
             ),
             (
-                8,
+                10,
                 12,
                 lambda x, y, w, h: table(
                     "Top query per bucket (${metric}, by impact)",
@@ -2237,6 +2229,11 @@ def queries():
                     w,
                     h,
                     _QUERY_HEATMAP_COMPANION_SQL,
+                    overrides=[
+                        col_hidden("server_id"),
+                        col_width("Count", 80),
+                        _QUERY_HISTORY_LINK,
+                    ],
                     description="Top query (by total_impact = metric_value * exec_count) in "
                     "each bucket across the selected time range. Ordered highest bucket first "
                     "to align with the heatmap Y-axis.",
@@ -2283,7 +2280,7 @@ def queries():
                         col_unit("Duration", "ms"),
                         col_unit("CPU", "ms"),
                     ],
-                    description="Attentions (cancels/timeouts) carry no duration - the event has none.",
+                    description="cancels/timeouts has no duration, by design.",
                 ),
             ),
         ],
@@ -2341,7 +2338,7 @@ def procedure_history():
                 24,
                 8,
                 lambda x, y, w, h: timeseries(
-                    "${history_metric} over time (one dot per plan shape)",
+                    "${history_metric} over time",
                     x,
                     y,
                     w,
@@ -2475,7 +2472,7 @@ def query_stats_history():
                 24,
                 8,
                 lambda x, y, w, h: timeseries(
-                    "${history_metric} over time (one dot per plan shape)",
+                    "${history_metric} over time",
                     x,
                     y,
                     w,
@@ -2629,7 +2626,7 @@ def query_store_history():
                 24,
                 8,
                 lambda x, y, w, h: timeseries(
-                    "${qs_history_metric} over time (one dot per plan)",
+                    "${qs_history_metric} over time",
                     x,
                     y,
                     w,

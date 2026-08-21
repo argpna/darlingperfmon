@@ -184,7 +184,8 @@ scored AS (
             ELSE 'Fresh'
         END AS freshness,
         /* Per-metric severity - ServerHealthClassifier.*Severity thresholds. Every branch
-           gates on {_NOT_FRESH} first (see its comment above). */
+           gates on {_NOT_FRESH} first, so a stale/offline server reads Unknown per metric
+           instead of a stale Healthy/Critical value. */
         CASE WHEN {_NOT_FRESH} OR m.cpu_pct IS NULL THEN 'Unknown'
              WHEN m.cpu_total_pct >= 95 THEN 'Critical'
              WHEN m.cpu_total_pct >= 80 THEN 'Warning'
