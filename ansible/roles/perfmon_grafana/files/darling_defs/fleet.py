@@ -22,11 +22,21 @@ from ._shared import (
     thresholds,
     uid,
 )
-from .collection_health import _CADENCE_TABLE, _HEALTH_AGG, _HEALTH_STATUS
+from .collection_health import (
+    _CADENCE_TABLE,
+    _HEALTH_AGG,
+    _HEALTH_STATUS,
+    _WARNING_FAILURE_RATE,
+)
 
 # ServerHealthThresholds: stale = 2x the 1-min collector cadence, offline = 15 min.
 _STALE_MINUTES = 2
 _OFFLINE_MINUTES = 15
+
+_BLOCKING_CRITICAL_PER_HOUR = 20
+_BLOCKING_WARN_PER_HOUR = 5
+_DEADLOCK_CRITICAL_PER_HOUR = 20
+_DEADLOCK_WARN_PER_HOUR = 5
 
 # Alert rules for this line are provisioned into this folder (alerting_darling.yml); must
 # match grafana_darling_folder_uid/grafana_darling_folder in defaults/main.yml.
@@ -126,7 +136,8 @@ collectors AS (
     SELECT
         server_id,
         COUNT(*) FILTER (WHERE status = 'HEALTHY') AS healthy_count,
-        COUNT(*) FILTER (WHERE status = 'FAILING') AS failing_count
+        COUNT(*) FILTER (WHERE status = 'FAILING') AS failing_count,
+        COUNT(*) AS total_count
     FROM (SELECT server_id, {_HEALTH_STATUS} AS status FROM a) AS x
     GROUP BY server_id
 ),
@@ -160,6 +171,7 @@ metrics AS (
         COALESCE(dl.cnt, 0) AS deadlock_count,
         COALESCE(co.healthy_count, 0) AS healthy_collector_count,
         COALESCE(co.failing_count, 0) AS failing_collector_count,
+        COALESCE(co.total_count, 0) AS total_collector_count,
         lc.last_collection_time,
         EXTRACT(EPOCH FROM ((now() AT TIME ZONE 'UTC') - lc.last_collection_time)) / 60.0
             AS minutes_since_collection
@@ -202,14 +214,21 @@ scored AS (
                   OR m.memory_forced_count > 0
              THEN 'Critical' ELSE 'Healthy' END AS memory_severity,
         CASE WHEN {_NOT_FRESH} THEN 'Unknown'
-             WHEN m.max_blocking_wait_ms / 1000.0 >= 60 OR m.blocking_count >= 5 THEN 'Critical'
-             WHEN m.max_blocking_wait_ms / 1000.0 >= 10 OR m.blocking_count >= 2 THEN 'Warning'
-             WHEN m.blocking_count > 0 THEN 'Warning'
+             WHEN m.max_blocking_wait_ms / 1000.0 >= 60
+                  OR m.blocking_count >= {_BLOCKING_CRITICAL_PER_HOUR} THEN 'Critical'
+             WHEN m.max_blocking_wait_ms / 1000.0 >= 10
+                  OR m.blocking_count >= {_BLOCKING_WARN_PER_HOUR} THEN 'Warning'
              ELSE 'Healthy' END AS blocking_severity,
         CASE WHEN {_NOT_FRESH} THEN 'Unknown'
-             WHEN m.deadlock_count > 0 THEN 'Critical' ELSE 'Healthy' END AS deadlock_severity,
+             WHEN m.deadlock_count >= {_DEADLOCK_CRITICAL_PER_HOUR} THEN 'Critical'
+             WHEN m.deadlock_count >= {_DEADLOCK_WARN_PER_HOUR} THEN 'Warning'
+             ELSE 'Healthy' END AS deadlock_severity,
         CASE WHEN {_NOT_FRESH} THEN 'Unknown'
-             WHEN m.failing_collector_count > 0 THEN 'Warning' ELSE 'Healthy' END
+             WHEN m.failing_collector_count <= 0 THEN
+                 CASE WHEN m.total_collector_count > 0 THEN 'Healthy' ELSE 'Unknown' END
+             WHEN m.failing_collector_count * 100.0 / m.total_collector_count
+                  > {_WARNING_FAILURE_RATE} THEN 'Critical'
+             ELSE 'Warning' END
             AS collector_severity
     FROM metrics m
 ),
