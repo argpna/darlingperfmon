@@ -37,6 +37,7 @@ from panel_kit import (  # noqa: E402
     col_width,
     series_style,
     status_colors,
+    status_dots,
     text_var,
 )
 
@@ -623,6 +624,7 @@ __all__ = [
     "stat",
     "stat_grid",
     "status_colors",
+    "status_dots",
     "status_history",
     "subtab",
     "table",

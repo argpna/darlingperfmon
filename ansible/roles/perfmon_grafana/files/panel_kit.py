@@ -593,6 +593,29 @@ def status_colors(col, mapping, cell_type="color-background"):
     }
 
 
+def status_dots(col, mapping):
+    """Table override: renders a value-mapped status as a colored dot instead of text."""
+    return {
+        "matcher": {"id": "byName", "options": col},
+        "properties": [
+            {
+                "id": "mappings",
+                "value": [
+                    {
+                        "type": "value",
+                        "options": {
+                            k: {"text": "●", "color": c, "index": i}
+                            for i, (k, c) in enumerate(mapping.items())
+                        },
+                    }
+                ],
+            },
+            {"id": "custom.cellOptions", "value": {"type": "color-text"}},
+            {"id": "custom.align", "value": "center"},
+        ],
+    }
+
+
 def col_unit(col, unit, display_name=None):
     """Table override: set the display unit (and optionally label) of a column."""
     properties = [{"id": "unit", "value": unit}]

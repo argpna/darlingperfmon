@@ -732,18 +732,22 @@
                     "type": "value",
                     "options": {
                       "Healthy": {
-                        "color": "transparent",
+                        "text": "\u25cf",
+                        "color": "green",
                         "index": 0
                       },
                       "Warning": {
+                        "text": "\u25cf",
                         "color": "yellow",
                         "index": 1
                       },
                       "Critical": {
+                        "text": "\u25cf",
                         "color": "red",
                         "index": 2
                       },
                       "Unknown": {
+                        "text": "\u25cf",
                         "color": "text",
                         "index": 3
                       }
@@ -754,8 +758,12 @@
               {
                 "id": "custom.cellOptions",
                 "value": {
-                  "type": "color-background"
+                  "type": "color-text"
                 }
+              },
+              {
+                "id": "custom.align",
+                "value": "center"
               }
             ]
           },
@@ -790,18 +798,22 @@
                     "type": "value",
                     "options": {
                       "Healthy": {
-                        "color": "transparent",
+                        "text": "\u25cf",
+                        "color": "green",
                         "index": 0
                       },
                       "Warning": {
+                        "text": "\u25cf",
                         "color": "yellow",
                         "index": 1
                       },
                       "Critical": {
+                        "text": "\u25cf",
                         "color": "red",
                         "index": 2
                       },
                       "Unknown": {
+                        "text": "\u25cf",
                         "color": "text",
                         "index": 3
                       }
@@ -812,8 +824,12 @@
               {
                 "id": "custom.cellOptions",
                 "value": {
-                  "type": "color-background"
+                  "type": "color-text"
                 }
+              },
+              {
+                "id": "custom.align",
+                "value": "center"
               }
             ]
           },
@@ -848,18 +864,22 @@
                     "type": "value",
                     "options": {
                       "Healthy": {
-                        "color": "transparent",
+                        "text": "\u25cf",
+                        "color": "green",
                         "index": 0
                       },
                       "Warning": {
+                        "text": "\u25cf",
                         "color": "yellow",
                         "index": 1
                       },
                       "Critical": {
+                        "text": "\u25cf",
                         "color": "red",
                         "index": 2
                       },
                       "Unknown": {
+                        "text": "\u25cf",
                         "color": "text",
                         "index": 3
                       }
@@ -870,8 +890,12 @@
               {
                 "id": "custom.cellOptions",
                 "value": {
-                  "type": "color-background"
+                  "type": "color-text"
                 }
+              },
+              {
+                "id": "custom.align",
+                "value": "center"
               }
             ]
           },
@@ -906,18 +930,22 @@
                     "type": "value",
                     "options": {
                       "Healthy": {
-                        "color": "transparent",
+                        "text": "\u25cf",
+                        "color": "green",
                         "index": 0
                       },
                       "Warning": {
+                        "text": "\u25cf",
                         "color": "yellow",
                         "index": 1
                       },
                       "Critical": {
+                        "text": "\u25cf",
                         "color": "red",
                         "index": 2
                       },
                       "Unknown": {
+                        "text": "\u25cf",
                         "color": "text",
                         "index": 3
                       }
@@ -928,8 +956,12 @@
               {
                 "id": "custom.cellOptions",
                 "value": {
-                  "type": "color-background"
+                  "type": "color-text"
                 }
+              },
+              {
+                "id": "custom.align",
+                "value": "center"
               }
             ]
           },
@@ -964,18 +996,22 @@
                     "type": "value",
                     "options": {
                       "Healthy": {
-                        "color": "transparent",
+                        "text": "\u25cf",
+                        "color": "green",
                         "index": 0
                       },
                       "Warning": {
+                        "text": "\u25cf",
                         "color": "yellow",
                         "index": 1
                       },
                       "Critical": {
+                        "text": "\u25cf",
                         "color": "red",
                         "index": 2
                       },
                       "Unknown": {
+                        "text": "\u25cf",
                         "color": "text",
                         "index": 3
                       }
@@ -986,8 +1022,12 @@
               {
                 "id": "custom.cellOptions",
                 "value": {
-                  "type": "color-background"
+                  "type": "color-text"
                 }
+              },
+              {
+                "id": "custom.align",
+                "value": "center"
               }
             ]
           },
@@ -1022,18 +1062,22 @@
                     "type": "value",
                     "options": {
                       "Healthy": {
-                        "color": "transparent",
+                        "text": "\u25cf",
+                        "color": "green",
                         "index": 0
                       },
                       "Warning": {
+                        "text": "\u25cf",
                         "color": "yellow",
                         "index": 1
                       },
                       "Critical": {
+                        "text": "\u25cf",
                         "color": "red",
                         "index": 2
                       },
                       "Unknown": {
+                        "text": "\u25cf",
                         "color": "text",
                         "index": 3
                       }
@@ -1044,8 +1088,12 @@
               {
                 "id": "custom.cellOptions",
                 "value": {
-                  "type": "color-background"
+                  "type": "color-text"
                 }
+              },
+              {
+                "id": "custom.align",
+                "value": "center"
               }
             ]
           },
