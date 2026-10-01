@@ -128,7 +128,9 @@ a AS (
              THEN agg.error_count::double precision / agg.total_runs * 100
              ELSE 0 END AS failure_rate,
         COALESCE(EXTRACT(EPOCH FROM ((now() AT TIME ZONE 'UTC') - agg.last_success_time))
-                 / 3600.0, 999) AS hours_since_success
+                 / 3600.0, 999) AS hours_since_success,
+        COALESCE(EXTRACT(EPOCH FROM ((now() AT TIME ZONE 'UTC') - agg.last_run_time))
+                 / 3600.0, 999) AS hours_since_run
     FROM agg
     LEFT JOIN cadence c ON c.collector_name = agg.collector_name
 ),
