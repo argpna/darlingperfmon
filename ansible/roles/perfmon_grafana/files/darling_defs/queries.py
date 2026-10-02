@@ -497,12 +497,13 @@ WITH ranked AS (
         MAX(qs.total_clr_time) AS total_clr_time,
         MAX(qs.plan_generation_num) AS plan_generation_num,
         MAX(qs.delta_worker_time::double precision / NULLIF(qs.sample_interval_seconds, 0) / 1000.0) AS worker_time_per_second,
-        bool_or(qs.query_plan_xml IS NOT NULL OR qs.query_plan_digest IS NOT NULL) AS has_query_plan
+        bool_or(qs.query_plan_xml IS NOT NULL OR qs.query_plan_digest IS NOT NULL) AS has_query_plan,
+        qs.host_object_name
     FROM {collector('query_stats')} AS qs
     WHERE {server_filter('qs.server_id')}
       AND $__timeFilter(qs.collection_time)
       AND {multi_filter('qs.database_name', 'database')}
-    GROUP BY qs.server_id, qs.database_name, qs.query_hash
+    GROUP BY qs.server_id, qs.database_name, qs.query_hash, qs.host_object_name
     HAVING SUM(qs.delta_execution_count) > 0 OR SUM(qs.delta_elapsed_time) > 0
     ORDER BY {_rank_by(
         "SUM(qs.delta_elapsed_time)",
@@ -531,7 +532,11 @@ SELECT
     r.server_id AS "server_id",
     srv.name AS "Server",
     r.database_name AS "Database",
-    COALESCE(m.database_name || '.' || m.schema_name || '.' || m.object_name, 'ad hoc') AS "Module",
+    COALESCE(
+        r.database_name || '.' || NULLIF(r.host_object_name, ''),
+        m.database_name || '.' || m.schema_name || '.' || m.object_name,
+        'ad hoc'
+    ) AS "Module",
     r.last_execution_time AS "Last Execution",
     r.creation_time AS "Creation Time",
     r.query_hash AS "Query Hash",
@@ -584,6 +589,7 @@ LEFT JOIN LATERAL (
     WHERE server_id = r.server_id
       AND query_hash = r.query_hash
       AND database_name = r.database_name
+      AND host_object_name IS NOT DISTINCT FROM r.host_object_name
       AND query_text IS NOT NULL
     ORDER BY collection_time DESC
     LIMIT 1
