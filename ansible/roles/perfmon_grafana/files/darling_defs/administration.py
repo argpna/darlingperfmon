@@ -2,7 +2,7 @@
 Changes, and Running Jobs dashboards: current setup, recent changes, and scheduled jobs.
 
 Upstream ref: ViewerDataService.Config.cs, ViewerDataService.ConfigChanges.cs,
-ViewerServerTab.RunningJobs.cs.
+ViewerServerTab.RunningJobs.cs, ViewerDataService.JobHistory.cs.
 
 Configuration's grids read each server's latest capture, not the dashboard time range.
 Configuration and Configuration Changes each defined their own `database` variable; the
@@ -432,6 +432,99 @@ JOIN {collector('running_jobs')} AS rj
 ORDER BY rj.current_duration_seconds DESC
 """
 
+_JOB_RUN_UTC = (
+    "(jh.run_datetime - make_interval(mins => COALESCE(svr.utc_offset_minutes, 0)))"
+)
+
+_JOB_SVR_CTE = f"""svr AS (
+    SELECT DISTINCT ON (sp.server_id) sp.server_id, sp.utc_offset_minutes
+    FROM {collector('server_properties')} AS sp
+    WHERE sp.utc_offset_minutes IS NOT NULL
+    ORDER BY sp.server_id, sp.collection_time DESC
+)"""
+
+# Upstream ref: GetJobHistoryAsync.
+_JOB_HISTORY_SQL = f"""
+WITH {_JOB_SVR_CTE},
+base AS (
+    SELECT
+        jh.server_id,
+        jh.instance_id,
+        jh.job_name,
+        jh.job_enabled,
+        jh.category_name,
+        jh.step_id,
+        jh.step_name,
+        jh.run_status_desc,
+        {_JOB_RUN_UTC} AS run_utc,
+        jh.run_duration_seconds,
+        jh.retries_attempted,
+        jh.message,
+        AVG(CASE WHEN jh.step_id = 0 AND jh.run_status = 1 THEN jh.run_duration_seconds END)
+            OVER (PARTITION BY jh.server_id, jh.job_id) AS avg_success,
+        MAX(CASE WHEN jh.step_id = 0 AND jh.run_status = 1 THEN {_JOB_RUN_UTC} END)
+            OVER (PARTITION BY jh.server_id, jh.job_id) AS last_success
+    FROM {collector('job_history')} AS jh
+    LEFT JOIN svr ON svr.server_id = jh.server_id
+    WHERE {_JOB_RUN_UTC} >= $__timeFrom()::timestamp
+      AND {_JOB_RUN_UTC} <= $__timeTo()::timestamp
+      AND {server_filter('jh.server_id')}
+)
+SELECT
+    b.run_utc AS "Run Time",
+    srv.name AS "Server",
+    b.job_name AS "Job",
+    {_yes_no('b.job_enabled')} AS "Job Enabled",
+    b.category_name AS "Category",
+    CASE WHEN b.step_id = 0 THEN '(Job outcome)' ELSE b.step_id || ': ' || b.step_name END AS "Step",
+    b.run_status_desc AS "Status",
+    b.run_duration_seconds AS "Duration",
+    CASE WHEN b.retries_attempted > 0 THEN b.retries_attempted::text ELSE '' END AS "Retries",
+    CASE WHEN b.step_id = 0 AND b.avg_success > 0
+          AND b.run_duration_seconds > b.avg_success * 2
+          AND b.run_duration_seconds > 60 THEN 'Yes' ELSE '' END AS "Long Running",
+    COALESCE(to_char(b.last_success, 'YYYY-MM-DD HH24:MI:SS'), 'Never') AS "Last Success",
+    b.message AS "Message"
+FROM base AS b
+{server_join('b.server_id')}
+WHERE {multi_filter('b.run_status_desc', 'job_status')}
+  AND {multi_filter('b.category_name', 'job_category')}
+ORDER BY b.run_utc DESC, b.instance_id DESC
+LIMIT 2000
+"""
+
+_JOB_CATEGORY_VAR_SQL = f"""
+SELECT DISTINCT jh.category_name
+FROM {collector('job_history')} AS jh
+WHERE jh.category_name IS NOT NULL
+ORDER BY 1
+"""
+
+_JOB_STATUS_VAR_SQL = f"""
+SELECT DISTINCT jh.run_status_desc
+FROM {collector('job_history')} AS jh
+WHERE jh.run_status_desc IS NOT NULL
+ORDER BY 1
+"""
+
+# Upstream ref: GetAgentStatusAsync - newest snapshot per server.
+_AGENT_STATUS_SQL = f"""
+WITH {_JOB_SVR_CTE}
+SELECT DISTINCT ON (a.server_id)
+    srv.name AS "Server",
+    CASE WHEN a.agent_running THEN 'Running' ELSE COALESCE(a.agent_status_desc, 'Stopped') END AS "Agent",
+    a.agent_startup_desc AS "Startup Type",
+    COALESCE(
+        to_char(a.next_scheduled_run - make_interval(mins => COALESCE(svr.utc_offset_minutes, 0)),
+                'YYYY-MM-DD HH24:MI:SS'),
+        'None scheduled') AS "Next Scheduled Run"
+FROM {collector('agent_status')} AS a
+LEFT JOIN svr ON svr.server_id = a.server_id
+{server_join('a.server_id')}
+WHERE {server_filter('a.server_id')}
+ORDER BY a.server_id, a.collection_time DESC
+"""
+
 # Stat row: non-default config count, config changes in the last 24h, currently running jobs.
 _PENDING_RESTART_SQL = f"""
 SELECT COUNT(*) AS v
@@ -718,6 +811,64 @@ def administration():
         ],
     )
 
+    y = subtab(
+        panels,
+        "Job History",
+        y,
+        [
+            (
+                24,
+                5,
+                lambda x, y, w, h: table(
+                    "SQL Agent Status",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _AGENT_STATUS_SQL,
+                    overrides=[
+                        status_colors(
+                            "Agent", {"Running": "green"}, cell_type="color-text"
+                        ),
+                    ],
+                    description="Latest agent snapshot per server.",
+                ),
+            ),
+            (
+                24,
+                14,
+                lambda x, y, w, h: table(
+                    "Job History",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _JOB_HISTORY_SQL,
+                    sort_by=[{"displayName": "Run Time", "desc": True}],
+                    overrides=[
+                        status_colors(
+                            "Status",
+                            {
+                                "Failed": "red",
+                                "Retry": "yellow",
+                                "Canceled": "text",
+                                "Succeeded": "green",
+                            },
+                        ),
+                        status_colors(
+                            "Long Running", {"Yes": "orange"}, cell_type="color-text"
+                        ),
+                        col_unit("Duration", "s"),
+                    ],
+                    description=(
+                        "Retained job runs whose run time falls in the dashboard range; "
+                        "each step plus its job outcome row."
+                    ),
+                ),
+            ),
+        ],
+    )
+
     return dashboard(
         uid("administration"),
         "Administration",
@@ -735,6 +886,18 @@ def administration():
                 "Change Database",
                 _CHANGE_DATABASE_VAR_SQL,
                 "Scopes the database configuration change history.",
+            ),
+            query_var(
+                "job_status",
+                "Job Status",
+                _JOB_STATUS_VAR_SQL,
+                "Scopes the job history grid by run status.",
+            ),
+            query_var(
+                "job_category",
+                "Job Category",
+                _JOB_CATEGORY_VAR_SQL,
+                "Scopes the job history grid by job category.",
             ),
         ],
         time_from="now-7d",
