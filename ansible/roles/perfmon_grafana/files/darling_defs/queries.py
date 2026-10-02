@@ -1517,7 +1517,23 @@ _PROCEDURE_PLAN_PARAMETERS_SQL = plan_parameters_sql(f"""
 _QUERY_STATS_HISTORY_WHERE = f"""
 {server_filter('qs.server_id')}
   AND {_identity_guard('database', 'qs.database_name')}
-  AND {_identity_guard('query_hash', 'qs.query_hash')}
+  AND (
+    (${{bpr_id:sqlstring}} IN ('0', '') AND ${{dl_id:sqlstring}} IN ('0', '')
+      AND {_identity_guard('query_hash', 'qs.query_hash')})
+    OR qs.query_hash = (
+      SELECT substring(
+        CASE WHEN ${{bpr_side:sqlstring}} = 'blocked'
+             THEN bpr.blocked_query_plan_xml ELSE bpr.blocking_query_plan_xml END
+        FROM 'QueryHash="([^"]*)"')
+      FROM {collector('blocked_process_reports')} AS bpr
+      WHERE bpr.blocked_report_id::text = ${{bpr_id:sqlstring}}
+    )
+    OR qs.query_hash = (
+      SELECT substring(dl.victim_query_plan_xml FROM 'QueryHash="([^"]*)"')
+      FROM {collector('deadlocks')} AS dl
+      WHERE dl.deadlock_id::text = ${{dl_id:sqlstring}}
+    )
+  )
   AND $__timeFilter(qs.collection_time)
 """
 
@@ -2491,6 +2507,7 @@ def query_stats_history():
                             "url": "/d/darling-query-stats-history?${__url_time_range}"
                             "&var-server=$server&var-database=$database"
                             "&var-query_hash=$query_hash"
+                            "&var-bpr_id=$bpr_id&var-bpr_side=$bpr_side&var-dl_id=$dl_id"
                             "&var-plan_shape=${__field.name}",
                             "targetBlank": False,
                         }
@@ -2594,6 +2611,9 @@ def query_stats_history():
             server_var(),
             text_var("database", "Database", "*"),
             text_var("query_hash", "Query Hash", "*"),
+            text_var("bpr_id", "Blocked Report ID", "0") | {"hide": 2},
+            text_var("bpr_side", "Blocked Report Side", "blocking") | {"hide": 2},
+            text_var("dl_id", "Deadlock ID", "0") | {"hide": 2},
             custom_var(
                 "history_metric",
                 "Chart Metric",

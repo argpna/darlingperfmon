@@ -1238,6 +1238,66 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "server_id"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "blocked_report_id"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Blocked SQL"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "View blocked query history",
+                    "url": "/d/darling-query-stats-history?${__url_time_range}&var-server=${__data.fields.server_id}&var-database=${__data.fields.Database}&var-bpr_id=${__data.fields.blocked_report_id}&var-bpr_side=blocked",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Blocking SQL"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "View blocking query history",
+                    "url": "/d/darling-query-stats-history?${__url_time_range}&var-server=${__data.fields.server_id}&var-database=${__data.fields.Database}&var-bpr_id=${__data.fields.blocked_report_id}&var-bpr_side=blocking",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
           }
         ]
       },
@@ -1268,7 +1328,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "\nWITH xe AS (\n    SELECT\n        bpr.event_time, 'XE' AS source, bpr.database_name,\n        bpr.blocked_spid, bpr.blocking_spid, bpr.wait_time_ms, bpr.wait_resource,\n        bpr.lock_mode, bpr.blocked_status, bpr.blocking_status,\n        bpr.blocked_isolation_level, bpr.blocking_isolation_level,\n        bpr.blocked_transaction_name, bpr.blocked_priority,\n        bpr.blocked_transaction_count, bpr.blocked_log_used,\n        bpr.blocked_login_name, bpr.blocked_host_name, bpr.blocked_client_app,\n        bpr.blocked_sql_text, bpr.blocking_login_name, bpr.blocking_host_name,\n        bpr.blocking_client_app, bpr.blocking_sql_text\n    FROM collect.v_blocked_process_reports AS bpr\n    WHERE $__timeFilter(bpr.collection_time)\n      AND bpr.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR bpr.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n),\ndmv AS (\n    SELECT\n        d.event_time, 'DMV' AS source, d.database_name,\n        d.blocked_spid, d.blocking_spid, d.wait_time_ms,\n        NULL::text AS wait_resource, d.lock_mode,\n        NULL::text AS blocked_status, d.blocking_status,\n        NULL::text AS blocked_isolation_level, NULL::text AS blocking_isolation_level,\n        NULL::text AS blocked_transaction_name, NULL::integer AS blocked_priority,\n        NULL::integer AS blocked_transaction_count, NULL::bigint AS blocked_log_used,\n        d.blocked_login_name, d.blocked_host_name, d.blocked_client_app,\n        d.blocked_sql_text, d.blocking_login_name, d.blocking_host_name,\n        d.blocking_client_app, d.blocking_sql_text\n    FROM collect.v_dmv_blocking_snapshots AS d\n    WHERE $__timeFilter(d.collection_time)\n      AND d.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR d.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n      AND NOT EXISTS (\n          SELECT 1 FROM xe\n          WHERE xe.blocked_spid = d.blocked_spid\n            AND xe.blocking_spid = d.blocking_spid\n            AND date_trunc('minute', xe.event_time) = date_trunc('minute', d.event_time)\n      )\n)\nSELECT\n    r.event_time AS \"Event Time\",\n    r.source AS \"Source\",\n    r.database_name AS \"Database\",\n    r.blocked_spid AS \"Blocked SPID\",\n    r.blocking_spid AS \"Blocking SPID\",\n    r.wait_time_ms AS \"Wait (ms)\",\n    r.wait_resource AS \"Wait Resource\",\n    r.lock_mode AS \"Lock Mode\",\n    r.blocked_status AS \"Blocked Status\",\n    r.blocking_status AS \"Blocking Status\",\n    r.blocked_isolation_level AS \"Blocked Isolation\",\n    r.blocking_isolation_level AS \"Blocking Isolation\",\n    r.blocked_transaction_name AS \"Blocked Tran\",\n    r.blocked_priority AS \"Blocked Priority\",\n    r.blocked_transaction_count AS \"Blocked Tran Count\",\n    r.blocked_log_used AS \"Blocked Log Used\",\n    r.blocked_login_name AS \"Blocked Login\",\n    r.blocked_host_name AS \"Blocked Host\",\n    r.blocked_client_app AS \"Blocked App\",\n    r.blocked_sql_text AS \"Blocked SQL\",\n    r.blocking_login_name AS \"Blocking Login\",\n    r.blocking_host_name AS \"Blocking Host\",\n    r.blocking_client_app AS \"Blocking App\",\n    r.blocking_sql_text AS \"Blocking SQL\"\nFROM (SELECT * FROM xe UNION ALL SELECT * FROM dmv) AS r\nORDER BY r.event_time DESC\nLIMIT 200\n"
+          "rawSql": "\nWITH xe AS (\n    SELECT\n        bpr.event_time, 'XE' AS source, bpr.database_name,\n        bpr.blocked_spid, bpr.blocking_spid, bpr.wait_time_ms, bpr.wait_resource,\n        bpr.lock_mode, bpr.blocked_status, bpr.blocking_status,\n        bpr.blocked_isolation_level, bpr.blocking_isolation_level,\n        bpr.blocked_transaction_name, bpr.blocked_priority,\n        bpr.blocked_transaction_count, bpr.blocked_log_used,\n        bpr.blocked_login_name, bpr.blocked_host_name, bpr.blocked_client_app,\n        bpr.blocked_sql_text, bpr.blocking_login_name, bpr.blocking_host_name,\n        bpr.blocking_client_app, bpr.blocking_sql_text,\n        bpr.server_id, bpr.blocked_report_id,\n        (bpr.blocked_query_plan_xml IS NOT NULL) AS has_blocked_plan,\n        (bpr.blocking_query_plan_xml IS NOT NULL) AS has_blocking_plan\n    FROM collect.v_blocked_process_reports AS bpr\n    WHERE $__timeFilter(bpr.collection_time)\n      AND bpr.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR bpr.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n),\ndmv AS (\n    SELECT\n        d.event_time, 'DMV' AS source, d.database_name,\n        d.blocked_spid, d.blocking_spid, d.wait_time_ms,\n        NULL::text AS wait_resource, d.lock_mode,\n        NULL::text AS blocked_status, d.blocking_status,\n        NULL::text AS blocked_isolation_level, NULL::text AS blocking_isolation_level,\n        NULL::text AS blocked_transaction_name, NULL::integer AS blocked_priority,\n        NULL::integer AS blocked_transaction_count, NULL::bigint AS blocked_log_used,\n        d.blocked_login_name, d.blocked_host_name, d.blocked_client_app,\n        d.blocked_sql_text, d.blocking_login_name, d.blocking_host_name,\n        d.blocking_client_app, d.blocking_sql_text,\n        d.server_id, NULL::bigint AS blocked_report_id,\n        FALSE AS has_blocked_plan, FALSE AS has_blocking_plan\n    FROM collect.v_dmv_blocking_snapshots AS d\n    WHERE $__timeFilter(d.collection_time)\n      AND d.server_id IN (${server:csv})\n      AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR d.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\n      AND NOT EXISTS (\n          SELECT 1 FROM xe\n          WHERE xe.blocked_spid = d.blocked_spid\n            AND xe.blocking_spid = d.blocking_spid\n            AND date_trunc('minute', xe.event_time) = date_trunc('minute', d.event_time)\n      )\n)\nSELECT\n    r.event_time AS \"Event Time\",\n    r.source AS \"Source\",\n    r.database_name AS \"Database\",\n    r.blocked_spid AS \"Blocked SPID\",\n    r.blocking_spid AS \"Blocking SPID\",\n    r.wait_time_ms AS \"Wait (ms)\",\n    r.wait_resource AS \"Wait Resource\",\n    r.lock_mode AS \"Lock Mode\",\n    r.blocked_status AS \"Blocked Status\",\n    r.blocking_status AS \"Blocking Status\",\n    r.blocked_isolation_level AS \"Blocked Isolation\",\n    r.blocking_isolation_level AS \"Blocking Isolation\",\n    r.blocked_transaction_name AS \"Blocked Tran\",\n    r.blocked_priority AS \"Blocked Priority\",\n    r.blocked_transaction_count AS \"Blocked Tran Count\",\n    r.blocked_log_used AS \"Blocked Log Used\",\n    r.blocked_login_name AS \"Blocked Login\",\n    r.blocked_host_name AS \"Blocked Host\",\n    r.blocked_client_app AS \"Blocked App\",\n    r.blocked_sql_text AS \"Blocked SQL\",\n    r.blocking_login_name AS \"Blocking Login\",\n    r.blocking_host_name AS \"Blocking Host\",\n    r.blocking_client_app AS \"Blocking App\",\n    r.blocking_sql_text AS \"Blocking SQL\",\n    r.has_blocked_plan AS \"Has Blocked Plan\",\n    r.has_blocking_plan AS \"Has Blocking Plan\",\n    r.server_id AS \"server_id\",\n    COALESCE(r.blocked_report_id::text, '-1') AS \"blocked_report_id\"\nFROM (SELECT * FROM xe UNION ALL SELECT * FROM dmv) AS r\nORDER BY r.event_time DESC\nLIMIT 200\n"
         }
       ],
       "description": "Merges the blocked-process-report trace (XE) with DMV blocking snapshots, XE preferred; a DMV row only fills a blocked/blocker pair no XE row already covers in the same minute."
@@ -1335,6 +1395,30 @@
           {
             "matcher": {
               "id": "byName",
+              "options": "server_id"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "victim_deadlock_id"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
               "options": "Time"
             },
             "properties": [
@@ -1344,6 +1428,24 @@
                   {
                     "title": "View deadlock detail",
                     "url": "/d/darling-deadlock-detail?${__url_time_range}&var-deadlock_id=${__data.fields.deadlock_id}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "SQL Text"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "View victim query history",
+                    "url": "/d/darling-query-stats-history?${__url_time_range}&var-server=${__data.fields.server_id}&var-database=${__data.fields.Database}&var-dl_id=${__data.fields.victim_deadlock_id}",
                     "targetBlank": false
                   }
                 ]
@@ -1379,7 +1481,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "\nWITH graphs AS (\n    SELECT\n        dl.server_id, dl.deadlock_id, dl.deadlock_time, dl.victim_process_id,\n        dl.deadlock_graph_xml::xml AS graph\n    FROM collect.v_deadlocks AS dl\n    WHERE $__timeFilter(dl.collection_time) AND dl.server_id IN (${server:csv})\n),\nprocesses AS (\n    SELECT\n        g.server_id,\n        g.deadlock_id,\n        g.deadlock_time,\n        g.victim_process_id,\n        (xpath('/*/@id', proc))[1]::text AS process_id,\n        (xpath('/*/@spid', proc))[1]::text AS spid,\n        (xpath('/*/@waittime', proc))[1]::text::bigint AS wait_ms,\n        (xpath('/*/@lockMode', proc))[1]::text AS lock_mode,\n        (xpath('/*/@waitresource', proc))[1]::text AS wait_resource,\n        (xpath('/*/@isolationlevel', proc))[1]::text AS isolation_level,\n        (xpath('/*/@currentdbname', proc))[1]::text AS database_name,\n        (xpath('/*/@trancount', proc))[1]::text::integer AS tran_count,\n        (xpath('/*/@loginname', proc))[1]::text AS login_name,\n        (xpath('/*/@hostname', proc))[1]::text AS host_name,\n        (xpath('/*/@clientapp', proc))[1]::text AS client_app,\n        (xpath('/*/inputbuf/text()', proc))[1]::text AS sql_text\n    FROM graphs g\n    CROSS JOIN LATERAL unnest(xpath('/deadlock/process-list/process', g.graph)) AS proc\n),\nlock_elems AS (\n    SELECT g.deadlock_id, lock\n    FROM graphs g\n    CROSS JOIN LATERAL unnest(xpath('/deadlock/resource-list/*', g.graph)) AS lock\n),\nparticipants AS (\n    SELECT\n        le.deadlock_id,\n        (xpath('/*/@objectname', le.lock))[1]::text AS object_name,\n        xpath('/*/owner-list/owner/@id', le.lock) AS owner_ids,\n        xpath('/*/waiter-list/waiter/@id', le.lock) AS waiter_ids\n    FROM lock_elems le\n),\nobject_by_process AS (\n    SELECT p.deadlock_id, unnest(p.owner_ids)::text AS process_id, p.object_name\n    FROM participants p\n    UNION ALL\n    SELECT p.deadlock_id, unnest(p.waiter_ids)::text AS process_id, p.object_name\n    FROM participants p\n),\nobject_agg AS (\n    SELECT deadlock_id, process_id, string_agg(DISTINCT object_name, ', ') AS objects\n    FROM object_by_process\n    WHERE object_name IS NOT NULL\n    GROUP BY deadlock_id, process_id\n)\nSELECT\n    /* ::text: a numeric field round-trips through a JS double in the drill-down data\n       link and loses precision past 2^53, which this id exceeds. */\n    p.deadlock_id::text AS \"deadlock_id\",\n    p.deadlock_time AS \"Time\",\n    CASE WHEN p.process_id = p.victim_process_id THEN 'Victim' ELSE '' END AS \"Victim\",\n    p.spid AS \"SPID\",\n    p.database_name AS \"Database\",\n    oa.objects AS \"Object(s)\",\n    p.lock_mode AS \"Lock Mode\",\n    p.wait_resource AS \"Wait Resource\",\n    p.wait_ms AS \"Wait (ms)\",\n    p.isolation_level AS \"Isolation\",\n    p.tran_count AS \"Tran Count\",\n    p.login_name AS \"Login\",\n    p.host_name AS \"Host\",\n    p.client_app AS \"App\",\n    p.sql_text AS \"SQL Text\"\nFROM processes p\nJOIN config.config_monitored_servers AS srv ON srv.server_id = p.server_id\nLEFT JOIN object_agg AS oa\n  ON oa.deadlock_id = p.deadlock_id AND oa.process_id = p.process_id\nWHERE (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR p.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nORDER BY p.deadlock_time DESC, p.spid\nLIMIT 200\n"
+          "rawSql": "\nWITH graphs AS (\n    SELECT\n        dl.server_id, dl.deadlock_id, dl.deadlock_time, dl.victim_process_id,\n        (dl.victim_query_plan_xml IS NOT NULL) AS has_victim_plan,\n        dl.deadlock_graph_xml::xml AS graph\n    FROM collect.v_deadlocks AS dl\n    WHERE $__timeFilter(dl.collection_time) AND dl.server_id IN (${server:csv})\n),\nprocesses AS (\n    SELECT\n        g.server_id,\n        g.deadlock_id,\n        g.deadlock_time,\n        g.victim_process_id,\n        g.has_victim_plan,\n        (xpath('/*/@id', proc))[1]::text AS process_id,\n        (xpath('/*/@spid', proc))[1]::text AS spid,\n        (xpath('/*/@waittime', proc))[1]::text::bigint AS wait_ms,\n        (xpath('/*/@lockMode', proc))[1]::text AS lock_mode,\n        (xpath('/*/@waitresource', proc))[1]::text AS wait_resource,\n        (xpath('/*/@isolationlevel', proc))[1]::text AS isolation_level,\n        (xpath('/*/@currentdbname', proc))[1]::text AS database_name,\n        (xpath('/*/@trancount', proc))[1]::text::integer AS tran_count,\n        (xpath('/*/@loginname', proc))[1]::text AS login_name,\n        (xpath('/*/@hostname', proc))[1]::text AS host_name,\n        (xpath('/*/@clientapp', proc))[1]::text AS client_app,\n        (xpath('/*/inputbuf/text()', proc))[1]::text AS sql_text\n    FROM graphs g\n    CROSS JOIN LATERAL unnest(xpath('/deadlock/process-list/process', g.graph)) AS proc\n),\nlock_elems AS (\n    SELECT g.deadlock_id, lock\n    FROM graphs g\n    CROSS JOIN LATERAL unnest(xpath('/deadlock/resource-list/*', g.graph)) AS lock\n),\nparticipants AS (\n    SELECT\n        le.deadlock_id,\n        (xpath('/*/@objectname', le.lock))[1]::text AS object_name,\n        xpath('/*/owner-list/owner/@id', le.lock) AS owner_ids,\n        xpath('/*/waiter-list/waiter/@id', le.lock) AS waiter_ids\n    FROM lock_elems le\n),\nobject_by_process AS (\n    SELECT p.deadlock_id, unnest(p.owner_ids)::text AS process_id, p.object_name\n    FROM participants p\n    UNION ALL\n    SELECT p.deadlock_id, unnest(p.waiter_ids)::text AS process_id, p.object_name\n    FROM participants p\n),\nobject_agg AS (\n    SELECT deadlock_id, process_id, string_agg(DISTINCT object_name, ', ') AS objects\n    FROM object_by_process\n    WHERE object_name IS NOT NULL\n    GROUP BY deadlock_id, process_id\n)\nSELECT\n    /* ::text: a numeric field round-trips through a JS double in the drill-down data\n       link and loses precision past 2^53, which this id exceeds. */\n    p.deadlock_id::text AS \"deadlock_id\",\n    p.server_id AS \"server_id\",\n    CASE WHEN p.process_id = p.victim_process_id AND p.has_victim_plan\n         THEN p.deadlock_id::text ELSE '-1' END AS \"victim_deadlock_id\",\n    p.deadlock_time AS \"Time\",\n    CASE WHEN p.process_id = p.victim_process_id THEN 'Victim' ELSE '' END AS \"Victim\",\n    p.spid AS \"SPID\",\n    p.database_name AS \"Database\",\n    oa.objects AS \"Object(s)\",\n    p.lock_mode AS \"Lock Mode\",\n    p.wait_resource AS \"Wait Resource\",\n    p.wait_ms AS \"Wait (ms)\",\n    p.isolation_level AS \"Isolation\",\n    p.tran_count AS \"Tran Count\",\n    p.login_name AS \"Login\",\n    p.host_name AS \"Host\",\n    p.client_app AS \"App\",\n    p.sql_text AS \"SQL Text\",\n    (p.process_id = p.victim_process_id AND p.has_victim_plan) AS \"Has Victim Plan\"\nFROM processes p\nJOIN config.config_monitored_servers AS srv ON srv.server_id = p.server_id\nLEFT JOIN object_agg AS oa\n  ON oa.deadlock_id = p.deadlock_id AND oa.process_id = p.process_id\nWHERE (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR p.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nORDER BY p.deadlock_time DESC, p.spid\nLIMIT 200\n"
         }
       ],
       "description": "One row per process in each deadlock graph, parsed from deadlock_graph_xml. Click a Time value to open the full participant detail and exportable graph XML. Per-lock owner/waiter role is not portable - see the module docstring."

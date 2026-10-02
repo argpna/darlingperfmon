@@ -304,6 +304,18 @@ GROUP BY 1, 2
 ORDER BY 1
 """
 
+def _bpr_history_link(col: str, side: str):
+    return col_datalink(
+        col,
+        f"View {side} query history",
+        "/d/darling-query-stats-history?${__url_time_range}"
+        "&var-server=${__data.fields.server_id}"
+        "&var-database=${__data.fields.Database}"
+        "&var-bpr_id=${__data.fields.blocked_report_id}"
+        f"&var-bpr_side={side}",
+    )
+
+
 # Keep every XE row; append a DMV row only for a blocked/blocker SPID pair that no XE row
 # already covers within the same minute - upstream's BlockedProcessReportMerge. The two
 # sources have different column shapes (DMV has no isolation/status/tran/priority/XML
@@ -320,7 +332,10 @@ WITH xe AS (
         bpr.blocked_transaction_count, bpr.blocked_log_used,
         bpr.blocked_login_name, bpr.blocked_host_name, bpr.blocked_client_app,
         bpr.blocked_sql_text, bpr.blocking_login_name, bpr.blocking_host_name,
-        bpr.blocking_client_app, bpr.blocking_sql_text
+        bpr.blocking_client_app, bpr.blocking_sql_text,
+        bpr.server_id, bpr.blocked_report_id,
+        (bpr.blocked_query_plan_xml IS NOT NULL) AS has_blocked_plan,
+        (bpr.blocking_query_plan_xml IS NOT NULL) AS has_blocking_plan
     FROM {collector('blocked_process_reports')} AS bpr
     WHERE $__timeFilter(bpr.collection_time)
       AND {server_filter('bpr.server_id')}
@@ -337,7 +352,9 @@ dmv AS (
         NULL::integer AS blocked_transaction_count, NULL::bigint AS blocked_log_used,
         d.blocked_login_name, d.blocked_host_name, d.blocked_client_app,
         d.blocked_sql_text, d.blocking_login_name, d.blocking_host_name,
-        d.blocking_client_app, d.blocking_sql_text
+        d.blocking_client_app, d.blocking_sql_text,
+        d.server_id, NULL::bigint AS blocked_report_id,
+        FALSE AS has_blocked_plan, FALSE AS has_blocking_plan
     FROM {collector('dmv_blocking_snapshots')} AS d
     WHERE $__timeFilter(d.collection_time)
       AND {server_filter('d.server_id')}
@@ -373,7 +390,11 @@ SELECT
     r.blocking_login_name AS "Blocking Login",
     r.blocking_host_name AS "Blocking Host",
     r.blocking_client_app AS "Blocking App",
-    r.blocking_sql_text AS "Blocking SQL"
+    r.blocking_sql_text AS "Blocking SQL",
+    r.has_blocked_plan AS "Has Blocked Plan",
+    r.has_blocking_plan AS "Has Blocking Plan",
+    r.server_id AS "server_id",
+    COALESCE(r.blocked_report_id::text, '-1') AS "blocked_report_id"
 FROM (SELECT * FROM xe UNION ALL SELECT * FROM dmv) AS r
 ORDER BY r.event_time DESC
 LIMIT 200
@@ -406,6 +427,7 @@ def _deadlock_participants_sql(graphs_filter: str, row_filter: str, limit: int) 
 WITH graphs AS (
     SELECT
         dl.server_id, dl.deadlock_id, dl.deadlock_time, dl.victim_process_id,
+        (dl.victim_query_plan_xml IS NOT NULL) AS has_victim_plan,
         dl.deadlock_graph_xml::xml AS graph
     FROM {collector('deadlocks')} AS dl
     WHERE {graphs_filter}
@@ -416,6 +438,7 @@ processes AS (
         g.deadlock_id,
         g.deadlock_time,
         g.victim_process_id,
+        g.has_victim_plan,
         (xpath('/*/@id', proc))[1]::text AS process_id,
         (xpath('/*/@spid', proc))[1]::text AS spid,
         (xpath('/*/@waittime', proc))[1]::text::bigint AS wait_ms,
@@ -461,6 +484,9 @@ SELECT
     /* ::text: a numeric field round-trips through a JS double in the drill-down data
        link and loses precision past 2^53, which this id exceeds. */
     p.deadlock_id::text AS "deadlock_id",
+    p.server_id AS "server_id",
+    CASE WHEN p.process_id = p.victim_process_id AND p.has_victim_plan
+         THEN p.deadlock_id::text ELSE '-1' END AS "victim_deadlock_id",
     p.deadlock_time AS "Time",
     CASE WHEN p.process_id = p.victim_process_id THEN 'Victim' ELSE '' END AS "Victim",
     p.spid AS "SPID",
@@ -474,7 +500,8 @@ SELECT
     p.login_name AS "Login",
     p.host_name AS "Host",
     p.client_app AS "App",
-    p.sql_text AS "SQL Text"
+    p.sql_text AS "SQL Text",
+    (p.process_id = p.victim_process_id AND p.has_victim_plan) AS "Has Victim Plan"
 FROM processes p
 {server_join('p.server_id')}
 LEFT JOIN object_agg AS oa
@@ -691,6 +718,10 @@ def blocking():
                         # IsLongBlock (ViewerBlockedProcessRow) - 30s+ waits tint red,
                         # matching the WPF grid's BlockingRowStyle DataTrigger.
                         col_thresholds("Wait (ms)", ("green", None), ("red", 30000)),
+                        col_hidden("server_id"),
+                        col_hidden("blocked_report_id"),
+                        _bpr_history_link("Blocked SQL", "blocked"),
+                        _bpr_history_link("Blocking SQL", "blocking"),
                     ],
                     description=(
                         "Merges the blocked-process-report trace (XE) with DMV blocking "
@@ -725,7 +756,20 @@ def blocking():
                     h,
                     _DEADLOCKS_SQL,
                     sort_by=[{"displayName": "Time", "desc": True}],
-                    overrides=[col_hidden("deadlock_id"), deadlock_drill],
+                    overrides=[
+                        col_hidden("deadlock_id"),
+                        col_hidden("server_id"),
+                        col_hidden("victim_deadlock_id"),
+                        deadlock_drill,
+                        col_datalink(
+                            "SQL Text",
+                            "View victim query history",
+                            "/d/darling-query-stats-history?${__url_time_range}"
+                            "&var-server=${__data.fields.server_id}"
+                            "&var-database=${__data.fields.Database}"
+                            "&var-dl_id=${__data.fields.victim_deadlock_id}",
+                        ),
+                    ],
                     description=(
                         "One row per process in each deadlock graph, parsed from "
                         "deadlock_graph_xml. Click a Time value to open the full "
@@ -776,7 +820,11 @@ def deadlock_detail():
                     h,
                     _DEADLOCK_DETAIL_PARTICIPANTS_SQL,
                     sort_by=[{"displayName": "Time", "desc": True}],
-                    overrides=[col_hidden("deadlock_id")],
+                    overrides=[
+                        col_hidden("deadlock_id"),
+                        col_hidden("server_id"),
+                        col_hidden("victim_deadlock_id"),
+                    ],
                     description=(
                         "One row per process in this deadlock's graph, parsed from "
                         "deadlock_graph_xml."
