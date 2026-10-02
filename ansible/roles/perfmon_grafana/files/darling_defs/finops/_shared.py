@@ -104,18 +104,50 @@ def overall_score(cpu: str, memory: str, storage: str) -> str:
     return f"trunc(({cpu}) * 0.40 + ({memory}) * 0.30 + ({storage}) * 0.30)"
 
 
-def provisioning_status(
-    avg_cpu: str, max_cpu: str, p95_cpu: str, mem_ratio: str
-) -> str:
-    """GetUtilizationEfficiencyAsync's provisioning classification.
+def grants_cte(where: str, day_grain: bool = False, alias: str = "grants") -> str:
+    """Workspace-memory pressure per server, or per server and day with day_grain.
 
-    First-match order: OVER wins over UNDER when both hold, as upstream's if/else-if does.
+    Upstream ref: the `grants` / `daily_grants` CTEs beside ProvisioningVerdict.Evaluate.
+    `where` supplies the server and time restriction on memory_grant_stats.
     """
+    relation = collector("memory_grant_stats")
+    day_col = "collection_time::date AS day,\n           " if day_grain else ""
+    group = "server_id, collection_time::date" if day_grain else "server_id"
+    return f"""{alias} AS (
+    SELECT server_id,
+           {day_col}MAX(waiter_count) AS max_grant_waiters,
+           SUM(COALESCE(timeout_error_count_delta, 0)) AS grant_timeouts,
+           SUM(COALESCE(forced_grant_count_delta, 0)) AS forced_grants,
+           MAX(100.0 * granted_memory_mb / NULLIF(target_memory_mb, 0))
+               AS grant_utilization_pct
+    FROM {relation}
+    WHERE {where}
+    GROUP BY {group}
+)"""
+
+
+def provisioning_status(
+    avg_cpu: str,
+    max_cpu: str,
+    p95_cpu: str,
+    grant_waiters: str,
+    grant_timeouts: str,
+    forced_grants: str,
+    grant_util: str,
+    max_workers: str,
+    current_workers: str,
+) -> str:
+    """ProvisioningVerdict.Evaluate. Pressure is tested before idleness."""
     return f"""CASE
-        WHEN {avg_cpu} < 15 AND {max_cpu} < 40 AND COALESCE({mem_ratio}, 0) < 0.5
-        THEN 'OVER_PROVISIONED'
-        WHEN {p95_cpu} > 85 OR COALESCE({mem_ratio}, 0) > 0.95
+        WHEN {p95_cpu} > 85
+          OR COALESCE({grant_waiters}, 0) > 0
+          OR COALESCE({grant_timeouts}, 0) > 0
+          OR COALESCE({forced_grants}, 0) > 0
+          OR (COALESCE({max_workers}, 0) > 0
+              AND COALESCE({current_workers}, 0)::numeric / {max_workers} > 0.8)
         THEN 'UNDER_PROVISIONED'
+        WHEN {avg_cpu} < 15 AND {max_cpu} < 40 AND COALESCE({grant_util}, 0) < 50
+        THEN 'OVER_PROVISIONED'
         ELSE 'RIGHT_SIZED'
     END"""
 
@@ -126,9 +158,18 @@ def status_display(expr: str) -> str:
 
 
 def classification_explanation(
-    status: str, avg_cpu: str, max_cpu: str, p95_cpu: str, bp_pct: str, mem_ratio: str
+    status: str,
+    avg_cpu: str,
+    max_cpu: str,
+    p95_cpu: str,
+    bp_pct: str,
+    grant_waiters: str,
+    grant_timeouts: str,
+    forced_grants: str,
+    max_workers: str,
+    current_workers: str,
 ) -> str:
-    """UpdateUtilizationSummary's FinOpsClassificationExplanation, verbatim wording."""
+    """UpdateUtilizationSummary's explanation, with ProvisioningVerdict.UnderProvisionedReason."""
     return f"""CASE {status}
         WHEN 'RIGHT_SIZED' THEN
             'CPU is moderately loaded (avg ' || {fixed(avg_cpu, 1)} || '%, p95 '
@@ -139,12 +180,20 @@ def classification_explanation(
             || {n0(max_cpu)} || '%) and buffer pool uses only ' || {fixed(bp_pct, 0)}
             || '% of physical RAM. This server may have more resources than it needs.'
         WHEN 'UNDER_PROVISIONED' THEN
-            CASE WHEN {p95_cpu} > 85
+            CASE
+                WHEN {p95_cpu} > 85
                 THEN 'CPU p95 is ' || {fixed(p95_cpu, 1)}
                      || '% (threshold: 85%). This server may need more CPU capacity.'
-                ELSE 'Buffer pool uses ' || {fixed(bp_pct, 0)}
-                     || '% of physical RAM and memory ratio is ' || {fixed(mem_ratio, 2)}
-                     || ' (threshold: 0.95). Memory pressure is high.'
+                WHEN COALESCE({grant_waiters}, 0) > 0 OR COALESCE({grant_timeouts}, 0) > 0
+                  OR COALESCE({forced_grants}, 0) > 0
+                THEN 'Queries could not get the workspace memory they asked for: peak '
+                     || COALESCE({grant_waiters}, 0) || ' grant waiter(s), '
+                     || COALESCE({grant_timeouts}, 0) || ' grant timeout(s), '
+                     || COALESCE({forced_grants}, 0)
+                     || ' forced grant(s). This server may need more memory.'
+                ELSE 'Worker threads are near the limit: ' || {n0(current_workers)}
+                     || ' of ' || {n0(max_workers)}
+                     || ' in use (threshold: 80%). This server may need more CPU capacity.'
             END
         ELSE ''
     END"""

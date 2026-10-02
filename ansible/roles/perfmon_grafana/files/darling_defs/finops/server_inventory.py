@@ -27,6 +27,7 @@ from ._shared import (
     IDLE_DB_EXCLUSIONS,
     PROVISIONING_STATUS_COLORS,
     cpu_score,
+    grants_cte,
     overall_score,
     provisioning_status,
     status_display,
@@ -93,7 +94,15 @@ def _yes_no(col: str) -> str:
 
 
 _INVENTORY_STATUS = provisioning_status(
-    "c.avg_cpu_pct", "c.max_cpu_pct", "c.p95_cpu_pct", "m.memory_ratio"
+    "c.avg_cpu_pct",
+    "c.max_cpu_pct",
+    "c.p95_cpu_pct",
+    "g.max_grant_waiters",
+    "g.grant_timeouts",
+    "g.forced_grants",
+    "g.grant_utilization_pct",
+    "m.max_workers_count",
+    "m.current_workers_count",
 )
 
 _INVENTORY_SQL = f"""
@@ -113,12 +122,11 @@ cpu_24h AS (
     GROUP BY server_id
 ),
 mem_latest AS (
-    SELECT server_id,
-           total_server_memory_mb::numeric / NULLIF(target_server_memory_mb, 0)
-               AS memory_ratio
+    SELECT server_id, max_workers_count, current_workers_count
     FROM {_MEM}
     WHERE {_latest_all_servers(_MEM)}
 ),
+{grants_cte(f"collection_time >= {UTC_NOW} - INTERVAL '24 hours'")},
 storage_totals AS (
     SELECT server_id, SUM(total_size_mb) / 1024.0 AS total_storage_gb
     FROM {_SIZES}
@@ -176,6 +184,7 @@ LEFT JOIN {SERVER_REGISTRY} reg ON reg.server_id = sp.server_id
 LEFT JOIN cpu_24h c ON c.server_id = sp.server_id
 LEFT JOIN mem_latest m ON m.server_id = sp.server_id
 LEFT JOIN storage_totals st ON st.server_id = sp.server_id
+LEFT JOIN grants g ON g.server_id = sp.server_id
 LEFT JOIN idle_dbs id ON id.server_id = sp.server_id
 ORDER BY 1
 """
