@@ -173,6 +173,8 @@ SELECT
     qs.transaction_isolation_level AS "Isolation",
     qs.open_transaction_count AS "Open Tran",
     qs.percent_complete AS "% Done",
+    (qs.query_plan IS NOT NULL) AS "Has Query Plan",
+    (qs.live_query_plan IS NOT NULL) AS "Has Live Query Plan",
     qs.query_text AS "Query Text"
 FROM {collector('query_snapshots')} AS qs
 {server_join('qs.server_id')}

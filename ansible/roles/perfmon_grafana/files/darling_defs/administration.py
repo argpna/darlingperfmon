@@ -417,6 +417,7 @@ WITH latest AS (
 SELECT
     l.server_label AS "Server",
     rj.job_name AS "Job Name",
+    CASE WHEN rj.job_enabled THEN 'Yes' ELSE 'No' END AS "Job Enabled",
     rj.start_time AS "Start Time",
     rj.current_duration_seconds AS "Current Duration",
     rj.avg_duration_seconds AS "Avg Duration",

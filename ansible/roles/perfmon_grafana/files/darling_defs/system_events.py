@@ -459,7 +459,19 @@ SELECT
     {_entry('VM Reserved', 'r.xml')}::bigint / 1048576 AS vm_reserved_gb,
     {_entry('VM Committed', 'r.xml')}::bigint / 1048576 AS vm_committed_gb,
     {_entry('Target Committed', 'r.xml')}::bigint / 1048576 AS target_committed_gb,
-    {_entry('Current Committed', 'r.xml')}::bigint / 1048576 AS current_committed_gb
+    {_entry('Current Committed', 'r.xml')}::bigint / 1048576 AS current_committed_gb,
+    {_entry('Locked Pages Allocated', 'r.xml')}::bigint AS locked_pages_allocated,
+    {_entry('Large Pages Allocated', 'r.xml')}::bigint AS large_pages_allocated,
+    ({_entry('Emergency Memory', 'r.xml')}::bigint / 1048576.0)::numeric(18,2) AS emergency_memory_gb,
+    ({_entry('Emergency Memory In Use', 'r.xml')}::bigint / 1048576.0)::numeric(18,2) AS emergency_memory_in_use_gb,
+    {_entry('Pages Allocated', 'r.xml')}::bigint AS pages_allocated,
+    {_entry('Pages Reserved', 'r.xml')}::bigint AS pages_reserved,
+    {_entry('Pages Free', 'r.xml')}::bigint AS pages_free,
+    {_entry('Pages In Use', 'r.xml')}::bigint AS pages_in_use,
+    {_entry('Page Alloc Potential', 'r.xml')}::bigint AS page_alloc_potential,
+    {_entry('NUMA Growth Phase', 'r.xml')}::bigint AS numa_growth_phase,
+    {_entry('Last OOM Factor', 'r.xml')}::bigint AS last_oom_factor,
+    {_entry('Last OS Error', 'r.xml')}::bigint AS last_os_error
 FROM resources r
 """
 
@@ -486,7 +498,19 @@ SELECT
     sig.vm_reserved_gb AS "VM Reserved (GB)",
     sig.vm_committed_gb AS "VM Committed (GB)",
     sig.target_committed_gb AS "Target Committed (GB)",
-    sig.current_committed_gb AS "Current Committed (GB)"
+    sig.current_committed_gb AS "Current Committed (GB)",
+    sig.locked_pages_allocated AS "Locked Pages",
+    sig.large_pages_allocated AS "Large Pages",
+    sig.emergency_memory_gb AS "Emergency (GB)",
+    sig.emergency_memory_in_use_gb AS "Emerg In Use (GB)",
+    sig.pages_allocated AS "Pages Alloc",
+    sig.pages_reserved AS "Pages Reserved",
+    sig.pages_free AS "Pages Free",
+    sig.pages_in_use AS "Pages In Use",
+    sig.page_alloc_potential AS "Alloc Potential",
+    sig.numa_growth_phase AS "NUMA Growth",
+    sig.last_oom_factor AS "Last OOM Factor",
+    sig.last_os_error AS "Last OS Error"
 FROM sig
 {server_join('sig.server_id')}
 WHERE sig.last_notification = 'RESOURCE_MEMPHYSICAL_LOW'
@@ -588,6 +612,7 @@ SELECT
     {_data_value('target_kb')}::bigint AS target_kb,
     {_data_value('reserved_kb')}::bigint AS reserved_kb,
     {_data_value('committed_kb')}::bigint AS committed_kb,
+    {_data_value('shared_committed_kb')}::numeric AS shared_committed_kb,
     {_data_value('awe_kb')}::bigint AS awe_kb,
     {_data_value('pages_kb')}::bigint AS pages_kb,
     {_data_text('failure')} AS failure_type,
@@ -622,6 +647,7 @@ SELECT
     (sig.target_kb / 1048576.0)::numeric(18,2) AS "Target (GB)",
     (sig.reserved_kb / 1048576.0)::numeric(18,2) AS "Reserved (GB)",
     (sig.committed_kb / 1048576.0)::numeric(18,2) AS "Committed (GB)",
+    (sig.shared_committed_kb / 1048576.0)::numeric(18,2) AS "Shared Committed (GB)",
     (sig.awe_kb / 1048576.0)::numeric(18,2) AS "AWE (GB)",
     (sig.pages_kb / 1048576.0)::numeric(18,2) AS "Pages (GB)",
     sig.failure_type AS "Failure Type",
