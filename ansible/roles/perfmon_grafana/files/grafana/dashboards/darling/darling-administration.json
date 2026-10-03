@@ -765,7 +765,7 @@
     {
       "id": 10,
       "type": "row",
-      "title": "Trace Flags",
+      "title": "Automatic Tuning",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -778,7 +778,7 @@
     {
       "id": 11,
       "type": "table",
-      "title": "Trace Flags",
+      "title": "Automatic Tuning",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "darling"
@@ -788,6 +788,81 @@
         "w": 24,
         "x": 0,
         "y": 44
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT DISTINCT\n    srv.name AS \"Server\",\n    pc.database_name AS \"Database\",\n    pc.force_last_good_plan_desired_state AS \"Desired State\",\n    pc.force_last_good_plan_actual_state AS \"Actual State\",\n    pc.force_last_good_plan_reason AS \"Reason\",\n    pc.create_index_actual_state AS \"Create Index\",\n    pc.drop_index_actual_state AS \"Drop Index\",\n    pc.collection_time AS \"Collected\"\nFROM collect.plan_correction AS pc\nJOIN config.config_monitored_servers AS srv ON srv.server_id = pc.server_id\nWHERE pc.server_id IN (${server:csv})\n  AND pc.collection_time = (\n      SELECT MAX(inner_pc.collection_time) FROM collect.plan_correction AS inner_pc\n      WHERE inner_pc.server_id = pc.server_id\n  )\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR pc.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nORDER BY srv.name, pc.database_name\n"
+        }
+      ],
+      "description": "Latest FORCE_LAST_GOOD_PLAN enablement per database, Reason is populated only when the engine cannot not honour the desired state."
+    },
+    {
+      "id": 12,
+      "type": "row",
+      "title": "Trace Flags",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 54
+      },
+      "panels": []
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "Trace Flags",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 55
       },
       "fieldConfig": {
         "defaults": {
@@ -870,7 +945,7 @@
       ]
     },
     {
-      "id": 12,
+      "id": 14,
       "type": "row",
       "title": "Server Config Changes",
       "collapsed": false,
@@ -878,12 +953,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 54
+        "y": 65
       },
       "panels": []
     },
     {
-      "id": 13,
+      "id": 15,
       "type": "table",
       "title": "Server Configuration Changes",
       "datasource": {
@@ -894,7 +969,7 @@
         "h": 11,
         "w": 24,
         "x": 0,
-        "y": 55
+        "y": 66
       },
       "fieldConfig": {
         "defaults": {
@@ -982,7 +1057,7 @@
       ]
     },
     {
-      "id": 14,
+      "id": 16,
       "type": "row",
       "title": "Database Config Changes",
       "collapsed": false,
@@ -990,12 +1065,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 66
+        "y": 77
       },
       "panels": []
     },
     {
-      "id": 15,
+      "id": 17,
       "type": "table",
       "title": "Database Configuration Changes",
       "datasource": {
@@ -1006,7 +1081,7 @@
         "h": 11,
         "w": 24,
         "x": 0,
-        "y": 67
+        "y": 78
       },
       "fieldConfig": {
         "defaults": {
@@ -1061,7 +1136,7 @@
       ]
     },
     {
-      "id": 16,
+      "id": 18,
       "type": "row",
       "title": "Trace Flag Changes",
       "collapsed": false,
@@ -1069,12 +1144,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 78
+        "y": 89
       },
       "panels": []
     },
     {
-      "id": 17,
+      "id": 19,
       "type": "table",
       "title": "Trace Flag Changes",
       "datasource": {
@@ -1085,7 +1160,7 @@
         "h": 11,
         "w": 24,
         "x": 0,
-        "y": 79
+        "y": 90
       },
       "fieldConfig": {
         "defaults": {
@@ -1177,7 +1252,7 @@
       ]
     },
     {
-      "id": 18,
+      "id": 20,
       "type": "row",
       "title": "Running Jobs",
       "collapsed": false,
@@ -1185,12 +1260,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 90
+        "y": 101
       },
       "panels": []
     },
     {
-      "id": 19,
+      "id": 21,
       "type": "table",
       "title": "Msdb Access Status",
       "datasource": {
@@ -1201,7 +1276,7 @@
         "h": 5,
         "w": 24,
         "x": 0,
-        "y": 91
+        "y": 102
       },
       "fieldConfig": {
         "defaults": {
@@ -1297,7 +1372,7 @@
       "description": "PERMISSIONS means the login lacks msdb access."
     },
     {
-      "id": 20,
+      "id": 22,
       "type": "table",
       "title": "Currently Running SQL Agent Jobs",
       "datasource": {
@@ -1308,7 +1383,7 @@
         "h": 13,
         "w": 24,
         "x": 0,
-        "y": 96
+        "y": 107
       },
       "fieldConfig": {
         "defaults": {
@@ -1440,7 +1515,7 @@
       ]
     },
     {
-      "id": 21,
+      "id": 23,
       "type": "row",
       "title": "Job History",
       "collapsed": false,
@@ -1448,12 +1523,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 109
+        "y": 120
       },
       "panels": []
     },
     {
-      "id": 22,
+      "id": 24,
       "type": "table",
       "title": "SQL Agent Status",
       "datasource": {
@@ -1464,7 +1539,7 @@
         "h": 5,
         "w": 24,
         "x": 0,
-        "y": 110
+        "y": 121
       },
       "fieldConfig": {
         "defaults": {
@@ -1544,7 +1619,7 @@
       "description": "Latest agent snapshot per server."
     },
     {
-      "id": 23,
+      "id": 25,
       "type": "table",
       "title": "Job History",
       "datasource": {
@@ -1555,7 +1630,7 @@
         "h": 14,
         "w": 24,
         "x": 0,
-        "y": 115
+        "y": 126
       },
       "fieldConfig": {
         "defaults": {

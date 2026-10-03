@@ -1906,7 +1906,7 @@
     {
       "id": 27,
       "type": "row",
-      "title": "Query Heatmap",
+      "title": "Plan Corrections",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -1918,6 +1918,111 @@
     },
     {
       "id": 28,
+      "type": "table",
+      "title": "Automatic plan corrections",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 145
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Query Text"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 300
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Script"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 300
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Score",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT\n    pc.collection_time AS \"Collected\",\n    srv.name AS \"Server\",\n    pc.query_text AS \"Query Text\",\n    pc.database_name AS \"Database\",\n    pc.recommendation_state AS \"State\",\n    pc.recommendation_state_reason AS \"State Reason\",\n    pc.recommendation_reason AS \"Reason\",\n    pc.score AS \"Score\",\n    round(pc.estimated_gain_seconds::numeric, 2) AS \"Est. Gain (s)\",\n    pc.query_id AS \"Query ID\",\n    pc.regressed_plan_id AS \"Regressed Plan\",\n    pc.last_good_plan_id AS \"Last Good Plan\",\n    pc.last_good_plan_forcing_type AS \"Forcing Type\",\n    CASE pc.last_good_plan_is_forced WHEN TRUE THEN 'Yes' WHEN FALSE THEN 'No' END AS \"Forced\",\n    pc.last_good_plan_force_failure_reason AS \"Force Failure\",\n    pc.regressed_plan_execution_count AS \"Regressed Execs\",\n    round(pc.regressed_plan_cpu_time_average_ms::numeric, 2) AS \"Regressed CPU (ms)\",\n    pc.last_good_plan_execution_count AS \"Last Good Execs\",\n    round(pc.last_good_plan_cpu_time_average_ms::numeric, 2) AS \"Last Good CPU (ms)\",\n    pc.valid_since AS \"Valid Since\",\n    pc.last_refresh AS \"Last Refresh\",\n    CASE pc.is_executable_action WHEN TRUE THEN 'Yes' WHEN FALSE THEN 'No' END AS \"Executable\",\n    CASE pc.is_revertable_action WHEN TRUE THEN 'Yes' WHEN FALSE THEN 'No' END AS \"Revertable\",\n    pc.execute_action_initiated_by AS \"Executed By\",\n    pc.execute_action_initiated_time AS \"Executed At\",\n    pc.revert_action_initiated_by AS \"Reverted By\",\n    pc.revert_action_initiated_time AS \"Reverted At\",\n    pc.implementation_script AS \"Script\"\nFROM collect.plan_correction AS pc\nJOIN config.config_monitored_servers AS srv ON srv.server_id = pc.server_id\nWHERE pc.server_id IN (${server:csv})\n  AND $__timeFilter(pc.collection_time)\n  AND pc.recommendation_name IS NOT NULL\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR pc.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nORDER BY pc.collection_time DESC, pc.score DESC, pc.recommendation_name\nLIMIT 200\n"
+        }
+      ],
+      "description": "The engine's own automatic plan correction findings (sys.dm_db_tuning_recommendations), with the regressed query's text resolved through Query Store at collection time."
+    },
+    {
+      "id": 29,
+      "type": "row",
+      "title": "Query Heatmap",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 159
+      },
+      "panels": []
+    },
+    {
+      "id": 30,
       "type": "heatmap",
       "title": "Query heatmap (${metric} distribution over time)",
       "datasource": {
@@ -1928,7 +2033,7 @@
         "h": 12,
         "w": 14,
         "x": 0,
-        "y": 145
+        "y": 160
       },
       "options": {
         "calculate": false,
@@ -2001,7 +2106,7 @@
       "description": "Each cell = number of query executions in that metric bucket for the 5-minute window. Duration/CPU buckets are in ms; Reads/Writes in pages. Y-axis runs 0 (fastest/smallest) to 6 (slowest/largest)."
     },
     {
-      "id": 29,
+      "id": 31,
       "type": "table",
       "title": "Top query per bucket (${metric}, by impact)",
       "datasource": {
@@ -2012,7 +2117,7 @@
         "h": 12,
         "w": 10,
         "x": 14,
-        "y": 145
+        "y": 160
       },
       "fieldConfig": {
         "defaults": {
@@ -2106,7 +2211,7 @@
       "description": "Top query (by total_impact = metric_value * exec_count) in each bucket across the selected time range. Ordered highest bucket first to align with the heatmap Y-axis."
     },
     {
-      "id": 30,
+      "id": 32,
       "type": "row",
       "title": "Long Queries",
       "collapsed": false,
@@ -2114,12 +2219,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 157
+        "y": 172
       },
       "panels": []
     },
     {
-      "id": 31,
+      "id": 33,
       "type": "table",
       "title": "Trace Status",
       "datasource": {
@@ -2130,7 +2235,7 @@
         "h": 5,
         "w": 24,
         "x": 0,
-        "y": 158
+        "y": 173
       },
       "fieldConfig": {
         "defaults": {
@@ -2214,7 +2319,7 @@
       "description": "Opt-in collector, defaults OFF. Enable it in the collector schedule config."
     },
     {
-      "id": 32,
+      "id": 34,
       "type": "table",
       "title": "Long-Running Query Completions",
       "datasource": {
@@ -2225,7 +2330,7 @@
         "h": 16,
         "w": 24,
         "x": 0,
-        "y": 163
+        "y": 178
       },
       "fieldConfig": {
         "defaults": {

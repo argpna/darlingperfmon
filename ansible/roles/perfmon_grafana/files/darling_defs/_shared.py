@@ -83,6 +83,7 @@ _NO_VIEW = frozenset(
         "job_history",
         "long_query_completions",
         "module_map",
+        "plan_correction",
         "procedure_stats",
         "query_plan_dim",
         "query_text_dim",

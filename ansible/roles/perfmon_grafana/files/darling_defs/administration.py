@@ -2,7 +2,8 @@
 Changes, and Running Jobs dashboards: current setup, recent changes, and scheduled jobs.
 
 Upstream ref: ViewerDataService.Config.cs, ViewerDataService.ConfigChanges.cs,
-ViewerServerTab.RunningJobs.cs, ViewerDataService.JobHistory.cs.
+ViewerServerTab.RunningJobs.cs, ViewerDataService.JobHistory.cs,
+ViewerDataService.PlanCorrection.cs.
 
 Configuration's grids read each server's latest capture, not the dashboard time range.
 Configuration and Configuration Changes each defined their own `database` variable; the
@@ -113,6 +114,28 @@ WHERE {server_filter('dsc.server_id')}
   AND {_latest('database_scoped_config', 'dsc')}
   AND {multi_filter('dsc.database_name', 'database')}
 ORDER BY srv.name, dsc.database_name, dsc.configuration_name
+"""
+
+# Upstream ref: AutomaticTuningSql - the newest capture per server, one row per database.
+_AUTOMATIC_TUNING_SQL = f"""
+SELECT DISTINCT
+    srv.name AS "Server",
+    pc.database_name AS "Database",
+    pc.force_last_good_plan_desired_state AS "Desired State",
+    pc.force_last_good_plan_actual_state AS "Actual State",
+    pc.force_last_good_plan_reason AS "Reason",
+    pc.create_index_actual_state AS "Create Index",
+    pc.drop_index_actual_state AS "Drop Index",
+    pc.collection_time AS "Collected"
+FROM {collector('plan_correction')} AS pc
+{server_join('pc.server_id')}
+WHERE {server_filter('pc.server_id')}
+  AND pc.collection_time = (
+      SELECT MAX(inner_pc.collection_time) FROM {collector('plan_correction')} AS inner_pc
+      WHERE inner_pc.server_id = pc.server_id
+  )
+  AND {multi_filter('pc.database_name', 'database')}
+ORDER BY srv.name, pc.database_name
 """
 
 # A row exists only while a flag is enabled, so this grid is the enabled set.
@@ -648,6 +671,29 @@ def administration():
                     w,
                     h,
                     _SCOPED_CONFIG_SQL,
+                ),
+            )
+        ],
+    )
+
+    y = subtab(
+        panels,
+        "Automatic Tuning",
+        y,
+        [
+            (
+                24,
+                10,
+                lambda x, y, w, h: table(
+                    "Automatic Tuning",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _AUTOMATIC_TUNING_SQL,
+                    description="Latest FORCE_LAST_GOOD_PLAN enablement per database, "
+                    "Reason is populated only when the engine cannot not honour the "
+                    "desired state.",
                 ),
             )
         ],

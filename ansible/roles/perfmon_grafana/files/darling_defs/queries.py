@@ -3,7 +3,8 @@
 Upstream ref: ViewerServerTab.Queries.cs, ViewerDataService.QueryStats.cs, .ProcedureStats.cs,
 .QueryStore.cs, .QueryStoreRegressions.cs, .QuerySnapshots.cs, .QueryTrends.cs,
 .QueryHeatmap.cs (Darling.Viewer), ViewerServerTab.LongQueries.cs,
-ViewerDataService.LongQueries.cs. Eight sub-tabs (seven Queries sub-tabs plus Long Queries).
+ViewerDataService.LongQueries.cs, ViewerDataService.PlanCorrection.cs. Nine sub-tabs (eight
+Queries sub-tabs plus Long Queries).
 Current Active Queries (LIVE) is not ported: Grafana talks only to the Postgres datasource.
 """
 
@@ -1222,6 +1223,49 @@ _HEATMAP_METRIC_EXPR = """CASE ${metric:sqlstring}
     END"""
 
 
+# Plan Corrections.
+# Upstream ref: PlanCorrectionsSql (ViewerDataService.PlanCorrection.cs).
+_PLAN_CORRECTIONS_SQL = f"""
+SELECT
+    pc.collection_time AS "Collected",
+    srv.name AS "Server",
+    pc.query_text AS "Query Text",
+    pc.database_name AS "Database",
+    pc.recommendation_state AS "State",
+    pc.recommendation_state_reason AS "State Reason",
+    pc.recommendation_reason AS "Reason",
+    pc.score AS "Score",
+    round(pc.estimated_gain_seconds::numeric, 2) AS "Est. Gain (s)",
+    pc.query_id AS "Query ID",
+    pc.regressed_plan_id AS "Regressed Plan",
+    pc.last_good_plan_id AS "Last Good Plan",
+    pc.last_good_plan_forcing_type AS "Forcing Type",
+    CASE pc.last_good_plan_is_forced WHEN TRUE THEN 'Yes' WHEN FALSE THEN 'No' END AS "Forced",
+    pc.last_good_plan_force_failure_reason AS "Force Failure",
+    pc.regressed_plan_execution_count AS "Regressed Execs",
+    round(pc.regressed_plan_cpu_time_average_ms::numeric, 2) AS "Regressed CPU (ms)",
+    pc.last_good_plan_execution_count AS "Last Good Execs",
+    round(pc.last_good_plan_cpu_time_average_ms::numeric, 2) AS "Last Good CPU (ms)",
+    pc.valid_since AS "Valid Since",
+    pc.last_refresh AS "Last Refresh",
+    CASE pc.is_executable_action WHEN TRUE THEN 'Yes' WHEN FALSE THEN 'No' END AS "Executable",
+    CASE pc.is_revertable_action WHEN TRUE THEN 'Yes' WHEN FALSE THEN 'No' END AS "Revertable",
+    pc.execute_action_initiated_by AS "Executed By",
+    pc.execute_action_initiated_time AS "Executed At",
+    pc.revert_action_initiated_by AS "Reverted By",
+    pc.revert_action_initiated_time AS "Reverted At",
+    pc.implementation_script AS "Script"
+FROM {collector('plan_correction')} AS pc
+{server_join('pc.server_id')}
+WHERE {server_filter('pc.server_id')}
+  AND $__timeFilter(pc.collection_time)
+  AND pc.recommendation_name IS NOT NULL
+  AND {multi_filter('pc.database_name', 'database')}
+ORDER BY pc.collection_time DESC, pc.score DESC, pc.recommendation_name
+LIMIT 200
+"""
+
+
 def _heatmap_bucket_label(bucket_col):
     return f"""CASE {bucket_col}
         WHEN 0 THEN CASE WHEN ${{metric:sqlstring}} IN ('Duration', 'CPU') THEN '0: 0-1ms' ELSE '0: 0-1' END
@@ -2216,6 +2260,34 @@ def queries():
                     "window start (unbounded lookback, bounded in practice by raw retention); "
                     "recent is the window itself. Only queries with >25% CPU regression are "
                     "included.",
+                ),
+            ),
+        ],
+    )
+
+    y = subtab(
+        panels,
+        "Plan Corrections",
+        y,
+        [
+            (
+                24,
+                14,
+                lambda x, y, w, h: table(
+                    "Automatic plan corrections",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _PLAN_CORRECTIONS_SQL,
+                    overrides=[
+                        col_width("Query Text", 300),
+                        col_width("Script", 300),
+                    ],
+                    sort_by=[{"displayName": "Score", "desc": True}],
+                    description="The engine's own automatic plan correction findings "
+                    "(sys.dm_db_tuning_recommendations), with the regressed query's text "
+                    "resolved through Query Store at collection time.",
                 ),
             ),
         ],
