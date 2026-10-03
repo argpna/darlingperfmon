@@ -1,7 +1,8 @@
 """FinOps Capacity & Growth dashboard - merges Database Sizes and
-Storage Growth dashboards: current size snapshot and growth trend.
+Storage Growth dashboards: current size snapshot and growth trend, plus the
+persistent version store.
 
-Upstream ref: ViewerDataService.FinOps.Storage.cs.
+Upstream ref: ViewerDataService.FinOps.Storage.cs, ViewerDataService.FinOps.Pvs.cs.
 
 Preserves the Storage Growth -> Object Sizes & Growth -> Index Detail drill-down chain;
 only the uid the link is defined inside (this dashboard's) has changed.
@@ -23,11 +24,14 @@ from .._shared import (
     server_var,
     subtab,
     table,
+    timeseries,
+    target,
     uid,
 )
 from ._shared import budget_cte, latest_per_server
 
 _SIZES = collector("database_size_stats")
+_PVS = collector("pvs_stats")
 
 # GrowthDisplay. NULL is-percent-growth means the setting could not be read.
 _GROWTH_DISPLAY = f"""CASE
@@ -130,6 +134,80 @@ ORDER BY l.size_mb - COALESCE(p30.size_mb, l.size_mb) DESC
 """
 
 
+_PVS_SQL = f"""
+WITH p AS (
+    SELECT *
+    FROM {_PVS}
+    WHERE {server_filter()} AND {latest_per_server(_PVS)}
+)
+SELECT
+    srv.name AS "Server",
+    p.database_name AS "Database",
+    CASE p.is_accelerated_database_recovery_on
+        WHEN TRUE THEN 'On' WHEN FALSE THEN 'Off' ELSE '-'
+    END AS "ADR",
+    round(p.persistent_version_store_size_mb, 2) AS "PVS Off-Row MB",
+    round(p.persistent_version_store_size_mb * 100.0
+          / NULLIF(p.database_data_size_mb, 0), 1) AS "% of DB",
+    round(p.database_data_size_mb, 2) AS "Data Files MB",
+    round(p.online_index_version_store_size_mb, 2) AS "Online Index MB",
+    p.current_aborted_transaction_count AS "Aborted Txns",
+    p.oldest_active_transaction_id AS "Oldest Active Txn",
+    p.oldest_aborted_transaction_id AS "Oldest Aborted Txn",
+    CASE WHEN p.oldest_aborted_transaction_id > 0 AND p.oldest_active_transaction_id > 0
+         THEN p.oldest_active_transaction_id - p.oldest_aborted_transaction_id
+    END AS "Aborted Lag",
+    CASE
+        WHEN (p.aborted_version_cleaner_start_time IS NOT NULL
+              AND p.aborted_version_cleaner_end_time IS NULL)
+          OR (p.offrow_version_cleaner_start_time IS NOT NULL
+              AND p.offrow_version_cleaner_end_time IS NULL) THEN 'Running'
+        WHEN p.aborted_version_cleaner_end_time IS NOT NULL
+          OR p.offrow_version_cleaner_end_time IS NOT NULL THEN 'Idle'
+        ELSE 'Never run'
+    END AS "Cleanup",
+    GREATEST(p.aborted_version_cleaner_end_time,
+             p.offrow_version_cleaner_end_time) AS "Last Cleanup End",
+    p.pvs_off_row_page_skipped_low_water_mark AS "Skipped: Secondary",
+    p.pvs_off_row_page_skipped_min_useful_xts AS "Skipped: Snapshot",
+    p.pvs_off_row_page_skipped_oldest_aborted_xdesid AS "Skipped: Aborted"
+FROM p
+{server_join('p.server_id')}
+ORDER BY p.persistent_version_store_size_mb DESC NULLS LAST, p.database_name
+"""
+
+
+def _pvs_trend_sql(value: str) -> str:
+    return f"""
+WITH latest AS (
+    SELECT server_id, database_name,
+           row_number() OVER (
+               PARTITION BY server_id
+               ORDER BY persistent_version_store_size_mb DESC NULLS LAST, database_name
+           ) AS rn
+    FROM {_PVS}
+    WHERE {server_filter()} AND {latest_per_server(_PVS)}
+)
+SELECT
+    p.collection_time AS time,
+    srv.name || ' / ' || p.database_name AS metric,
+    {value} AS value
+FROM {_PVS} p
+JOIN latest l
+  ON l.server_id = p.server_id AND l.database_name = p.database_name AND l.rn <= 5
+{server_join('p.server_id')}
+WHERE $__timeFilter(p.collection_time)
+  AND p.persistent_version_store_size_mb IS NOT NULL
+ORDER BY 1
+"""
+
+
+_PVS_SIZE_SQL = _pvs_trend_sql("p.persistent_version_store_size_mb::double precision")
+_PVS_PCT_SQL = _pvs_trend_sql(
+    "p.persistent_version_store_size_mb * 100.0 / NULLIF(p.database_data_size_mb, 0)"
+)
+
+
 def capacity_growth():
     """Build the FinOps Capacity & Growth dashboard."""
     reset_id()
@@ -178,7 +256,7 @@ def capacity_growth():
         "&var-database=${__data.fields.Database}",
     )
 
-    subtab(
+    y = subtab(
         panels,
         "Storage Growth",
         y,
@@ -213,6 +291,72 @@ def capacity_growth():
                     ),
                 ),
             )
+        ],
+    )
+
+    subtab(
+        panels,
+        "Version Store (PVS)",
+        y,
+        [
+            (
+                12,
+                9,
+                lambda x, y, w, h: timeseries(
+                    "PVS Off-Row Size",
+                    x,
+                    y,
+                    w,
+                    h,
+                    [target(_PVS_SIZE_SQL)],
+                    unit="mbytes",
+                    axis_label="PVS Off-Row (MB)",
+                    description="Top databases by current PVS size, per server.",
+                ),
+            ),
+            (
+                12,
+                9,
+                lambda x, y, w, h: timeseries(
+                    "PVS % of Database",
+                    x,
+                    y,
+                    w,
+                    h,
+                    [target(_PVS_PCT_SQL)],
+                    unit="percent",
+                    axis_label="PVS % of Data Files",
+                    description="Top databases by current PVS size, per server.",
+                ),
+            ),
+            (
+                24,
+                14,
+                lambda x, y, w, h: table(
+                    "Accelerated Database Recovery - Persistent Version Store",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _PVS_SQL,
+                    overrides=[
+                        col_unit("PVS Off-Row MB", "mbytes"),
+                        col_unit("Data Files MB", "mbytes"),
+                        col_unit("Online Index MB", "mbytes"),
+                        col_thresholds(
+                            "% of DB", ("text", None), ("yellow", 25), ("red", 50)
+                        ),
+                    ],
+                    sort_by=[{"displayName": "PVS Off-Row MB", "desc": True}],
+                    description=(
+                        "PVS sizes count off-row versions only. When a large PVS does "
+                        "not shrink, the skipped-page counters will reflect it: "
+                        "Secondary means a query on a secondary replica, Snapshot means "
+                        "a long-running snapshot scan, Aborted means space still held "
+                        "by aborted transactions. SQL Server 2019 or later."
+                    ),
+                ),
+            ),
         ],
     )
 

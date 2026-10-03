@@ -487,6 +487,289 @@
         }
       ],
       "description": "Allocated size now versus 7 and 30 days ago; a database with no snapshot that far back shows no growth. Click one to drill in."
+    },
+    {
+      "id": 5,
+      "type": "row",
+      "title": "Version Store (PVS)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 42
+      },
+      "panels": []
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "PVS Off-Row Size",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 43
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "PVS Off-Row (MB)"
+          },
+          "unit": "mbytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH latest AS (\n    SELECT server_id, database_name,\n           row_number() OVER (\n               PARTITION BY server_id\n               ORDER BY persistent_version_store_size_mb DESC NULLS LAST, database_name\n           ) AS rn\n    FROM collect.v_pvs_stats\n    WHERE server_id IN (${server:csv}) AND (server_id, collection_time) IN (SELECT server_id, MAX(collection_time) FROM collect.v_pvs_stats WHERE server_id IN (${server:csv}) GROUP BY server_id)\n)\nSELECT\n    p.collection_time AS time,\n    srv.name || ' / ' || p.database_name AS metric,\n    p.persistent_version_store_size_mb::double precision AS value\nFROM collect.v_pvs_stats p\nJOIN latest l\n  ON l.server_id = p.server_id AND l.database_name = p.database_name AND l.rn <= 5\nJOIN config.config_monitored_servers AS srv ON srv.server_id = p.server_id\nWHERE $__timeFilter(p.collection_time)\n  AND p.persistent_version_store_size_mb IS NOT NULL\nORDER BY 1\n"
+        }
+      ],
+      "description": "Top databases by current PVS size, per server."
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "PVS % of Database",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 43
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisLabel": "PVS % of Data Files"
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "\nWITH latest AS (\n    SELECT server_id, database_name,\n           row_number() OVER (\n               PARTITION BY server_id\n               ORDER BY persistent_version_store_size_mb DESC NULLS LAST, database_name\n           ) AS rn\n    FROM collect.v_pvs_stats\n    WHERE server_id IN (${server:csv}) AND (server_id, collection_time) IN (SELECT server_id, MAX(collection_time) FROM collect.v_pvs_stats WHERE server_id IN (${server:csv}) GROUP BY server_id)\n)\nSELECT\n    p.collection_time AS time,\n    srv.name || ' / ' || p.database_name AS metric,\n    p.persistent_version_store_size_mb * 100.0 / NULLIF(p.database_data_size_mb, 0) AS value\nFROM collect.v_pvs_stats p\nJOIN latest l\n  ON l.server_id = p.server_id AND l.database_name = p.database_name AND l.rn <= 5\nJOIN config.config_monitored_servers AS srv ON srv.server_id = p.server_id\nWHERE $__timeFilter(p.collection_time)\n  AND p.persistent_version_store_size_mb IS NOT NULL\nORDER BY 1\n"
+        }
+      ],
+      "description": "Top databases by current PVS size, per server."
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Accelerated Database Recovery - Persistent Version Store",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 52
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "PVS Off-Row MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Data Files MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Online Index MB"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "% of DB"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 25
+                    },
+                    {
+                      "color": "red",
+                      "value": 50
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "PVS Off-Row MB",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH p AS (\n    SELECT *\n    FROM collect.v_pvs_stats\n    WHERE server_id IN (${server:csv}) AND (server_id, collection_time) IN (SELECT server_id, MAX(collection_time) FROM collect.v_pvs_stats WHERE server_id IN (${server:csv}) GROUP BY server_id)\n)\nSELECT\n    srv.name AS \"Server\",\n    p.database_name AS \"Database\",\n    CASE p.is_accelerated_database_recovery_on\n        WHEN TRUE THEN 'On' WHEN FALSE THEN 'Off' ELSE '-'\n    END AS \"ADR\",\n    round(p.persistent_version_store_size_mb, 2) AS \"PVS Off-Row MB\",\n    round(p.persistent_version_store_size_mb * 100.0\n          / NULLIF(p.database_data_size_mb, 0), 1) AS \"% of DB\",\n    round(p.database_data_size_mb, 2) AS \"Data Files MB\",\n    round(p.online_index_version_store_size_mb, 2) AS \"Online Index MB\",\n    p.current_aborted_transaction_count AS \"Aborted Txns\",\n    p.oldest_active_transaction_id AS \"Oldest Active Txn\",\n    p.oldest_aborted_transaction_id AS \"Oldest Aborted Txn\",\n    CASE WHEN p.oldest_aborted_transaction_id > 0 AND p.oldest_active_transaction_id > 0\n         THEN p.oldest_active_transaction_id - p.oldest_aborted_transaction_id\n    END AS \"Aborted Lag\",\n    CASE\n        WHEN (p.aborted_version_cleaner_start_time IS NOT NULL\n              AND p.aborted_version_cleaner_end_time IS NULL)\n          OR (p.offrow_version_cleaner_start_time IS NOT NULL\n              AND p.offrow_version_cleaner_end_time IS NULL) THEN 'Running'\n        WHEN p.aborted_version_cleaner_end_time IS NOT NULL\n          OR p.offrow_version_cleaner_end_time IS NOT NULL THEN 'Idle'\n        ELSE 'Never run'\n    END AS \"Cleanup\",\n    GREATEST(p.aborted_version_cleaner_end_time,\n             p.offrow_version_cleaner_end_time) AS \"Last Cleanup End\",\n    p.pvs_off_row_page_skipped_low_water_mark AS \"Skipped: Secondary\",\n    p.pvs_off_row_page_skipped_min_useful_xts AS \"Skipped: Snapshot\",\n    p.pvs_off_row_page_skipped_oldest_aborted_xdesid AS \"Skipped: Aborted\"\nFROM p\nJOIN config.config_monitored_servers AS srv ON srv.server_id = p.server_id\nORDER BY p.persistent_version_store_size_mb DESC NULLS LAST, p.database_name\n"
+        }
+      ],
+      "description": "PVS sizes count off-row versions only. When a large PVS does not shrink, the skipped-page counters will reflect it: Secondary means a query on a secondary replica, Snapshot means a long-running snapshot scan, Aborted means space still held by aborted transactions. SQL Server 2019 or later."
     }
   ]
 }
