@@ -417,8 +417,7 @@ ORDER BY 1
 
 # Parses per-process attributes from the deadlock graph XML; "Object(s)" is correlated
 # separately since resource-list entries are siblings of process-list, not children.
-# Per-lock owner/waiter mode is not ported; the rendered graph is covered by
-# deadlock_detail()'s raw-XML export instead.
+# Owner/Waiter Mode are per-process aggregates over the lock resources, as upstream shows them.
 # Upstream ref: GetRecentDeadlocksAsync (ViewerDataService.Deadlock.cs)
 def _deadlock_participants_sql(graphs_filter: str, row_filter: str, limit: int) -> str:
     """Shared by the Deadlocks grid and deadlock_detail(); graphs_filter scopes which
@@ -439,6 +438,9 @@ processes AS (
         g.deadlock_time,
         g.victim_process_id,
         g.has_victim_plan,
+        CASE WHEN cardinality(xpath('/deadlock/resource-list/exchangeEvent', g.graph)) > 0
+               OR cardinality(xpath('/deadlock/resource-list/SyncPoint', g.graph)) > 0
+             THEN 'Parallel' ELSE 'Regular' END AS deadlock_type,
         (xpath('/*/@id', proc))[1]::text AS process_id,
         (xpath('/*/@spid', proc))[1]::text AS spid,
         (xpath('/*/@waittime', proc))[1]::text::bigint AS wait_ms,
@@ -447,6 +449,9 @@ processes AS (
         (xpath('/*/@isolationlevel', proc))[1]::text AS isolation_level,
         (xpath('/*/@currentdbname', proc))[1]::text AS database_name,
         (xpath('/*/@trancount', proc))[1]::text::integer AS tran_count,
+        (xpath('/*/@transactionname', proc))[1]::text AS transaction_name,
+        (xpath('/*/@priority', proc))[1]::text::integer AS priority,
+        (xpath('/*/executionStack/frame[@procname and @procname != "adhoc" and @procname != "unknown"][1]/@procname', proc))[1]::text AS proc_name,
         (xpath('/*/@loginname', proc))[1]::text AS login_name,
         (xpath('/*/@hostname', proc))[1]::text AS host_name,
         (xpath('/*/@clientapp', proc))[1]::text AS client_app,
@@ -457,27 +462,33 @@ processes AS (
 lock_elems AS (
     SELECT g.deadlock_id, lock
     FROM graphs g
-    CROSS JOIN LATERAL unnest(xpath('/deadlock/resource-list/*', g.graph)) AS lock
+    CROSS JOIN LATERAL unnest(xpath(
+        '/deadlock/resource-list/*[self::objectlock or self::pagelock or self::keylock'
+        ' or self::ridlock or self::rowgrouplock]', g.graph)) AS lock
 ),
-participants AS (
+lock_members AS (
     SELECT
         le.deadlock_id,
         (xpath('/*/@objectname', le.lock))[1]::text AS object_name,
-        xpath('/*/owner-list/owner/@id', le.lock) AS owner_ids,
-        xpath('/*/waiter-list/waiter/@id', le.lock) AS waiter_ids
+        m.role,
+        (xpath('/*/@id', m.node))[1]::text AS process_id,
+        (xpath('/*/@mode', m.node))[1]::text AS mode
     FROM lock_elems le
-),
-object_by_process AS (
-    SELECT p.deadlock_id, unnest(p.owner_ids)::text AS process_id, p.object_name
-    FROM participants p
-    UNION ALL
-    SELECT p.deadlock_id, unnest(p.waiter_ids)::text AS process_id, p.object_name
-    FROM participants p
+    CROSS JOIN LATERAL (
+        SELECT 'owner' AS role, unnest(xpath('/*/owner-list/owner', le.lock)) AS node
+        UNION ALL
+        SELECT 'waiter', unnest(xpath('/*/waiter-list/waiter', le.lock))
+    ) AS m
 ),
 object_agg AS (
-    SELECT deadlock_id, process_id, string_agg(DISTINCT object_name, ', ') AS objects
-    FROM object_by_process
-    WHERE object_name IS NOT NULL
+    SELECT
+        deadlock_id,
+        process_id,
+        string_agg(DISTINCT object_name, ', ') FILTER (WHERE object_name <> '') AS objects,
+        string_agg(DISTINCT mode, ', ') FILTER (WHERE role = 'owner' AND mode <> '') AS owner_modes,
+        string_agg(DISTINCT mode, ', ') FILTER (WHERE role = 'waiter' AND mode <> '') AS waiter_modes
+    FROM lock_members
+    WHERE process_id <> ''
     GROUP BY deadlock_id, process_id
 )
 SELECT
@@ -488,15 +499,21 @@ SELECT
     CASE WHEN p.process_id = p.victim_process_id AND p.has_victim_plan
          THEN p.deadlock_id::text ELSE '-1' END AS "victim_deadlock_id",
     p.deadlock_time AS "Time",
+    p.deadlock_type AS "Type",
     CASE WHEN p.process_id = p.victim_process_id THEN 'Victim' ELSE '' END AS "Victim",
     p.spid AS "SPID",
     p.database_name AS "Database",
     oa.objects AS "Object(s)",
+    p.proc_name AS "Procedure",
     p.lock_mode AS "Lock Mode",
+    oa.owner_modes AS "Owner Mode",
+    oa.waiter_modes AS "Waiter Mode",
     p.wait_resource AS "Wait Resource",
     p.wait_ms AS "Wait (ms)",
     p.isolation_level AS "Isolation",
+    p.transaction_name AS "Tran Name",
     p.tran_count AS "Tran Count",
+    p.priority AS "Priority",
     p.login_name AS "Login",
     p.host_name AS "Host",
     p.client_app AS "App",
@@ -773,8 +790,7 @@ def blocking():
                     description=(
                         "One row per process in each deadlock graph, parsed from "
                         "deadlock_graph_xml. Click a Time value to open the full "
-                        "participant detail and exportable graph XML. Per-lock "
-                        "owner/waiter role is not portable - see the module docstring."
+                        "participant detail and exportable graph XML."
                     ),
                 ),
             ),
