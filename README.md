@@ -3,37 +3,37 @@
 Grafana front-end for [erikdarlingdata/PerformanceMonitor](https://github.com/erikdarlingdata/PerformanceMonitor),
 Darling edition.
 
-Darling is a headless collector service that polls one or more SQL Server instances and writes
-into a central PostgreSQL/TimescaleDB store. The Grafana dashboards read that store through a
-single Postgres datasource that serves every monitored instance.
+The dashboards read the PostgreSQL/TimescaleDB store the Darling collector writes to, through a
+Postgres datasource that serves every monitored instance.
 
 Screenshots of all dashboards can be viewed at: [screenshot-gallery/darlingperfmon](https://argpna.github.io/screenshot-gallery/projects/darlingperfmon/index.html)
 
 ## Dashboards
 
 Dashboards are split into two groups: operational monitoring (PerfMon) and cost/efficiency
-analysis (FinOps). Both groups share the `$server` template variable and link to each other.
+analysis (FinOps).
 
 ### PerfMon dashboards
 
 | Dashboard | Description |
 |---|---|
 | **Fleet Overview** | **Always start here**. Sortable monitored servers, worst appears at the top. Per-server health signals (CPU, threads, memory, blocking, deadlocks, collectors). Click a server to open its Overview. |
-| **Overview** | Correlated timeline lanes (CPU, blocking, file I/O) with baseline/anomaly bands, and a rolled-up daily history. |
-| **Query Performance** | Query CPU trends, active query snapshots, top queries by CPU/reads, procedure stats, parameter sensitivity, Query Store, long-running queries. |
+| **Overview** | Correlated timeline lanes (CPU, blocking, file I/O) with baseline/anomaly bands, and a daily health calendar with a per-day breakdown that links through to the relevant dashboards. |
+| **Query Performance** | Query CPU trends, active query snapshots, top queries by CPU/reads, procedure stats, parameter sensitivity, Query Store, automatic plan corrections, long-running queries. |
 | **Wait Analysis** | Wait stats by type, latch and spinlock contention. |
 | **Storage & tempdb** | File I/O latency and throughput, tempdb space and contention. |
 | **Blocking & Deadlocks** | Blocking and deadlock trends, current waits, blocked-process reports, deadlock participants. |
 | **CPU, Memory & Sessions** | CPU, memory breakdown, session stats, perfmon counters. |
 | **System Events** | Corruption, scheduler issues, severe errors, I/O and memory conditions parsed from `system_health`/default trace events. |
 | **Collection Health** | Per-collector status, durations, row counts, error log. |
-| **Administration** | Current server configuration, recent configuration changes, running/scheduled SQL Agent jobs. |
+| **Administration** | Current server configuration, recent configuration changes, automatic tuning state, running/scheduled SQL Agent jobs, SQL Agent job history and status. |
 | **Availability Groups** | Fleet-wide AG topology: one row per group with primary, replicas, and worst severity. |
 | **Query History** _(drill-down)_ | Full collection history for a single query, opened via data link from Query Performance. |
 | **Query Store History** _(drill-down)_ | Query Store history for a single query, opened via data link from Query Performance. |
 | **Procedure History** _(drill-down)_ | Same as Query History, scoped to a stored procedure. |
 | **Wait Drill-Down** _(drill-down)_ | Time-series breakdown for a single wait type, opened via data link from Wait Analysis. |
 | **Deadlock Detail** _(drill-down)_ | Participants, victim, and raw XML for a single deadlock event, opened via data link from Blocking & Deadlocks. |
+| **CPU/Memory Drill-Down** _(drill-down)_ | Query snapshots for the selected window, opened via data link from CPU, Memory & Sessions. |
 | **Collection Log Detail** _(drill-down)_ | Full collector run log for a server, opened via data link from Collection Health. |
 | **Availability Group Detail** _(drill-down)_ | Per-replica and per-database detail for a single AG, opened via data link from Availability Groups. |
 
@@ -45,7 +45,7 @@ analysis (FinOps). Both groups share the `$server` template variable and link to
 | **Server Inventory** | Cross-server table of properties, edition, version, uptime, health, collected metric counts. |
 | **Utilization & Database Resources** | CPU/memory utilization trends, provisioning efficiency, per-database resource usage. |
 | **Workload & Contention** | Highest-impact queries by cost, connection patterns by application/login, lock waits and top contended objects. |
-| **Capacity & Growth** | Current database/log file sizes and their growth trend over time. |
+| **Capacity & Growth** | Current database/log file sizes, their growth trend over time, and the persistent version store (ADR). |
 | **Optimization & Indexing** | Idle databases, tempdb pressure, wait stats summary, missing/duplicate/contended indexes. |
 | **Object Sizes & Growth** _(drill-down)_ | Table and index sizes with recent growth, opened via data link from Capacity & Growth. |
 | **Index Detail** _(drill-down)_ | Per-index seek/scan/lookup/update counts, opened via data link from Object Sizes & Growth. |
@@ -57,7 +57,7 @@ analysis (FinOps). Both groups share the `$server` template variable and link to
 | | Path |
 |---|---|
 | You already have a Darling collector and store running | [Just the dashboards](#just-the-dashboards) |
-| You want Grafana provisioning automated too (requires [Ansible](https://docs.ansible.com)) | [Complete solution](#complete-solution) |
+| You want Grafana provisioning automated too (requires [Ansible](https://docs.ansible.com)) | [Automated deployment](#automated-deployment) |
 | You want to try it locally before committing | [Local demo](#local-demo) |
 
 ---
@@ -104,7 +104,7 @@ Save and **Test** the datasource before importing dashboards.
 Download the JSON files from
 [ansible/roles/perfmon_grafana/files/grafana/dashboards/darling](ansible/roles/perfmon_grafana/files/grafana/dashboards/darling)
 and import them in Grafana via **Dashboards - Import**. The dashboards link to each other by UID,
-so navigation links will not work unless all are present.
+so navigation links will not work unless all dashboards are present.
 
 After importing, open any dashboard and select a server from the **$server** dropdown at the top.
 If it's empty, the datasource UID doesn't match `darling`, or the store has no rows in
@@ -121,7 +121,7 @@ If it's empty, the datasource UID doesn't match `darling`, or the store has no r
 
 ---
 
-## Complete solution
+## Automated deployment
 
 Use this path if you want the Darling collector service configured and Grafana provisioned from
 one command. Ansible handles the collector's config file, the store's monitored-server registry,
@@ -226,7 +226,7 @@ This will
 - Create two mssql containers (2022 on port 14333, 2025 on port 14334) with active workload
   generators, monitored by a Darling collector writing into a TimescaleDB store
 - Grafana at **http://localhost:3000** with all dashboards in the **PerformanceMonitor (Darling)**
-  folder
+  folder (default credentials are in your `.env` file)
 
 Panels may show "datasource not found" until `ansible-runner` completes. Start at **Fleet Overview**.
 
@@ -270,7 +270,7 @@ upgrade path covers the panel SQL, if the newer version changed the store's sche
 
 ---
 
-## How it works
+## Under the hood
 
 ### System overview
 
