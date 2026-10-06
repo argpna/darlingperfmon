@@ -126,6 +126,58 @@
         "includeAll": true,
         "sort": 0,
         "description": "Scopes the database configuration change history."
+      },
+      {
+        "name": "job_status",
+        "label": "Job Status",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "\nSELECT DISTINCT jh.run_status_desc\nFROM collect.job_history AS jh\nWHERE jh.run_status_desc IS NOT NULL\nORDER BY 1\n",
+        "definition": "\nSELECT DISTINCT jh.run_status_desc\nFROM collect.job_history AS jh\nWHERE jh.run_status_desc IS NOT NULL\nORDER BY 1\n",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "refresh": 2,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 0,
+        "description": "Scopes the job history grid by run status."
+      },
+      {
+        "name": "job_category",
+        "label": "Job Category",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "darling"
+        },
+        "query": "\nSELECT DISTINCT jh.category_name\nFROM collect.job_history AS jh\nWHERE jh.category_name IS NOT NULL\nORDER BY 1\n",
+        "definition": "\nSELECT DISTINCT jh.category_name\nFROM collect.job_history AS jh\nWHERE jh.category_name IS NOT NULL\nORDER BY 1\n",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "refresh": 2,
+        "hide": 0,
+        "multi": true,
+        "includeAll": true,
+        "sort": 0,
+        "description": "Scopes the job history grid by job category."
       }
     ]
   },
@@ -713,7 +765,7 @@
     {
       "id": 10,
       "type": "row",
-      "title": "Trace Flags",
+      "title": "Automatic Tuning",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -726,7 +778,7 @@
     {
       "id": 11,
       "type": "table",
-      "title": "Trace Flags",
+      "title": "Automatic Tuning",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "darling"
@@ -736,6 +788,81 @@
         "w": 24,
         "x": 0,
         "y": 44
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nSELECT DISTINCT\n    srv.name AS \"Server\",\n    pc.database_name AS \"Database\",\n    pc.force_last_good_plan_desired_state AS \"Desired State\",\n    pc.force_last_good_plan_actual_state AS \"Actual State\",\n    pc.force_last_good_plan_reason AS \"Reason\",\n    pc.create_index_actual_state AS \"Create Index\",\n    pc.drop_index_actual_state AS \"Drop Index\",\n    pc.collection_time AS \"Collected\"\nFROM collect.plan_correction AS pc\nJOIN config.config_monitored_servers AS srv ON srv.server_id = pc.server_id\nWHERE pc.server_id IN (${server:csv})\n  AND pc.collection_time = (\n      SELECT MAX(inner_pc.collection_time) FROM collect.plan_correction AS inner_pc\n      WHERE inner_pc.server_id = pc.server_id\n  )\n  AND (cardinality(ARRAY[${database:sqlstring}]::text[]) = 0 OR pc.database_name = ANY(ARRAY[${database:sqlstring}]::text[]))\nORDER BY srv.name, pc.database_name\n"
+        }
+      ],
+      "description": "Latest FORCE_LAST_GOOD_PLAN enablement per database, Reason is populated only when the engine cannot not honour the desired state."
+    },
+    {
+      "id": 12,
+      "type": "row",
+      "title": "Trace Flags",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 54
+      },
+      "panels": []
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "Trace Flags",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 55
       },
       "fieldConfig": {
         "defaults": {
@@ -818,7 +945,7 @@
       ]
     },
     {
-      "id": 12,
+      "id": 14,
       "type": "row",
       "title": "Server Config Changes",
       "collapsed": false,
@@ -826,12 +953,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 54
+        "y": 65
       },
       "panels": []
     },
     {
-      "id": 13,
+      "id": 15,
       "type": "table",
       "title": "Server Configuration Changes",
       "datasource": {
@@ -842,7 +969,7 @@
         "h": 11,
         "w": 24,
         "x": 0,
-        "y": 55
+        "y": 66
       },
       "fieldConfig": {
         "defaults": {
@@ -930,7 +1057,7 @@
       ]
     },
     {
-      "id": 14,
+      "id": 16,
       "type": "row",
       "title": "Database Config Changes",
       "collapsed": false,
@@ -938,12 +1065,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 66
+        "y": 77
       },
       "panels": []
     },
     {
-      "id": 15,
+      "id": 17,
       "type": "table",
       "title": "Database Configuration Changes",
       "datasource": {
@@ -954,7 +1081,7 @@
         "h": 11,
         "w": 24,
         "x": 0,
-        "y": 67
+        "y": 78
       },
       "fieldConfig": {
         "defaults": {
@@ -1009,7 +1136,7 @@
       ]
     },
     {
-      "id": 16,
+      "id": 18,
       "type": "row",
       "title": "Trace Flag Changes",
       "collapsed": false,
@@ -1017,12 +1144,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 78
+        "y": 89
       },
       "panels": []
     },
     {
-      "id": 17,
+      "id": 19,
       "type": "table",
       "title": "Trace Flag Changes",
       "datasource": {
@@ -1033,7 +1160,7 @@
         "h": 11,
         "w": 24,
         "x": 0,
-        "y": 79
+        "y": 90
       },
       "fieldConfig": {
         "defaults": {
@@ -1125,7 +1252,7 @@
       ]
     },
     {
-      "id": 18,
+      "id": 20,
       "type": "row",
       "title": "Running Jobs",
       "collapsed": false,
@@ -1133,12 +1260,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 90
+        "y": 101
       },
       "panels": []
     },
     {
-      "id": 19,
+      "id": 21,
       "type": "table",
       "title": "Msdb Access Status",
       "datasource": {
@@ -1149,7 +1276,7 @@
         "h": 5,
         "w": 24,
         "x": 0,
-        "y": 91
+        "y": 102
       },
       "fieldConfig": {
         "defaults": {
@@ -1245,7 +1372,7 @@
       "description": "PERMISSIONS means the login lacks msdb access."
     },
     {
-      "id": 20,
+      "id": 22,
       "type": "table",
       "title": "Currently Running SQL Agent Jobs",
       "datasource": {
@@ -1256,7 +1383,7 @@
         "h": 13,
         "w": 24,
         "x": 0,
-        "y": 96
+        "y": 107
       },
       "fieldConfig": {
         "defaults": {
@@ -1383,9 +1510,261 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "\nWITH latest AS (\n    SELECT\n        rj.server_id,\n        srv.name AS server_label,\n        MAX(rj.collection_time) AS mx\n    FROM collect.v_running_jobs AS rj\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = rj.server_id\n    WHERE $__timeFilter(rj.collection_time)\n      AND rj.server_id IN (${server:csv})\n    GROUP BY rj.server_id, srv.name\n)\nSELECT\n    l.server_label AS \"Server\",\n    rj.job_name AS \"Job Name\",\n    rj.start_time AS \"Start Time\",\n    rj.current_duration_seconds AS \"Current Duration\",\n    rj.avg_duration_seconds AS \"Avg Duration\",\n    rj.p95_duration_seconds AS \"P95 Duration\",\n    rj.percent_of_average AS \"% of Average\",\n    CASE WHEN rj.is_running_long THEN 'Yes' ELSE '' END AS \"Running Long\",\n    rj.successful_run_count AS \"Successful Runs (30d)\"\nFROM latest AS l\nJOIN collect.v_running_jobs AS rj\n  ON rj.server_id = l.server_id\n AND rj.collection_time = l.mx\nORDER BY rj.current_duration_seconds DESC\n"
+          "rawSql": "\nWITH latest AS (\n    SELECT\n        rj.server_id,\n        srv.name AS server_label,\n        MAX(rj.collection_time) AS mx\n    FROM collect.v_running_jobs AS rj\n    JOIN config.config_monitored_servers AS srv ON srv.server_id = rj.server_id\n    WHERE $__timeFilter(rj.collection_time)\n      AND rj.server_id IN (${server:csv})\n    GROUP BY rj.server_id, srv.name\n)\nSELECT\n    l.server_label AS \"Server\",\n    rj.job_name AS \"Job Name\",\n    CASE WHEN rj.job_enabled THEN 'Yes' ELSE 'No' END AS \"Job Enabled\",\n    rj.start_time AS \"Start Time\",\n    rj.current_duration_seconds AS \"Current Duration\",\n    rj.avg_duration_seconds AS \"Avg Duration\",\n    rj.p95_duration_seconds AS \"P95 Duration\",\n    rj.percent_of_average AS \"% of Average\",\n    CASE WHEN rj.is_running_long THEN 'Yes' ELSE '' END AS \"Running Long\",\n    rj.successful_run_count AS \"Successful Runs (30d)\"\nFROM latest AS l\nJOIN collect.v_running_jobs AS rj\n  ON rj.server_id = l.server_id\n AND rj.collection_time = l.mx\nORDER BY rj.current_duration_seconds DESC\n"
         }
       ]
+    },
+    {
+      "id": 23,
+      "type": "row",
+      "title": "Job History",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 120
+      },
+      "panels": []
+    },
+    {
+      "id": 24,
+      "type": "table",
+      "title": "SQL Agent Status",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 121
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Agent"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Running": {
+                        "color": "green",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH svr AS (\n    SELECT DISTINCT ON (sp.server_id) sp.server_id, sp.utc_offset_minutes\n    FROM collect.server_properties AS sp\n    WHERE sp.utc_offset_minutes IS NOT NULL\n    ORDER BY sp.server_id, sp.collection_time DESC\n)\nSELECT DISTINCT ON (a.server_id)\n    srv.name AS \"Server\",\n    CASE WHEN a.agent_running THEN 'Running' ELSE COALESCE(a.agent_status_desc, 'Stopped') END AS \"Agent\",\n    a.agent_startup_desc AS \"Startup Type\",\n    COALESCE(\n        to_char(a.next_scheduled_run - make_interval(mins => COALESCE(svr.utc_offset_minutes, 0)),\n                'YYYY-MM-DD HH24:MI:SS'),\n        'None scheduled') AS \"Next Scheduled Run\"\nFROM collect.agent_status AS a\nLEFT JOIN svr ON svr.server_id = a.server_id\nJOIN config.config_monitored_servers AS srv ON srv.server_id = a.server_id\nWHERE a.server_id IN (${server:csv})\nORDER BY a.server_id, a.collection_time DESC\n"
+        }
+      ],
+      "description": "Latest agent snapshot per server."
+    },
+    {
+      "id": 25,
+      "type": "table",
+      "title": "Job History",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "darling"
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 126
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Failed": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "Retry": {
+                        "color": "yellow",
+                        "index": 1
+                      },
+                      "Canceled": {
+                        "color": "text",
+                        "index": 2
+                      },
+                      "Succeeded": {
+                        "color": "green",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Long Running"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Yes": {
+                        "color": "orange",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Duration"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Run Time",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "darling"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "\nWITH svr AS (\n    SELECT DISTINCT ON (sp.server_id) sp.server_id, sp.utc_offset_minutes\n    FROM collect.server_properties AS sp\n    WHERE sp.utc_offset_minutes IS NOT NULL\n    ORDER BY sp.server_id, sp.collection_time DESC\n),\nbase AS (\n    SELECT\n        jh.server_id,\n        jh.instance_id,\n        jh.job_name,\n        jh.job_enabled,\n        jh.category_name,\n        jh.step_id,\n        jh.step_name,\n        jh.run_status_desc,\n        (jh.run_datetime - make_interval(mins => COALESCE(svr.utc_offset_minutes, 0))) AS run_utc,\n        jh.run_duration_seconds,\n        jh.retries_attempted,\n        jh.message,\n        AVG(CASE WHEN jh.step_id = 0 AND jh.run_status = 1 THEN jh.run_duration_seconds END)\n            OVER (PARTITION BY jh.server_id, jh.job_id) AS avg_success,\n        MAX(CASE WHEN jh.step_id = 0 AND jh.run_status = 1 THEN (jh.run_datetime - make_interval(mins => COALESCE(svr.utc_offset_minutes, 0))) END)\n            OVER (PARTITION BY jh.server_id, jh.job_id) AS last_success\n    FROM collect.job_history AS jh\n    LEFT JOIN svr ON svr.server_id = jh.server_id\n    WHERE (jh.run_datetime - make_interval(mins => COALESCE(svr.utc_offset_minutes, 0))) >= $__timeFrom()::timestamp\n      AND (jh.run_datetime - make_interval(mins => COALESCE(svr.utc_offset_minutes, 0))) <= $__timeTo()::timestamp\n      AND jh.server_id IN (${server:csv})\n)\nSELECT\n    b.run_utc AS \"Run Time\",\n    srv.name AS \"Server\",\n    b.job_name AS \"Job\",\n    CASE WHEN b.job_enabled THEN 'Yes' ELSE 'No' END AS \"Job Enabled\",\n    b.category_name AS \"Category\",\n    CASE WHEN b.step_id = 0 THEN '(Job outcome)' ELSE b.step_id || ': ' || b.step_name END AS \"Step\",\n    b.run_status_desc AS \"Status\",\n    b.run_duration_seconds AS \"Duration\",\n    CASE WHEN b.retries_attempted > 0 THEN b.retries_attempted::text ELSE '' END AS \"Retries\",\n    CASE WHEN b.step_id = 0 AND b.avg_success > 0\n          AND b.run_duration_seconds > b.avg_success * 2\n          AND b.run_duration_seconds > 60 THEN 'Yes' ELSE '' END AS \"Long Running\",\n    COALESCE(to_char(b.last_success, 'YYYY-MM-DD HH24:MI:SS'), 'Never') AS \"Last Success\",\n    b.message AS \"Message\"\nFROM base AS b\nJOIN config.config_monitored_servers AS srv ON srv.server_id = b.server_id\nWHERE (cardinality(ARRAY[${job_status:sqlstring}]::text[]) = 0 OR b.run_status_desc = ANY(ARRAY[${job_status:sqlstring}]::text[]))\n  AND (cardinality(ARRAY[${job_category:sqlstring}]::text[]) = 0 OR b.category_name = ANY(ARRAY[${job_category:sqlstring}]::text[]))\nORDER BY b.run_utc DESC, b.instance_id DESC\nLIMIT 2000\n"
+        }
+      ],
+      "description": "Retained job runs whose run time falls in the dashboard range; each step plus its job outcome row."
     }
   ]
 }

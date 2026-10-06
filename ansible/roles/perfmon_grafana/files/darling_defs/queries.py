@@ -3,9 +3,9 @@
 Upstream ref: ViewerServerTab.Queries.cs, ViewerDataService.QueryStats.cs, .ProcedureStats.cs,
 .QueryStore.cs, .QueryStoreRegressions.cs, .QuerySnapshots.cs, .QueryTrends.cs,
 .QueryHeatmap.cs (Darling.Viewer), ViewerServerTab.LongQueries.cs,
-ViewerDataService.LongQueries.cs. Eight sub-tabs (seven upstream Queries sub-tabs plus Long
-Queries). Current Active Queries (LIVE) is not ported: it needs a live DMV connection to the
-monitored server via config_command, and Grafana here talks only to Postgres.
+ViewerDataService.LongQueries.cs, ViewerDataService.PlanCorrection.cs. Nine sub-tabs (eight
+Queries sub-tabs plus Long Queries).
+Current Active Queries (LIVE) is not ported: Grafana talks only to the Postgres datasource.
 """
 
 from ._shared import (
@@ -14,6 +14,7 @@ from ._shared import (
     col_gauge_bar,
     col_hidden,
     col_unit,
+    col_width,
     collector,
     custom_var,
     dashboard,
@@ -50,8 +51,6 @@ _HOURLY_SECONDS = 3600.0
 _DAILY_SECONDS = 86400.0
 
 # Upstream ref: ViewerServerTab.History.cs (WireHistoryDrillDowns)
-# Double-click becomes a data link on the identity column; server_id travels as a hidden
-# column since $server is multi-select but each history window is single-server.
 _QUERY_HISTORY_LINK = col_datalink(
     "Query Hash",
     "View query history",
@@ -242,10 +241,7 @@ _window AS (
 
 # Performance Trends: 4 tiered per-second-rate charts.
 # Upstream ref: QueryDurationTrendSql / ProcedureDurationTrendSql / QueryStoreDurationTrendSql /
-# ExecutionCountTrendSql (ViewerDataService.QueryTrends.cs). Raw mirrors upstream's per-snapshot
-# LAG(collection_time) rate exactly (partitioned by server for a multi-$server selection);
-# hourly/daily divide the CAGG bucket's pre-summed metric by the bucket's fixed width instead,
-# since a CAGG bucket has no "previous snapshot" to LAG against.
+# ExecutionCountTrendSql (ViewerDataService.QueryTrends.cs).
 def _trend_sql(base, raw_value_expr, hourly_value_expr, daily_value_expr):
     """Tiered rate trend, grouped/labelled per server via server_join()."""
     raw_sql = f"""
@@ -502,12 +498,13 @@ WITH ranked AS (
         MAX(qs.total_clr_time) AS total_clr_time,
         MAX(qs.plan_generation_num) AS plan_generation_num,
         MAX(qs.delta_worker_time::double precision / NULLIF(qs.sample_interval_seconds, 0) / 1000.0) AS worker_time_per_second,
-        bool_or(qs.query_plan_xml IS NOT NULL OR qs.query_plan_digest IS NOT NULL) AS has_query_plan
+        bool_or(qs.query_plan_xml IS NOT NULL OR qs.query_plan_digest IS NOT NULL) AS has_query_plan,
+        qs.host_object_name
     FROM {collector('query_stats')} AS qs
     WHERE {server_filter('qs.server_id')}
       AND $__timeFilter(qs.collection_time)
       AND {multi_filter('qs.database_name', 'database')}
-    GROUP BY qs.server_id, qs.database_name, qs.query_hash
+    GROUP BY qs.server_id, qs.database_name, qs.query_hash, qs.host_object_name
     HAVING SUM(qs.delta_execution_count) > 0 OR SUM(qs.delta_elapsed_time) > 0
     ORDER BY {_rank_by(
         "SUM(qs.delta_elapsed_time)",
@@ -536,7 +533,11 @@ SELECT
     r.server_id AS "server_id",
     srv.name AS "Server",
     r.database_name AS "Database",
-    COALESCE(m.database_name || '.' || m.schema_name || '.' || m.object_name, 'ad hoc') AS "Module",
+    COALESCE(
+        r.database_name || '.' || NULLIF(r.host_object_name, ''),
+        m.database_name || '.' || m.schema_name || '.' || m.object_name,
+        'ad hoc'
+    ) AS "Module",
     r.last_execution_time AS "Last Execution",
     r.creation_time AS "Creation Time",
     r.query_hash AS "Query Hash",
@@ -589,6 +590,7 @@ LEFT JOIN LATERAL (
     WHERE server_id = r.server_id
       AND query_hash = r.query_hash
       AND database_name = r.database_name
+      AND host_object_name IS NOT DISTINCT FROM r.host_object_name
       AND query_text IS NOT NULL
     ORDER BY collection_time DESC
     LIMIT 1
@@ -1221,6 +1223,49 @@ _HEATMAP_METRIC_EXPR = """CASE ${metric:sqlstring}
     END"""
 
 
+# Plan Corrections.
+# Upstream ref: PlanCorrectionsSql (ViewerDataService.PlanCorrection.cs).
+_PLAN_CORRECTIONS_SQL = f"""
+SELECT
+    pc.collection_time AS "Collected",
+    srv.name AS "Server",
+    pc.query_text AS "Query Text",
+    pc.database_name AS "Database",
+    pc.recommendation_state AS "State",
+    pc.recommendation_state_reason AS "State Reason",
+    pc.recommendation_reason AS "Reason",
+    pc.score AS "Score",
+    round(pc.estimated_gain_seconds::numeric, 2) AS "Est. Gain (s)",
+    pc.query_id AS "Query ID",
+    pc.regressed_plan_id AS "Regressed Plan",
+    pc.last_good_plan_id AS "Last Good Plan",
+    pc.last_good_plan_forcing_type AS "Forcing Type",
+    CASE pc.last_good_plan_is_forced WHEN TRUE THEN 'Yes' WHEN FALSE THEN 'No' END AS "Forced",
+    pc.last_good_plan_force_failure_reason AS "Force Failure",
+    pc.regressed_plan_execution_count AS "Regressed Execs",
+    round(pc.regressed_plan_cpu_time_average_ms::numeric, 2) AS "Regressed CPU (ms)",
+    pc.last_good_plan_execution_count AS "Last Good Execs",
+    round(pc.last_good_plan_cpu_time_average_ms::numeric, 2) AS "Last Good CPU (ms)",
+    pc.valid_since AS "Valid Since",
+    pc.last_refresh AS "Last Refresh",
+    CASE pc.is_executable_action WHEN TRUE THEN 'Yes' WHEN FALSE THEN 'No' END AS "Executable",
+    CASE pc.is_revertable_action WHEN TRUE THEN 'Yes' WHEN FALSE THEN 'No' END AS "Revertable",
+    pc.execute_action_initiated_by AS "Executed By",
+    pc.execute_action_initiated_time AS "Executed At",
+    pc.revert_action_initiated_by AS "Reverted By",
+    pc.revert_action_initiated_time AS "Reverted At",
+    pc.implementation_script AS "Script"
+FROM {collector('plan_correction')} AS pc
+{server_join('pc.server_id')}
+WHERE {server_filter('pc.server_id')}
+  AND $__timeFilter(pc.collection_time)
+  AND pc.recommendation_name IS NOT NULL
+  AND {multi_filter('pc.database_name', 'database')}
+ORDER BY pc.collection_time DESC, pc.score DESC, pc.recommendation_name
+LIMIT 200
+"""
+
+
 def _heatmap_bucket_label(bucket_col):
     return f"""CASE {bucket_col}
         WHEN 0 THEN CASE WHEN ${{metric:sqlstring}} IN ('Duration', 'CPU') THEN '0: 0-1ms' ELSE '0: 0-1' END
@@ -1275,6 +1320,8 @@ _QUERY_HEATMAP_COMPANION_SQL = f"""
 WITH base AS (
     SELECT
         {_HEATMAP_METRIC_EXPR} AS metric_value,
+        server_id,
+        database_name,
         query_hash,
         delta_execution_count AS exec_count
     FROM {collector('query_stats')}
@@ -1294,19 +1341,19 @@ bucketed AS (
             WHEN metric_value < 100000 THEN 5
             ELSE 6
         END AS bucket_index,
-        query_hash, metric_value, exec_count
+        server_id, database_name, query_hash, metric_value, exec_count
     FROM base
     WHERE metric_value IS NOT NULL
 ),
 per_query AS (
-    SELECT bucket_index, query_hash,
+    SELECT bucket_index, server_id, database_name, query_hash,
         SUM(metric_value * exec_count) AS total_impact,
         COUNT(*) AS query_count
     FROM bucketed
-    GROUP BY bucket_index, query_hash
+    GROUP BY bucket_index, server_id, database_name, query_hash
 ),
 ranked AS (
-    SELECT bucket_index, query_hash,
+    SELECT bucket_index, server_id, database_name, query_hash,
         ROW_NUMBER() OVER (PARTITION BY bucket_index ORDER BY total_impact DESC, query_hash) AS rn
     FROM per_query
 ),
@@ -1318,6 +1365,9 @@ bucket_total AS (
 SELECT
     {_heatmap_bucket_label('bt.bucket_index')} AS "Bucket",
     bt.total_queries AS "Count",
+    r.server_id AS server_id,
+    r.database_name AS "Database",
+    r.query_hash AS "Query Hash",
     qt.query_preview AS "Top Query"
 FROM bucket_total bt
 JOIN ranked r ON r.bucket_index = bt.bucket_index AND r.rn = 1
@@ -1325,6 +1375,8 @@ LEFT JOIN LATERAL (
     SELECT LEFT(query_text, 300) AS query_preview
     FROM {collector('query_stats')}
     WHERE {server_filter()}
+      AND server_id = r.server_id
+      AND database_name = r.database_name
       AND query_hash = r.query_hash
       AND $__timeFilter(collection_time)
       AND delta_execution_count > 0
@@ -1509,7 +1561,23 @@ _PROCEDURE_PLAN_PARAMETERS_SQL = plan_parameters_sql(f"""
 _QUERY_STATS_HISTORY_WHERE = f"""
 {server_filter('qs.server_id')}
   AND {_identity_guard('database', 'qs.database_name')}
-  AND {_identity_guard('query_hash', 'qs.query_hash')}
+  AND (
+    (${{bpr_id:sqlstring}} IN ('0', '') AND ${{dl_id:sqlstring}} IN ('0', '')
+      AND {_identity_guard('query_hash', 'qs.query_hash')})
+    OR qs.query_hash = (
+      SELECT substring(
+        CASE WHEN ${{bpr_side:sqlstring}} = 'blocked'
+             THEN bpr.blocked_query_plan_xml ELSE bpr.blocking_query_plan_xml END
+        FROM 'QueryHash="([^"]*)"')
+      FROM {collector('blocked_process_reports')} AS bpr
+      WHERE bpr.blocked_report_id::text = ${{bpr_id:sqlstring}}
+    )
+    OR qs.query_hash = (
+      SELECT substring(dl.victim_query_plan_xml FROM 'QueryHash="([^"]*)"')
+      FROM {collector('deadlocks')} AS dl
+      WHERE dl.deadlock_id::text = ${{dl_id:sqlstring}}
+    )
+  )
   AND $__timeFilter(qs.collection_time)
 """
 
@@ -1915,7 +1983,7 @@ def queries():
                 24,
                 14,
                 lambda x, y, w, h: table(
-                    "Active queries (stored sp_WhoIsActive-style snapshots)",
+                    "Active queries (sp_WhoIsActive-style snapshots)",
                     x,
                     y,
                     w,
@@ -1923,8 +1991,7 @@ def queries():
                     _ACTIVE_QUERIES_SQL,
                     sort_by=[{"displayName": "Collected", "desc": True}],
                     description="Historical snapshots from collect.query_snapshots, bound by the "
-                    "dashboard time range. Current Active Queries (live DMV query against the "
-                    "monitored server) is not portable here.",
+                    "dashboard time range. Current Active Queries is not portable here.",
                 ),
             ),
         ],
@@ -1987,9 +2054,7 @@ def queries():
                         col_unit("Total Duration (ms)", "ms"),
                         col_unit("Total Reads", "short"),
                     ],
-                    description="Ranked and capped server-side by the selected Metric var. "
-                    "Clicking a different column header only resorts these already-selected "
-                    "rows - it does not refetch a true top-N by that column.",
+                    description="Ranked and capped server-side by the selected Metric var. ",
                 ),
             ),
         ],
@@ -2016,8 +2081,7 @@ def queries():
                         )
                     ],
                     description="Top 100 (by executions) queries in the current window unioned "
-                    "with the top 100 in the baseline window, full-outer-joined so NEW/GONE "
-                    "queries surface.",
+                    "with the top 100 in the baseline window.",
                 ),
             ),
         ],
@@ -2060,9 +2124,7 @@ def queries():
                     h,
                     _TOP_PROCEDURES_SQL,
                     overrides=[col_hidden("server_id"), _PROCEDURE_HISTORY_LINK],
-                    description="Ranked and capped server-side by the selected Metric var. "
-                    "Clicking a different column header only resorts these already-selected "
-                    "rows - it does not refetch a true top-N by that column.",
+                    description="Ranked and capped server-side by the selected Metric var. ",
                 ),
             ),
         ],
@@ -2134,11 +2196,7 @@ def queries():
                         _QUERY_STORE_HISTORY_LINK,
                         status_colors("Forced", {"true": "blue", "false": "text"}),
                     ],
-                    description="replica_role is a GROUP BY key, not aggregated away, so a "
-                    "shared AG Query Store shows one row per replica role instead of blending "
-                    "primary and secondary workload. Ranked and capped server-side by the "
-                    "selected Metric var - clicking a different column header only resorts "
-                    "these already-selected rows.",
+                    description="Ranked and capped server-side by the selected Metric var. ",
                 ),
             ),
         ],
@@ -2209,11 +2267,39 @@ def queries():
 
     y = subtab(
         panels,
+        "Plan Corrections",
+        y,
+        [
+            (
+                24,
+                14,
+                lambda x, y, w, h: table(
+                    "Automatic plan corrections",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _PLAN_CORRECTIONS_SQL,
+                    overrides=[
+                        col_width("Query Text", 300),
+                        col_width("Script", 300),
+                    ],
+                    sort_by=[{"displayName": "Score", "desc": True}],
+                    description="The engine's own automatic plan correction findings "
+                    "(sys.dm_db_tuning_recommendations), with the regressed query's text "
+                    "resolved through Query Store at collection time.",
+                ),
+            ),
+        ],
+    )
+
+    y = subtab(
+        panels,
         "Query Heatmap",
         y,
         [
             (
-                16,
+                14,
                 12,
                 lambda x, y, w, h: heatmap(
                     "Query heatmap (${metric} distribution over time)",
@@ -2224,11 +2310,11 @@ def queries():
                     _QUERY_HEATMAP_SQL,
                     description="Each cell = number of query executions in that metric bucket "
                     "for the 5-minute window. Duration/CPU buckets are in ms; Reads/Writes in "
-                    "pages. Y-axis runs 0 (fastest/smallest) to 6 (slowest/largest). Raw-only.",
+                    "pages. Y-axis runs 0 (fastest/smallest) to 6 (slowest/largest).",
                 ),
             ),
             (
-                8,
+                10,
                 12,
                 lambda x, y, w, h: table(
                     "Top query per bucket (${metric}, by impact)",
@@ -2237,6 +2323,11 @@ def queries():
                     w,
                     h,
                     _QUERY_HEATMAP_COMPANION_SQL,
+                    overrides=[
+                        col_hidden("server_id"),
+                        col_width("Count", 80),
+                        _QUERY_HISTORY_LINK,
+                    ],
                     description="Top query (by total_impact = metric_value * exec_count) in "
                     "each bucket across the selected time range. Ordered highest bucket first "
                     "to align with the heatmap Y-axis.",
@@ -2283,7 +2374,7 @@ def queries():
                         col_unit("Duration", "ms"),
                         col_unit("CPU", "ms"),
                     ],
-                    description="Attentions (cancels/timeouts) carry no duration - the event has none.",
+                    description="cancels/timeouts has no duration, by design.",
                 ),
             ),
         ],
@@ -2341,7 +2432,7 @@ def procedure_history():
                 24,
                 8,
                 lambda x, y, w, h: timeseries(
-                    "${history_metric} over time (one dot per plan shape)",
+                    "${history_metric} over time",
                     x,
                     y,
                     w,
@@ -2475,7 +2566,7 @@ def query_stats_history():
                 24,
                 8,
                 lambda x, y, w, h: timeseries(
-                    "${history_metric} over time (one dot per plan shape)",
+                    "${history_metric} over time",
                     x,
                     y,
                     w,
@@ -2488,6 +2579,7 @@ def query_stats_history():
                             "url": "/d/darling-query-stats-history?${__url_time_range}"
                             "&var-server=$server&var-database=$database"
                             "&var-query_hash=$query_hash"
+                            "&var-bpr_id=$bpr_id&var-bpr_side=$bpr_side&var-dl_id=$dl_id"
                             "&var-plan_shape=${__field.name}",
                             "targetBlank": False,
                         }
@@ -2591,6 +2683,9 @@ def query_stats_history():
             server_var(),
             text_var("database", "Database", "*"),
             text_var("query_hash", "Query Hash", "*"),
+            text_var("bpr_id", "Blocked Report ID", "0") | {"hide": 2},
+            text_var("bpr_side", "Blocked Report Side", "blocking") | {"hide": 2},
+            text_var("dl_id", "Deadlock ID", "0") | {"hide": 2},
             custom_var(
                 "history_metric",
                 "Chart Metric",
@@ -2629,7 +2724,7 @@ def query_store_history():
                 24,
                 8,
                 lambda x, y, w, h: timeseries(
-                    "${qs_history_metric} over time (one dot per plan)",
+                    "${qs_history_metric} over time",
                     x,
                     y,
                     w,

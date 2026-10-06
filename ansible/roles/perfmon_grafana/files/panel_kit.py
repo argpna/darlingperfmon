@@ -52,15 +52,8 @@ class PanelKit:
     ) -> dict:
         """Build a timeseries panel.
 
-        points=True renders a dot-only scatter - for a chart grouped into many series
-        (e.g. one per plan shape) where the point cloud itself is the point, not the
-        trend line. A shape-grouped query can produce hundreds of series
-        (e.g. a recompile-happy procedure), so points=True also hides the legend and
-        drops the tooltip to single-series - a legend or a per-series tooltip listing
-        that many entries is noise, not information.
-
-        time_from, if given, is a relative-time string (e.g. "24h") overriding the
-        dashboard's time picker for this panel only.
+        points=True renders a dot-only scatter instead of a trend line. points=True
+        also hides the legend and drops the tooltip to single-series (reduce noise).
         """
         custom = {
             "drawStyle": "points" if points else ("bars" if bars else "line"),
@@ -124,20 +117,7 @@ class PanelKit:
         links: list[dict] | None = None,
     ) -> dict:
         """Build a status-history panel: one fixed-width colored tile per data point,
-        per series - unlike state-timeline, a tile's width never stretches to fill the
-        gap to the next point (or to "now" for the most recent one), so a still-open
-        final state doesn't visually balloon.
-
-        states are (stored value, display text, color). The query returns time / series
-        name / numeric state, and value mappings turn each level into a labelled tile -
-        a string value column would not survive the time_series frame conversion. Color
-        mode must be "fixed", not "thresholds" - status-history only reads mapping colors
-        when the color scheme isn't thresholds-based, per Grafana's status-history docs.
-
-        time_from, if given, is a relative-time string (e.g. "30d") overriding the
-        dashboard's time picker for this panel only. links, if given, are data links
-        (title/url dicts) attached to every field - harmless on a field an override
-        hides from view, since a hidden field is never clickable.
+        per series.
         """
         panel = {
             "id": self.nid(),
@@ -179,9 +159,7 @@ class PanelKit:
 
     def text_panel(self, title, x, y, w, h, content, code_language: str | None = None):
         """Build a text panel: markdown by default, or a read-only syntax-highlighted
-        code editor when code_language is given (e.g. "sql"). Text panels have no
-        datasource of their own to query, so dynamic content comes through a ${var}
-        reference to a query-backed template variable.
+        code editor when code_language is provided (e.g. "sql").
         """
         if code_language:
             options = {
@@ -356,12 +334,7 @@ class PanelKit:
         sql: str,
         description: str | None = None,
     ) -> dict:
-        """Build a heatmap panel from long-format (time, metric, value) rows.
-
-        format="time_series" pivots the query into one numeric series per distinct
-        `metric` value, and calculate=False renders each series as one Y-axis row -
-        so `metric` should already be a bucket label, not a raw scalar to histogram.
-        """
+        """Build a heatmap panel from long-format (time, metric, value) rows."""
         panel = {
             "id": self.nid(),
             "type": "heatmap",
@@ -424,9 +397,7 @@ class PanelKit:
         sql: str,
         description: str | None = None,
     ) -> dict:
-        """Build a logs panel from a (time, text) query - a scrollable, wrapped monospace
-        view for long blobs (e.g. plan XML) a table cell renders too cramped to read.
-        """
+        """Build a logs panel from a (time, text) query."""
         panel = {
             "id": self.nid(),
             "type": "logs",
@@ -622,6 +593,29 @@ def status_colors(col, mapping, cell_type="color-background"):
     }
 
 
+def status_dots(col, mapping):
+    """Table override: renders a value-mapped status as a colored dot instead of text."""
+    return {
+        "matcher": {"id": "byName", "options": col},
+        "properties": [
+            {
+                "id": "mappings",
+                "value": [
+                    {
+                        "type": "value",
+                        "options": {
+                            k: {"text": "●", "color": c, "index": i}
+                            for i, (k, c) in enumerate(mapping.items())
+                        },
+                    }
+                ],
+            },
+            {"id": "custom.cellOptions", "value": {"type": "color-text"}},
+            {"id": "custom.align", "value": "center"},
+        ],
+    }
+
+
 def col_unit(col, unit, display_name=None):
     """Table override: set the display unit (and optionally label) of a column."""
     properties = [{"id": "unit", "value": unit}]
@@ -650,6 +644,14 @@ def col_hidden(col):
     return {
         "matcher": {"id": "byName", "options": col},
         "properties": [{"id": "custom.hidden", "value": True}],
+    }
+
+
+def col_width(col, width):
+    """Table override pinning a column to a fixed pixel width."""
+    return {
+        "matcher": {"id": "byName", "options": col},
+        "properties": [{"id": "custom.width", "value": width}],
     }
 
 

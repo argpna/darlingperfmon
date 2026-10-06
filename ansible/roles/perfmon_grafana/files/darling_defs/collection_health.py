@@ -39,6 +39,7 @@ _HEALTH_COLORS = {
     "WARNING": "yellow",
     "STALE": "orange",
     "FAILING": "red",
+    "STOPPED": "dark-red",
     "NO_PERMISSIONS": "purple",
     "NEVER_RUN": "text",
 }
@@ -50,19 +51,10 @@ _FAILING_CADENCE_MULTIPLIER = 2.0
 _STALE_FLOOR_HOURS = 4.0
 _STALE_CADENCE_MULTIPLIER = 1.5
 
-# Collectors that run once on load, so staleness never applies to them.
-_ON_LOAD = (
-    "server_config",
-    "database_config",
-    "database_scoped_config",
-    "trace_flags",
-    "server_properties",
-)
-
 # CollectorScheduleDefaults.All frequencies, in minutes. Banding needs the collector's own
-# cadence or a slow collector reads as stale between its own runs. A name missing here (the
-# service's own run-records, a collector added upstream) gets 0 and falls to the floors,
-# which is what upstream's failed TryGetValue does.
+# cadence or a slow collector reads as stale between its own runs. A name missing here gets
+# 0. On-load collectors (server_config, trace_flags, etc.) get OnLoadRecaptureMinutes
+# (1440, daily) rather than 0.
 _FREQUENCY_MINUTES = {
     "ag_database_replica_states": 1,
     "ag_replica_states": 1,
@@ -70,8 +62,8 @@ _FREQUENCY_MINUTES = {
     "blocked_process_report": 1,
     "cpu_scheduler_stats": 1,
     "cpu_utilization": 1,
-    "database_config": 0,
-    "database_scoped_config": 0,
+    "database_config": 1440,
+    "database_scoped_config": 1440,
     "database_size_stats": 60,
     "deadlocks": 1,
     "default_trace_events": 5,
@@ -92,14 +84,14 @@ _FREQUENCY_MINUTES = {
     "query_stats": 1,
     "query_store": 5,
     "running_jobs": 5,
-    "server_config": 0,
-    "server_properties": 0,
+    "server_config": 1440,
+    "server_properties": 1440,
     "session_stats": 5,
     "session_summary_stats": 5,
     "spinlock_stats": 1,
     "system_health_events": 5,
     "tempdb_stats": 1,
-    "trace_flags": 0,
+    "trace_flags": 1440,
     "wait_stats": 1,
     "waiting_tasks": 1,
 }
@@ -108,17 +100,17 @@ _CADENCE_TABLE = ",\n        ".join(
     f"('{name}', {minutes})" for name, minutes in sorted(_FREQUENCY_MINUTES.items())
 )
 
-_ON_LOAD_LIST = ", ".join(f"'{name}'" for name in _ON_LOAD)
-
-# Upstream ref: CollectorHealthClassifier.Classify - first-match-wins, on-load collectors
-# skip the staleness rungs entirely.
+# Upstream ref: CollectorHealthClassifier.Classify - first-match-wins. STOPPED is checked
+# before FAILING: it's strictly a subset of what would otherwise read FAILING, since
+# hours_since_run <= hours_since_success always.
 _HEALTH_STATUS = f"""CASE
         WHEN a.total_runs = 0 THEN 'NEVER_RUN'
         WHEN a.permission_denied_count > 0 AND a.error_count = 0 AND a.success_count = 0
             THEN 'NO_PERMISSIONS'
-        WHEN a.collector_name IN ({_ON_LOAD_LIST})
-            THEN CASE WHEN a.failure_rate > {_WARNING_FAILURE_RATE} THEN 'WARNING'
-                      ELSE 'HEALTHY' END
+        WHEN a.hours_since_run
+             > GREATEST({_FAILING_FLOOR_HOURS},
+                        {_FAILING_CADENCE_MULTIPLIER} * a.frequency_minutes / 60.0)
+            THEN 'STOPPED'
         WHEN a.hours_since_success
              > GREATEST({_FAILING_FLOOR_HOURS},
                         {_FAILING_CADENCE_MULTIPLIER} * a.frequency_minutes / 60.0)
@@ -180,7 +172,9 @@ a AS (
         /* Upstream's "never succeeded" sentinel, so a collector with no success ever lands
            past every threshold instead of comparing against NULL. */
         COALESCE(EXTRACT(EPOCH FROM ((now() AT TIME ZONE 'UTC') - agg.last_success_time))
-                 / 3600.0, 999) AS hours_since_success
+                 / 3600.0, 999) AS hours_since_success,
+        COALESCE(EXTRACT(EPOCH FROM ((now() AT TIME ZONE 'UTC') - agg.last_run_time))
+                 / 3600.0, 999) AS hours_since_run
     FROM agg
     LEFT JOIN cadence c ON c.collector_name = agg.collector_name
 )
@@ -234,7 +228,7 @@ _HEALTH_SUMMARY_STATS = [
     },
     {
         "title": "Failing",
-        "sql": _health_count_sql("= 'FAILING'"),
+        "sql": _health_count_sql("IN ('FAILING', 'STOPPED')"),
         "th": thresholds(("green", None), ("red", 1)),
     },
     {

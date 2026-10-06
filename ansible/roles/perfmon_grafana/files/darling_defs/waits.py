@@ -4,8 +4,7 @@
 Upstream ref: ViewerServerTab.Waits.cs / ViewerDataService.Waits.cs.
 
 The upstream tab is a wait-type picker driving one chart with a two-option metric combo.
-The picker becomes $wait_type; the combo's options become their own panels, since a Grafana
-panel has no combo and showing both costs nothing.
+The picker becomes $wait_type; the combo's options become their own panels.
 
 Upstream ref: WaitDrillDownWindow.xaml.cs. wait_drill_down() below only implements the
 Filtered path of WaitDrillDownHelper.Classify - Correlated, Uncapturable, and Chain are not
@@ -47,8 +46,7 @@ ORDER BY SUM(ws.delta_wait_time_ms) DESC
 def _trend_sql(metric_expr: str) -> str:
     """Per-collection trend for the selected wait types, capped at upstream's 20 series.
 
-    interval_seconds is the truncate-then-diff epoch idiom upstream uses. $server is
-    single-select, so the legend is just the wait type - no server label to disambiguate.
+    interval_seconds is the truncate-then-diff epoch idiom upstream uses.
     """
     return f"""
 WITH ranked AS (
@@ -107,7 +105,6 @@ _AVG_MS_PER_WAIT = """CASE
     END"""
 
 # Upstream ref: GetQuerySnapshotsByWaitTypeAsync (ViewerDataService.QuerySnapshots.cs)
-# No $database filter here - waits() has no $database var; wait_drill_down() adds its own.
 _SNAPSHOT_COUNT_SQL = f"""
 SELECT COUNT(*) AS "Query Snapshots"
 FROM {collector('query_snapshots')} AS qs
@@ -176,6 +173,8 @@ SELECT
     qs.transaction_isolation_level AS "Isolation",
     qs.open_transaction_count AS "Open Tran",
     qs.percent_complete AS "% Done",
+    (qs.query_plan IS NOT NULL) AS "Has Query Plan",
+    (qs.live_query_plan IS NOT NULL) AS "Has Live Query Plan",
     qs.query_text AS "Query Text"
 FROM {collector('query_snapshots')} AS qs
 {server_join('qs.server_id')}
@@ -235,8 +234,6 @@ def wait_stats_section(panels: list[dict], y: int) -> int:
                     axis_label="ms/wait",
                 ),
             ),
-            # Upstream computes signal wait per second in the same read but its metric
-            # combo does not expose it; charting it costs nothing and shows CPU pressure.
             (
                 12,
                 9,
@@ -251,9 +248,7 @@ def wait_stats_section(panels: list[dict], y: int) -> int:
                     axis_label="ms/sec",
                 ),
             ),
-            # Upstream ref: "Show Queries With This Wait" (ViewerServerTab.DrillDown.cs). A
-            # full-width stat_grid() banner rather than a small hand-placed tile stranded
-            # alone on its own row - the fix for this dashboard's named orphaned-stat issue.
+            # Upstream ref: "Show Queries With This Wait" (ViewerServerTab.DrillDown.cs).
             (
                 24,
                 4,

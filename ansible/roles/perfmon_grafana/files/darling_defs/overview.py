@@ -33,6 +33,7 @@ from ._shared import (
     subtab,
     table,
     target,
+    text_var,
     thresholds,
     tiered,
     timeseries,
@@ -675,11 +676,13 @@ a AS (
              THEN agg.error_count::double precision / agg.total_runs * 100
              ELSE 0 END AS failure_rate,
         COALESCE(EXTRACT(EPOCH FROM ((now() AT TIME ZONE 'UTC') - agg.last_success_time))
-                 / 3600.0, 999) AS hours_since_success
+                 / 3600.0, 999) AS hours_since_success,
+        COALESCE(EXTRACT(EPOCH FROM ((now() AT TIME ZONE 'UTC') - agg.last_run_time))
+                 / 3600.0, 999) AS hours_since_run
     FROM agg
     LEFT JOIN cadence c ON c.collector_name = agg.collector_name
 )
-SELECT COUNT(*) FILTER (WHERE status = 'FAILING') AS v
+SELECT COUNT(*) FILTER (WHERE status IN ('FAILING', 'STOPPED')) AS v
 FROM (SELECT {_HEALTH_STATUS} AS status FROM a) AS x
 """
 
@@ -987,8 +990,7 @@ spine AS (
 SELECT
     spine.day AS time,
     spine.name AS metric,
-    CASE WHEN d.day IS NULL THEN NULL ELSE ({_BAND_LEVEL}) END AS band,
-    (EXTRACT(EPOCH FROM (spine.day + INTERVAL '1 day')) * 1000)::bigint AS day_end
+    CASE WHEN d.day IS NULL THEN NULL ELSE ({_BAND_LEVEL}) END AS band
 FROM spine
 LEFT JOIN d ON d.server_id = spine.server_id AND d.day = spine.day
 ORDER BY 1
@@ -999,24 +1001,23 @@ _CALENDAR_OVERRIDES = [
         "matcher": {"id": "byName", "options": "band"},
         "properties": [{"id": "displayName", "value": "${__field.labels.metric}"}],
     },
-    {
-        "matcher": {"id": "byName", "options": "day_end"},
-        "properties": [
-            {
-                "id": "custom.hideFrom",
-                "value": {"legend": True, "tooltip": True, "viz": True},
-            }
-        ],
-    },
 ]
 
 _CALENDAR_DRILL = [
     {
-        "title": "Show Active Queries for This Day",
+        "title": "Filter Daily Detail to This Day",
         "url": (
-            "/d/darling-queries?from=${__value.time}&to=${__data.fields.day_end}"
-            "&var-server=$server"
+            "/d/darling-overview?${__url_time_range}&var-server=$server"
+            "&var-day=${__value.time}"
         ),
+        "targetBlank": False,
+    },
+]
+
+_SHOW_ALL_DAYS = [
+    {
+        "title": "Show all days",
+        "url": ("/d/darling-overview?${__url_time_range}&var-server=$server&var-day=*"),
         "targetBlank": False,
     }
 ]
@@ -1024,6 +1025,9 @@ _CALENDAR_DRILL = [
 _DAILY_DETAIL_SQL = f"""
 WITH d AS ({_DAILY})
 SELECT
+    d.server_id AS "server_id",
+    (EXTRACT(EPOCH FROM d.day) * 1000)::bigint AS "day_start",
+    (EXTRACT(EPOCH FROM (d.day + INTERVAL '1 day')) * 1000)::bigint AS "day_end",
     d.day AS "Day",
     srv.name AS "Server",
     {_BAND_LABEL} AS "Health",
@@ -1041,8 +1045,24 @@ SELECT
     d.alert_count AS "Alerts"
 FROM d
 {server_join('d.server_id')}
+WHERE (${{day:sqlstring}} = '*'
+       OR (EXTRACT(EPOCH FROM d.day) * 1000)::bigint::text = ${{day:sqlstring}})
 ORDER BY d.day DESC, srv.name
 """
+
+
+def _with_links(panel, links):
+    panel["links"] = links
+    return panel
+
+
+def _day_drill(col, title, dashboard_uid):
+    return col_datalink(
+        col,
+        title,
+        f"/d/{dashboard_uid}?from=${{__data.fields.day_start}}"
+        "&to=${__data.fields.day_end}&var-server=${__data.fields.server_id}",
+    )
 
 
 def overview():
@@ -1181,7 +1201,7 @@ def overview():
                     description=(
                         "Composite daily health, one tile per day. A day with no "
                         "collection at all is absent rather than tiled. Click a day to "
-                        "open Query Performance's Active Queries for that day's 24 hours."
+                        "filter Daily Detail to it."
                     ),
                     time_from=_HISTORY_WINDOW,
                     overrides=_CALENDAR_OVERRIDES,
@@ -1191,35 +1211,73 @@ def overview():
             (
                 24,
                 14,
-                lambda x, y, w, h: table(
-                    "Daily Detail",
-                    x,
-                    y,
-                    w,
-                    h,
-                    _DAILY_DETAIL_SQL,
-                    time_from=_HISTORY_WINDOW,
-                    overrides=[
-                        status_colors("Health", HEALTH_STATUS_COLORS),
-                        col_unit("Total Wait", "s"),
-                        col_unit("Peak Block", "ms"),
-                        col_thresholds("Deadlocks", ("text", None), ("red", 1)),
-                        col_thresholds("Collection Errors", ("text", None), ("red", 1)),
-                        col_thresholds(
-                            "High-CPU Samples",
-                            ("text", None),
-                            ("yellow", _HIGH_CPU_WARNING),
-                            ("red", _HIGH_CPU_CRITICAL),
-                        ),
-                        col_thresholds(
-                            "Blocking Events",
-                            ("text", None),
-                            ("yellow", _BLOCKING_WARNING),
-                            ("red", _BLOCKING_CRITICAL),
-                        ),
-                        col_thresholds("Severe Memory", ("text", None), ("red", 1)),
-                    ],
-                    sort_by=[{"displayName": "Day", "desc": True}],
+                lambda x, y, w, h: _with_links(
+                    table(
+                        "Daily Detail",
+                        x,
+                        y,
+                        w,
+                        h,
+                        _DAILY_DETAIL_SQL,
+                        time_from=_HISTORY_WINDOW,
+                        overrides=[
+                            col_hidden("server_id"),
+                            col_hidden("day_start"),
+                            col_hidden("day_end"),
+                            _day_drill(
+                                "Unique Queries",
+                                "Show queries for this day",
+                                "darling-queries",
+                            ),
+                            _day_drill(
+                                "Deadlocks",
+                                "Show deadlocks for this day",
+                                "darling-blocking-deadlocks",
+                            ),
+                            _day_drill(
+                                "Blocking Events",
+                                "Show blocking for this day",
+                                "darling-blocking-deadlocks",
+                            ),
+                            _day_drill(
+                                "High-CPU Samples",
+                                "Show CPU for this day",
+                                "darling-cpu-memory-sessions",
+                            ),
+                            _day_drill(
+                                "Memory Pressure",
+                                "Show memory for this day",
+                                "darling-cpu-memory-sessions",
+                            ),
+                            _day_drill(
+                                "Severe Memory",
+                                "Show memory for this day",
+                                "darling-cpu-memory-sessions",
+                            ),
+                            status_colors("Health", HEALTH_STATUS_COLORS),
+                            col_unit("Total Wait", "s"),
+                            col_unit("Peak Block", "ms"),
+                            col_thresholds("Deadlocks", ("text", None), ("red", 1)),
+                            col_thresholds(
+                                "Collection Errors", ("text", None), ("red", 1)
+                            ),
+                            col_thresholds(
+                                "High-CPU Samples",
+                                ("text", None),
+                                ("yellow", _HIGH_CPU_WARNING),
+                                ("red", _HIGH_CPU_CRITICAL),
+                            ),
+                            col_thresholds(
+                                "Blocking Events",
+                                ("text", None),
+                                ("yellow", _BLOCKING_WARNING),
+                                ("red", _BLOCKING_CRITICAL),
+                            ),
+                            col_thresholds("Severe Memory", ("text", None), ("red", 1)),
+                        ],
+                        sort_by=[{"displayName": "Day", "desc": True}],
+                    ),
+                    _SHOW_ALL_DAYS,
                 ),
             ),
         ],
@@ -1228,4 +1286,12 @@ def overview():
     # Default stays now-3h: this is the landing page after Fleet, and its "right now"
     # correlated lanes are the primary job. The History section panels carry their own
     # fixed _HISTORY_WINDOW override so they stay meaningful regardless of this default.
-    return dashboard(uid("overview"), "Overview", panels, [server_var()])
+    return dashboard(
+        uid("overview"),
+        "Overview",
+        panels,
+        [
+            server_var(),
+            text_var("day", "Day", "*") | {"hide": 2},
+        ],
+    )

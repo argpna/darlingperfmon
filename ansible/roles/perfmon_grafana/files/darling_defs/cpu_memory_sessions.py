@@ -3,16 +3,15 @@ Stats, and Perfmon Counters dashboards into one engine-resource-pressure view.
 
 Upstream ref: ViewerDataService.Cpu.cs, ViewerDataService.Memory.cs,
 ViewerDataService.SessionStats.cs, ViewerDataService.Perfmon.cs.
-
-$server is single-select, so series labels carry just the metric/class/counter name, not a
-server prefix.
 """
 
 from ._shared import (
+    col_datalink,
     col_unit,
     collector,
     custom_var,
     dashboard,
+    detail_dashboard,
     fixed,
     flow,
     multi_filter,
@@ -33,8 +32,7 @@ from ._shared import (
 )
 
 # Stat row: CPU%, worker utilization%, runnable tasks, buffer pool MB, active sessions,
-# memory pressure state - promoted from table rows CPU's scheduler snapshot and Memory's
-# summary already compute, so a reader gets them without reading a whole table.
+# memory pressure state.
 _CURRENT_CPU_SQL = f"""
 SELECT sqlserver_cpu_utilization + COALESCE(other_process_cpu_utilization, 0) AS v
 FROM {collector('cpu_utilization_stats')}
@@ -43,8 +41,7 @@ ORDER BY collection_time DESC
 LIMIT 1
 """
 
-# Upstream ref: CpuSchedulerMetrics - the same 90% cutoff _PRESSURE_LEVEL below uses for
-# "HIGH - Worker thread exhaustion".
+# Upstream ref: CpuSchedulerMetrics.
 _WORKER_UTIL_SQL = f"""
 SELECT CASE WHEN max_workers_count > 0
     THEN total_current_workers_count::double precision / max_workers_count * 100.0
@@ -126,11 +123,10 @@ _STAT_ROW = [
 ]
 
 # CPU section.
-# sample_time is the monitored server's LOCAL wall clock, unlike every other stored
-# timestamp. Upstream recovers the offset from the collection batch: the newest sample in a
-# batch is under a minute older than its collection_time, so rounding that difference to 15
-# minutes yields the server's UTC offset. Window on collection_time, plot the corrected
-# sample_time. Upstream ref: CpuUtilizationSql (#1262).
+# sample_time is the monitored server's LOCAL wall clock, unlike other stored
+# timestamps. Recovers the offset from the collection batch: the newest sample in a
+# batch is under a minute older than its collection_time, so rounding that difference
+# to 15 minutes yields the server's UTC offset. Upstream ref: CpuUtilizationSql.
 _SAMPLE_TIME_UTC = """cpu.sample_time
         - INTERVAL '15 minutes'
           * ROUND(EXTRACT(EPOCH FROM (
@@ -153,7 +149,7 @@ WHERE $__timeFilter(cpu.collection_time)
 ORDER BY 1
 """
 
-# A point-in-time collector: one row per collection, so the counts plot as stored.
+# A point-in-time collector: one row per collection.
 _SCHEDULER_TREND_SQL = f"""
 SELECT
     cs.collection_time AS time,
@@ -172,7 +168,7 @@ ORDER BY 1
 
 
 def _kb_as_gb(expr: str) -> str:
-    """C# FormatKbAsGb: GB to one decimal at 1 GB and above, otherwise whole MB."""
+    """FormatKbAsGb: GB with single decimal at 1 GB and above, otherwise MB."""
     return f"""CASE
             WHEN {expr} / 1048576.0 >= 1
             THEN {fixed(f'{expr} / 1048576.0', 1)} || ' GB'
@@ -181,11 +177,11 @@ def _kb_as_gb(expr: str) -> str:
 
 
 def _na(expr: str, formatted: str) -> str:
-    """C# FormatNullableInt / the nullable percent row: 'N/A' when the column is null."""
+    """FormatNullableInt: 'N/A' when the column is null."""
     return f"CASE WHEN {expr} IS NULL THEN 'N/A' ELSE {formatted} END"
 
 
-# Upstream ref: CpuSchedulerMetrics.ClassifyCpuPressure - banding order is significant.
+# Upstream ref: CpuSchedulerMetrics.ClassifyCpuPressure.
 _PRESSURE_LEVEL = """CASE
         WHEN l.total_runnable_tasks_count > 50 THEN 'CRITICAL - High runnable task queue'
         WHEN l.total_runnable_tasks_count > 20 THEN 'HIGH - Moderate runnable task queue'
@@ -209,7 +205,7 @@ _RECOMMENDATION = """CASE
 
 
 def _scheduler_snapshot_sql() -> str:
-    """The latest snapshot as a metric/value grid, in upstream's row order."""
+    """The latest snapshot as a metric/value grid."""
     rows = [
         ("Pressure Level", "l.pressure_level", "l.pressure_level NOT LIKE 'NORMAL%'"),
         ("Recommendation", "l.recommendation", "false"),
@@ -329,8 +325,7 @@ ORDER BY l.server_label, m.ord
 
 
 # Memory Overview section.
-# Upstream's summary strip reads the newest row with no window at all - it is current
-# state, not a view of the selected range.
+# Upstream's summary strip reads the latest collected memory state.
 _MEMORY_SUMMARY_SQL = f"""
 SELECT DISTINCT ON (ms.server_id)
     srv.name AS "Server",
@@ -351,8 +346,6 @@ WHERE {server_filter('ms.server_id')}
 ORDER BY ms.server_id, ms.collection_time DESC
 """
 
-# Memory grants come from their own collector, so the overlay is a second branch unioned
-# onto the memory_stats series rather than another column.
 _MEMORY_TREND_SQL = f"""
 SELECT
     ms.collection_time AS time,
@@ -399,9 +392,6 @@ GROUP BY mc.clerk_type
 ORDER BY SUM(mc.memory_mb) DESC
 """
 
-# Upstream's picker pre-selects the five heaviest clerks; All means the same five here.
-# server_label survives here (unlike the trend below) because _CLERK_SUMMARY_SQL's "Server"
-# table column still needs it.
 _CLERK_RANKED = f"""
     SELECT
         mc.server_id,
@@ -434,8 +424,6 @@ WHERE $__timeFilter(mc.collection_time)
 ORDER BY 1
 """
 
-# The strip under upstream's clerk chart: totals over the selected clerks' latest values,
-# buffer pool excluded, and the heaviest of those clerks named.
 _CLERK_SUMMARY_SQL = f"""
 WITH ranked AS (
 {_CLERK_RANKED}
@@ -470,7 +458,7 @@ ORDER BY n.server_label, n.memory_mb DESC
 
 # Memory Grants section.
 def _grant_sql(metrics: str) -> str:
-    """Per-pool grant series, one metric per LATERAL row as upstream charts them."""
+    """Per-pool grant series, one metric per LATERAL row."""
     return f"""
 SELECT
     mg.collection_time AS time,
@@ -571,8 +559,7 @@ ORDER BY 1
 
 # Memory Pressure Events section.
 # Upstream counts a sample as pressure at indicator >= 2 (sp_pressuredetector's threshold),
-# then splits medium (== 2) from severe (>= 3). Its bars stack medium onto severe within
-# each source side by side; Grafana stacks one group, so all four share a stack.
+# then splits medium (== 2) from severe (>= 3).
 _PRESSURE_EVENTS_SQL = f"""
 SELECT
     date_trunc('hour', mpe.sample_time) AS time,
@@ -594,8 +581,6 @@ ORDER BY 1
 """
 
 # Session Stats section.
-# Upstream skips a status that is zero across the whole window so all-zero states stay out
-# of the legend; the HAVING-equivalent WHERE below does the same here.
 _SESSION_COUNTS_SQL = f"""
 WITH expanded AS (
     SELECT
@@ -650,10 +635,67 @@ WHERE $__timeFilter(ss.collection_time)
 ORDER BY ss.server_id, ss.collection_time DESC
 """
 
+_SNAPSHOT_COUNT_SQL = f"""
+SELECT COUNT(*) AS "Query Snapshots"
+FROM {collector('query_snapshots')} AS qs
+WHERE $__timeFilter(qs.collection_time)
+  AND {server_filter('qs.server_id')}
+  AND qs.query_text NOT LIKE 'WAITFOR%'
+"""
+
+_SNAPSHOT_DRILL_DOWN_LINK = {
+    "title": "View Query Snapshots",
+    "url": "/d/darling-cpu-memory-drill-down?${__url_time_range}&var-server=$server",
+    "targetBlank": False,
+}
+
+_DATABASE_VAR_SQL = f"""
+SELECT DISTINCT qs.database_name
+FROM {collector('query_snapshots')} AS qs
+WHERE $__timeFilter(qs.collection_time)
+  AND {server_filter('qs.server_id')}
+  AND qs.database_name IS NOT NULL
+ORDER BY 1
+"""
+
+_CPU_MEM_DRILL_DOWN_SQL = f"""
+SELECT
+    srv.name AS "Server",
+    qs.collection_time AS "Collected",
+    qs.session_id AS "SPID",
+    qs.database_name AS "Database",
+    qs.query_hash AS "Query Hash",
+    qs.login_name AS "Login",
+    qs.host_name AS "Host",
+    qs.program_name AS "Program",
+    qs.status AS "Status",
+    qs.elapsed_time_formatted AS "Elapsed",
+    qs.cpu_time_ms AS "CPU (ms)",
+    qs.logical_reads AS "Logical Reads",
+    qs.reads AS "Reads",
+    qs.writes AS "Writes",
+    qs.wait_type AS "Wait Type",
+    qs.wait_time_ms AS "Wait (ms)",
+    qs.granted_query_memory_gb AS "Memory (GB)",
+    qs.used_memory_mb AS "Used Mem (MB)",
+    qs.tempdb_current_mb AS "tempdb Cur (MB)",
+    qs.dop AS "DOP",
+    qs.blocking_session_id AS "Blocking",
+    qs.query_text AS "Query Text"
+FROM {collector('query_snapshots')} AS qs
+{server_join('qs.server_id')}
+WHERE $__timeFilter(qs.collection_time)
+  AND {server_filter('qs.server_id')}
+  AND {multi_filter('qs.database_name', 'database')}
+  AND qs.query_text NOT LIKE 'WAITFOR%'
+ORDER BY qs.cpu_time_ms DESC, qs.collection_time DESC
+LIMIT 500
+"""
+
 # Perfmon Counters section.
 ALL_COUNTERS = "All Counters"
 
-# Upstream ref: PerfmonPacks.Packs - the same named counter groups Lite and the Dashboard use.
+# Upstream ref: PerfmonPacks.Packs.
 PACKS = {
     "General Throughput": [
         "Batch Requests/sec",
@@ -730,7 +772,7 @@ PACKS = {
     ],
 }
 
-# Upstream defaults the pack combo to General Throughput, so it leads the list here.
+# Upstream defaults the pack combo to General Throughput.
 PACK_NAMES = ["General Throughput"] + [
     name for name in PACKS if name != "General Throughput"
 ]
@@ -759,9 +801,6 @@ WHERE $__timeFilter(pm.collection_time)
 ORDER BY pm.counter_name
 """
 
-# perfmon_stats is cumulative since restart; upstream charts delta_cntr_value, not
-# cntr_value. Counters are summed across their instance_name rows, matching upstream's
-# GROUP BY, and the series count is capped at upstream's 12.
 _PERFMON_TREND_SQL = f"""
 WITH ranked AS (
     SELECT pm.server_id, pm.counter_name
@@ -1043,6 +1082,22 @@ def cpu_memory_sessions():
                     _SESSION_ATTRIBUTION_SQL,
                 ),
             ),
+            # Upstream has no equivalent banner
+            (
+                24,
+                4,
+                stat_grid(
+                    [
+                        {
+                            "title": "Query Snapshots",
+                            "sql": _SNAPSHOT_COUNT_SQL,
+                            "th": thresholds(("blue", None)),
+                            "links": [_SNAPSHOT_DRILL_DOWN_LINK],
+                        }
+                    ],
+                    cols=1,
+                ),
+            ),
         ],
     )
 
@@ -1092,4 +1147,64 @@ def cpu_memory_sessions():
         "CPU, Memory & Sessions",
         panels,
         [server_var(), clerk_var, pack_var, counter_var],
+    )
+
+
+_QUERY_HISTORY_LINK = col_datalink(
+    "Query Hash",
+    "View query history",
+    "/d/darling-query-stats-history?${__url_time_range}"
+    "&var-server=$server"
+    "&var-database=${__data.fields.Database}"
+    '&var-query_hash=${__data.fields["Query Hash"]}',
+)
+
+
+def cpu_memory_drill_down():
+    """Query snapshots for the selected server/time range.
+
+    Reached from the CPU, Memory & Sessions dashboard's "Query Snapshots" linking stat tile.
+    """
+    reset_id()
+    panels: list[dict] = []
+
+    subtab(
+        panels,
+        "Query Snapshots",
+        0,
+        [
+            (
+                24,
+                16,
+                lambda x, y, w, h: table(
+                    "Query snapshots (CPU desc)",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _CPU_MEM_DRILL_DOWN_SQL,
+                    overrides=[_QUERY_HISTORY_LINK],
+                    sort_by=[{"displayName": "CPU (ms)", "desc": True}],
+                    description=(
+                        "sp_WhoIsActive snapshots for the selected server and time range, "
+                        "top 500 by CPU time."
+                    ),
+                ),
+            ),
+        ],
+    )
+
+    database_var = query_var(
+        "database",
+        "Database",
+        _DATABASE_VAR_SQL,
+        "Databases seen in query snapshots over the window.",
+    )
+
+    return detail_dashboard(
+        uid("cpu-memory-drill-down"),
+        "CPU/Memory Drill-Down",
+        panels,
+        [server_var(), database_var],
+        time_from="now-3h",
     )

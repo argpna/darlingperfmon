@@ -17,15 +17,26 @@ from ._shared import (
     server_var,
     stat,
     status_colors,
+    status_dots,
     table,
     thresholds,
     uid,
 )
-from .collection_health import _CADENCE_TABLE, _HEALTH_AGG, _HEALTH_STATUS
+from .collection_health import (
+    _CADENCE_TABLE,
+    _HEALTH_AGG,
+    _HEALTH_STATUS,
+    _WARNING_FAILURE_RATE,
+)
 
 # ServerHealthThresholds: stale = 2x the 1-min collector cadence, offline = 15 min.
 _STALE_MINUTES = 2
 _OFFLINE_MINUTES = 15
+
+_BLOCKING_CRITICAL_PER_HOUR = 20
+_BLOCKING_WARN_PER_HOUR = 5
+_DEADLOCK_CRITICAL_PER_HOUR = 20
+_DEADLOCK_WARN_PER_HOUR = 5
 
 # Alert rules for this line are provisioned into this folder (alerting_darling.yml); must
 # match grafana_darling_folder_uid/grafana_darling_folder in defaults/main.yml.
@@ -117,7 +128,9 @@ a AS (
              THEN agg.error_count::double precision / agg.total_runs * 100
              ELSE 0 END AS failure_rate,
         COALESCE(EXTRACT(EPOCH FROM ((now() AT TIME ZONE 'UTC') - agg.last_success_time))
-                 / 3600.0, 999) AS hours_since_success
+                 / 3600.0, 999) AS hours_since_success,
+        COALESCE(EXTRACT(EPOCH FROM ((now() AT TIME ZONE 'UTC') - agg.last_run_time))
+                 / 3600.0, 999) AS hours_since_run
     FROM agg
     LEFT JOIN cadence c ON c.collector_name = agg.collector_name
 ),
@@ -125,7 +138,8 @@ collectors AS (
     SELECT
         server_id,
         COUNT(*) FILTER (WHERE status = 'HEALTHY') AS healthy_count,
-        COUNT(*) FILTER (WHERE status = 'FAILING') AS failing_count
+        COUNT(*) FILTER (WHERE status = 'FAILING') AS failing_count,
+        COUNT(*) AS total_count
     FROM (SELECT server_id, {_HEALTH_STATUS} AS status FROM a) AS x
     GROUP BY server_id
 ),
@@ -159,6 +173,7 @@ metrics AS (
         COALESCE(dl.cnt, 0) AS deadlock_count,
         COALESCE(co.healthy_count, 0) AS healthy_collector_count,
         COALESCE(co.failing_count, 0) AS failing_collector_count,
+        COALESCE(co.total_count, 0) AS total_collector_count,
         lc.last_collection_time,
         EXTRACT(EPOCH FROM ((now() AT TIME ZONE 'UTC') - lc.last_collection_time)) / 60.0
             AS minutes_since_collection
@@ -184,7 +199,8 @@ scored AS (
             ELSE 'Fresh'
         END AS freshness,
         /* Per-metric severity - ServerHealthClassifier.*Severity thresholds. Every branch
-           gates on {_NOT_FRESH} first (see its comment above). */
+           gates on {_NOT_FRESH} first, so a stale/offline server reads Unknown per metric
+           instead of a stale Healthy/Critical value. */
         CASE WHEN {_NOT_FRESH} OR m.cpu_pct IS NULL THEN 'Unknown'
              WHEN m.cpu_total_pct >= 95 THEN 'Critical'
              WHEN m.cpu_total_pct >= 80 THEN 'Warning'
@@ -200,14 +216,21 @@ scored AS (
                   OR m.memory_forced_count > 0
              THEN 'Critical' ELSE 'Healthy' END AS memory_severity,
         CASE WHEN {_NOT_FRESH} THEN 'Unknown'
-             WHEN m.max_blocking_wait_ms / 1000.0 >= 60 OR m.blocking_count >= 5 THEN 'Critical'
-             WHEN m.max_blocking_wait_ms / 1000.0 >= 10 OR m.blocking_count >= 2 THEN 'Warning'
-             WHEN m.blocking_count > 0 THEN 'Warning'
+             WHEN m.max_blocking_wait_ms / 1000.0 >= 60
+                  OR m.blocking_count >= {_BLOCKING_CRITICAL_PER_HOUR} THEN 'Critical'
+             WHEN m.max_blocking_wait_ms / 1000.0 >= 10
+                  OR m.blocking_count >= {_BLOCKING_WARN_PER_HOUR} THEN 'Warning'
              ELSE 'Healthy' END AS blocking_severity,
         CASE WHEN {_NOT_FRESH} THEN 'Unknown'
-             WHEN m.deadlock_count > 0 THEN 'Critical' ELSE 'Healthy' END AS deadlock_severity,
+             WHEN m.deadlock_count >= {_DEADLOCK_CRITICAL_PER_HOUR} THEN 'Critical'
+             WHEN m.deadlock_count >= {_DEADLOCK_WARN_PER_HOUR} THEN 'Warning'
+             ELSE 'Healthy' END AS deadlock_severity,
         CASE WHEN {_NOT_FRESH} THEN 'Unknown'
-             WHEN m.failing_collector_count > 0 THEN 'Warning' ELSE 'Healthy' END
+             WHEN m.failing_collector_count <= 0 THEN
+                 CASE WHEN m.total_collector_count > 0 THEN 'Healthy' ELSE 'Unknown' END
+             WHEN m.failing_collector_count * 100.0 / m.total_collector_count
+                  > {_WARNING_FAILURE_RATE} THEN 'Critical'
+             ELSE 'Warning' END
             AS collector_severity
     FROM metrics m
 ),
@@ -472,17 +495,17 @@ def fleet():
             },
         ),
         status_colors("Severity", {**indicator_colors, "Offline": "text"}),
-        status_colors("CPU", indicator_colors),
+        status_dots("CPU", HEALTH_STATUS_COLORS),
         col_datalink("CPU", "Open CPU, Memory & Sessions", _CPU_MEM_URL),
-        status_colors("Threads", indicator_colors),
+        status_dots("Threads", HEALTH_STATUS_COLORS),
         col_datalink("Threads", "Open CPU, Memory & Sessions", _CPU_MEM_URL),
-        status_colors("Memory", indicator_colors),
+        status_dots("Memory", HEALTH_STATUS_COLORS),
         col_datalink("Memory", "Open CPU, Memory & Sessions", _CPU_MEM_URL),
-        status_colors("Blocking", indicator_colors),
+        status_dots("Blocking", HEALTH_STATUS_COLORS),
         col_datalink("Blocking", "Open Blocking & Deadlocks", _BLOCKING_URL),
-        status_colors("Deadlocks", indicator_colors),
+        status_dots("Deadlocks", HEALTH_STATUS_COLORS),
         col_datalink("Deadlocks", "Open Blocking & Deadlocks", _BLOCKING_URL),
-        status_colors("Collectors", indicator_colors),
+        status_dots("Collectors", HEALTH_STATUS_COLORS),
         col_datalink("Collectors", "Open Collection Health", _COLLECTION_URL),
     ]
 

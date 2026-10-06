@@ -35,6 +35,7 @@ from ._shared import (
     budget_cte,
     classification_explanation,
     cpu_score,
+    grants_cte,
     latest_per_server,
     memory_score,
     overall_score,
@@ -71,7 +72,15 @@ _FREE_PCT = """CASE WHEN COALESCE(st.total_mb, 0) > 0
 # Shared by the Utilization Efficiency and Server Inventory queries below - both alias their
 # per-server CPU CTE `c` and memory CTE `m`, so the same status expression fits either.
 _STATUS = provisioning_status(
-    "c.avg_cpu_pct", "c.max_cpu_pct", "c.p95_cpu_pct", "m.memory_ratio"
+    "c.avg_cpu_pct",
+    "c.max_cpu_pct",
+    "c.p95_cpu_pct",
+    "g.max_grant_waiters",
+    "g.grant_timeouts",
+    "g.forced_grants",
+    "g.grant_utilization_pct",
+    "m.max_workers_count",
+    "m.current_workers_count",
 )
 
 _EFFICIENCY_SQL = f"""
@@ -118,6 +127,7 @@ storage AS (
     WHERE {server_filter()} AND {latest_per_server(_SIZES)}
     GROUP BY server_id
 ),
+{grants_cte(f"{server_filter()} AND collection_time >= {_LAST_24H}")},
 {budget_cte()}
 SELECT
     srv.name AS "Server",
@@ -136,7 +146,11 @@ SELECT
         'c.max_cpu_pct',
         'c.p95_cpu_pct',
         _BP_PCT,
-        'COALESCE(m.memory_ratio, 0)',
+        'g.max_grant_waiters',
+        'g.grant_timeouts',
+        'g.forced_grants',
+        'm.max_workers_count',
+        'm.current_workers_count',
     )} AS "Why",
     round(c.avg_cpu_pct, 2) AS "Avg CPU %",
     round(c.p95_cpu_pct, 2) AS "P95 CPU %",
@@ -158,6 +172,7 @@ FROM cpu_stats c
 JOIN mem_latest m ON m.server_id = c.server_id
 LEFT JOIN server_info s ON s.server_id = c.server_id
 LEFT JOIN storage st ON st.server_id = c.server_id
+LEFT JOIN grants g ON g.server_id = c.server_id
 LEFT JOIN budget b ON b.server_id = c.server_id
 {server_join('c.server_id')}
 ORDER BY srv.name
@@ -173,7 +188,15 @@ FROM ({_EFFICIENCY_SQL}) AS t
 
 # GetProvisioningTrendAsync - a fixed 7 days, classified per day by the same thresholds.
 _TREND_STATUS = provisioning_status(
-    "c.avg_cpu_pct", "c.max_cpu_pct", "c.p95_cpu_pct", "m.avg_memory_ratio"
+    "c.avg_cpu_pct",
+    "c.max_cpu_pct",
+    "c.p95_cpu_pct",
+    "g.max_grant_waiters",
+    "g.grant_timeouts",
+    "g.forced_grants",
+    "g.grant_utilization_pct",
+    "m.max_workers_count",
+    "m.current_workers_count",
 )
 
 _TREND_SQL = f"""
@@ -193,12 +216,18 @@ daily_mem AS (
     SELECT server_id,
            collection_time::date AS day,
            AVG(total_server_memory_mb::numeric / NULLIF(target_server_memory_mb, 0))
-               AS avg_memory_ratio
+               AS avg_memory_ratio,
+           MAX(max_workers_count) AS max_workers_count,
+           MAX(current_workers_count) AS current_workers_count
     FROM {_MEM}
     WHERE {server_filter()}
       AND collection_time >= {UTC_NOW} - INTERVAL '{TREND_DAYS} days'
     GROUP BY server_id, collection_time::date
-)
+),
+{grants_cte(
+    f"{server_filter()} AND collection_time >= {UTC_NOW} - INTERVAL '{TREND_DAYS} days'",
+    day_grain=True,
+)}
 SELECT
     c.day AS "Day",
     srv.name AS "Server",
@@ -209,6 +238,7 @@ SELECT
     round(COALESCE(m.avg_memory_ratio, 0), 2) AS "Mem Ratio"
 FROM daily_cpu c
 LEFT JOIN daily_mem m ON m.server_id = c.server_id AND m.day = c.day
+LEFT JOIN grants g ON g.server_id = c.server_id AND g.day = c.day
 {server_join('c.server_id')}
 ORDER BY c.day DESC, srv.name
 """

@@ -2,7 +2,8 @@
 Changes, and Running Jobs dashboards: current setup, recent changes, and scheduled jobs.
 
 Upstream ref: ViewerDataService.Config.cs, ViewerDataService.ConfigChanges.cs,
-ViewerServerTab.RunningJobs.cs.
+ViewerServerTab.RunningJobs.cs, ViewerDataService.JobHistory.cs,
+ViewerDataService.PlanCorrection.cs.
 
 Configuration's grids read each server's latest capture, not the dashboard time range.
 Configuration and Configuration Changes each defined their own `database` variable; the
@@ -115,6 +116,28 @@ WHERE {server_filter('dsc.server_id')}
 ORDER BY srv.name, dsc.database_name, dsc.configuration_name
 """
 
+# Upstream ref: AutomaticTuningSql - the newest capture per server, one row per database.
+_AUTOMATIC_TUNING_SQL = f"""
+SELECT DISTINCT
+    srv.name AS "Server",
+    pc.database_name AS "Database",
+    pc.force_last_good_plan_desired_state AS "Desired State",
+    pc.force_last_good_plan_actual_state AS "Actual State",
+    pc.force_last_good_plan_reason AS "Reason",
+    pc.create_index_actual_state AS "Create Index",
+    pc.drop_index_actual_state AS "Drop Index",
+    pc.collection_time AS "Collected"
+FROM {collector('plan_correction')} AS pc
+{server_join('pc.server_id')}
+WHERE {server_filter('pc.server_id')}
+  AND pc.collection_time = (
+      SELECT MAX(inner_pc.collection_time) FROM {collector('plan_correction')} AS inner_pc
+      WHERE inner_pc.server_id = pc.server_id
+  )
+  AND {multi_filter('pc.database_name', 'database')}
+ORDER BY srv.name, pc.database_name
+"""
+
 # A row exists only while a flag is enabled, so this grid is the enabled set.
 _TRACE_FLAGS_SQL = f"""
 SELECT
@@ -137,8 +160,7 @@ WHERE {server_filter('dc.server_id')}
 ORDER BY 1
 """
 
-# The 27 setting columns the wide sys.databases snapshot carries, unpivoted one row per
-# changed setting so setting_name is the literal column name. Upstream ref:
+# Upstream ref:
 # ConfigChangeDiff.DatabaseConfigChangeSettingNames.
 _DB_SETTINGS = (
     "state_desc",
@@ -187,10 +209,6 @@ def _db_unpivot() -> str:
     )
 
 
-# window_end/since are parameterized so the same diff logic serves both the change-history
-# tables (bounded by the dashboard's own time range) and the stat row's fixed 24h count
-# (independent of it, like Wait Analysis's and Collection Health's "right now" tiles). since
-# is a column-name -> predicate function (_dashboard_time_filter / _last_24h_filter below).
 def _server_changes_sql(window_end: str, since) -> str:
     return f"""
 WITH walked AS (
@@ -297,11 +315,6 @@ ORDER BY w.capture_time DESC, w.database_name, w.setting_name
 """
 
 
-# A trace-flag row exists only while the flag is enabled, so this is a SET-diff of consecutive
-# captures rather than a per-key value walk: appearing is `enabled`, vanishing is `disabled`,
-# a status or scope move is `modified`. A vanished flag has no row to walk from, so the diff
-# runs over a (capture x flag) grid with both captures outer-joined onto it - that is what
-# makes an absence visible at all.
 def _trace_flag_changes_sql(window_end: str, since) -> str:
     return f"""
 WITH captures AS (
@@ -399,7 +412,7 @@ WHERE {server_filter('dc.server_id')}
 ORDER BY 1
 """
 
-# Upstream ref: ShouldShowMsdbBanner - PERMISSIONS status only, not any-error.
+# Upstream ref: ShouldShowMsdbBanner.
 _MSDB_STATUS_SQL = f"""
 SELECT DISTINCT ON (cl.server_id)
     srv.name AS "Server",
@@ -411,7 +424,7 @@ WHERE cl.collector_name = 'running_jobs'
 ORDER BY cl.server_id, cl.collection_time DESC
 """
 
-# Upstream ref: RunningJobsSql, extended to a per-server latest snapshot for multi-select $server.
+# Upstream ref: RunningJobsSql, extended to a per-server latest snapshot.
 _RUNNING_JOBS_SQL = f"""
 WITH latest AS (
     SELECT
@@ -427,6 +440,7 @@ WITH latest AS (
 SELECT
     l.server_label AS "Server",
     rj.job_name AS "Job Name",
+    CASE WHEN rj.job_enabled THEN 'Yes' ELSE 'No' END AS "Job Enabled",
     rj.start_time AS "Start Time",
     rj.current_duration_seconds AS "Current Duration",
     rj.avg_duration_seconds AS "Avg Duration",
@@ -441,12 +455,100 @@ JOIN {collector('running_jobs')} AS rj
 ORDER BY rj.current_duration_seconds DESC
 """
 
+_JOB_RUN_UTC = (
+    "(jh.run_datetime - make_interval(mins => COALESCE(svr.utc_offset_minutes, 0)))"
+)
+
+_JOB_SVR_CTE = f"""svr AS (
+    SELECT DISTINCT ON (sp.server_id) sp.server_id, sp.utc_offset_minutes
+    FROM {collector('server_properties')} AS sp
+    WHERE sp.utc_offset_minutes IS NOT NULL
+    ORDER BY sp.server_id, sp.collection_time DESC
+)"""
+
+# Upstream ref: GetJobHistoryAsync.
+_JOB_HISTORY_SQL = f"""
+WITH {_JOB_SVR_CTE},
+base AS (
+    SELECT
+        jh.server_id,
+        jh.instance_id,
+        jh.job_name,
+        jh.job_enabled,
+        jh.category_name,
+        jh.step_id,
+        jh.step_name,
+        jh.run_status_desc,
+        {_JOB_RUN_UTC} AS run_utc,
+        jh.run_duration_seconds,
+        jh.retries_attempted,
+        jh.message,
+        AVG(CASE WHEN jh.step_id = 0 AND jh.run_status = 1 THEN jh.run_duration_seconds END)
+            OVER (PARTITION BY jh.server_id, jh.job_id) AS avg_success,
+        MAX(CASE WHEN jh.step_id = 0 AND jh.run_status = 1 THEN {_JOB_RUN_UTC} END)
+            OVER (PARTITION BY jh.server_id, jh.job_id) AS last_success
+    FROM {collector('job_history')} AS jh
+    LEFT JOIN svr ON svr.server_id = jh.server_id
+    WHERE {_JOB_RUN_UTC} >= $__timeFrom()::timestamp
+      AND {_JOB_RUN_UTC} <= $__timeTo()::timestamp
+      AND {server_filter('jh.server_id')}
+)
+SELECT
+    b.run_utc AS "Run Time",
+    srv.name AS "Server",
+    b.job_name AS "Job",
+    {_yes_no('b.job_enabled')} AS "Job Enabled",
+    b.category_name AS "Category",
+    CASE WHEN b.step_id = 0 THEN '(Job outcome)' ELSE b.step_id || ': ' || b.step_name END AS "Step",
+    b.run_status_desc AS "Status",
+    b.run_duration_seconds AS "Duration",
+    CASE WHEN b.retries_attempted > 0 THEN b.retries_attempted::text ELSE '' END AS "Retries",
+    CASE WHEN b.step_id = 0 AND b.avg_success > 0
+          AND b.run_duration_seconds > b.avg_success * 2
+          AND b.run_duration_seconds > 60 THEN 'Yes' ELSE '' END AS "Long Running",
+    COALESCE(to_char(b.last_success, 'YYYY-MM-DD HH24:MI:SS'), 'Never') AS "Last Success",
+    b.message AS "Message"
+FROM base AS b
+{server_join('b.server_id')}
+WHERE {multi_filter('b.run_status_desc', 'job_status')}
+  AND {multi_filter('b.category_name', 'job_category')}
+ORDER BY b.run_utc DESC, b.instance_id DESC
+LIMIT 2000
+"""
+
+_JOB_CATEGORY_VAR_SQL = f"""
+SELECT DISTINCT jh.category_name
+FROM {collector('job_history')} AS jh
+WHERE jh.category_name IS NOT NULL
+ORDER BY 1
+"""
+
+_JOB_STATUS_VAR_SQL = f"""
+SELECT DISTINCT jh.run_status_desc
+FROM {collector('job_history')} AS jh
+WHERE jh.run_status_desc IS NOT NULL
+ORDER BY 1
+"""
+
+# Upstream ref: GetAgentStatusAsync - newest snapshot per server.
+_AGENT_STATUS_SQL = f"""
+WITH {_JOB_SVR_CTE}
+SELECT DISTINCT ON (a.server_id)
+    srv.name AS "Server",
+    CASE WHEN a.agent_running THEN 'Running' ELSE COALESCE(a.agent_status_desc, 'Stopped') END AS "Agent",
+    a.agent_startup_desc AS "Startup Type",
+    COALESCE(
+        to_char(a.next_scheduled_run - make_interval(mins => COALESCE(svr.utc_offset_minutes, 0)),
+                'YYYY-MM-DD HH24:MI:SS'),
+        'None scheduled') AS "Next Scheduled Run"
+FROM {collector('agent_status')} AS a
+LEFT JOIN svr ON svr.server_id = a.server_id
+{server_join('a.server_id')}
+WHERE {server_filter('a.server_id')}
+ORDER BY a.server_id, a.collection_time DESC
+"""
+
 # Stat row: non-default config count, config changes in the last 24h, currently running jobs.
-# A short trailing window, not $__timeFilter - "right now" snapshot tiles, matching Wait
-# Analysis's and Collection Health's stat rows. Darling collects configured vs in-use values,
-# not SQL Server's shipped defaults, so "non-default" is approximated as configured-but-not-
-# yet-applied drift (the same condition the Server Configuration grid's "Values Match" column
-# already flags) rather than a true default-value comparison.
 _PENDING_RESTART_SQL = f"""
 SELECT COUNT(*) AS v
 FROM {collector('server_config')} AS sc
@@ -569,6 +671,29 @@ def administration():
                     w,
                     h,
                     _SCOPED_CONFIG_SQL,
+                ),
+            )
+        ],
+    )
+
+    y = subtab(
+        panels,
+        "Automatic Tuning",
+        y,
+        [
+            (
+                24,
+                10,
+                lambda x, y, w, h: table(
+                    "Automatic Tuning",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _AUTOMATIC_TUNING_SQL,
+                    description="Latest FORCE_LAST_GOOD_PLAN enablement per database, "
+                    "Reason is populated only when the engine cannot not honour the "
+                    "desired state.",
                 ),
             )
         ],
@@ -732,6 +857,64 @@ def administration():
         ],
     )
 
+    y = subtab(
+        panels,
+        "Job History",
+        y,
+        [
+            (
+                24,
+                5,
+                lambda x, y, w, h: table(
+                    "SQL Agent Status",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _AGENT_STATUS_SQL,
+                    overrides=[
+                        status_colors(
+                            "Agent", {"Running": "green"}, cell_type="color-text"
+                        ),
+                    ],
+                    description="Latest agent snapshot per server.",
+                ),
+            ),
+            (
+                24,
+                14,
+                lambda x, y, w, h: table(
+                    "Job History",
+                    x,
+                    y,
+                    w,
+                    h,
+                    _JOB_HISTORY_SQL,
+                    sort_by=[{"displayName": "Run Time", "desc": True}],
+                    overrides=[
+                        status_colors(
+                            "Status",
+                            {
+                                "Failed": "red",
+                                "Retry": "yellow",
+                                "Canceled": "text",
+                                "Succeeded": "green",
+                            },
+                        ),
+                        status_colors(
+                            "Long Running", {"Yes": "orange"}, cell_type="color-text"
+                        ),
+                        col_unit("Duration", "s"),
+                    ],
+                    description=(
+                        "Retained job runs whose run time falls in the dashboard range; "
+                        "each step plus its job outcome row."
+                    ),
+                ),
+            ),
+        ],
+    )
+
     return dashboard(
         uid("administration"),
         "Administration",
@@ -749,6 +932,18 @@ def administration():
                 "Change Database",
                 _CHANGE_DATABASE_VAR_SQL,
                 "Scopes the database configuration change history.",
+            ),
+            query_var(
+                "job_status",
+                "Job Status",
+                _JOB_STATUS_VAR_SQL,
+                "Scopes the job history grid by run status.",
+            ),
+            query_var(
+                "job_category",
+                "Job Category",
+                _JOB_CATEGORY_VAR_SQL,
+                "Scopes the job history grid by job category.",
             ),
         ],
         time_from="now-7d",
