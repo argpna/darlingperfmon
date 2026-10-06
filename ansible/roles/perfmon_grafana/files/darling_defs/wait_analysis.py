@@ -25,8 +25,7 @@ from .waits import wait_stats_section, wait_type_var
 
 
 def _rate_sql(base: str, dimension: str, delta: str) -> str:
-    """Per-second rate for the five heaviest classes, on upstream's truncate-then-diff idiom.
-    """
+    """Per-second rate for the five heaviest classes, on upstream's truncate-then-diff idiom."""
     return f"""
 WITH top_classes AS (
     SELECT t.server_id, t.{dimension}

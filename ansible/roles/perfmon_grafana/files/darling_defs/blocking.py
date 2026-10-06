@@ -304,6 +304,7 @@ GROUP BY 1, 2
 ORDER BY 1
 """
 
+
 def _bpr_history_link(col: str, side: str):
     return col_datalink(
         col,
