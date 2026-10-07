@@ -4,10 +4,6 @@ Changes, and Running Jobs dashboards: current setup, recent changes, and schedul
 Upstream ref: ViewerDataService.Config.cs, ViewerDataService.ConfigChanges.cs,
 ViewerServerTab.RunningJobs.cs, ViewerDataService.JobHistory.cs,
 ViewerDataService.PlanCorrection.cs.
-
-Configuration's grids read each server's latest capture, not the dashboard time range.
-Configuration and Configuration Changes each defined their own `database` variable; the
-Configuration Changes one is renamed `change_database` here to avoid a name collision.
 """
 
 from ._shared import (
@@ -275,7 +271,7 @@ WITH lagged AS (
     FROM {collector('database_config')} AS dc
     WHERE {server_filter('dc.server_id')}
       AND dc.capture_time <= {window_end}
-      AND {multi_filter('dc.database_name', 'change_database')}
+      AND {multi_filter('dc.database_name', 'database')}
     WINDOW w AS (PARTITION BY dc.server_id, dc.database_name ORDER BY dc.capture_time)
 ),
 walked AS (
@@ -404,13 +400,6 @@ def _last_24h_filter(col: str) -> str:
 _SERVER_CHANGES_SQL = _server_changes_sql("$__timeTo()", _dashboard_time_filter)
 _DATABASE_CHANGES_SQL = _database_changes_sql("$__timeTo()", _dashboard_time_filter)
 _TRACE_FLAG_CHANGES_SQL = _trace_flag_changes_sql("$__timeTo()", _dashboard_time_filter)
-
-_CHANGE_DATABASE_VAR_SQL = f"""
-SELECT DISTINCT dc.database_name
-FROM {collector('database_config')} AS dc
-WHERE {server_filter('dc.server_id')}
-ORDER BY 1
-"""
 
 # Upstream ref: ShouldShowMsdbBanner.
 _MSDB_STATUS_SQL = f"""
@@ -925,13 +914,7 @@ def administration():
                 "database",
                 "Database",
                 _CONFIG_DATABASE_VAR_SQL,
-                "Scopes the database and scoped-configuration grids.",
-            ),
-            query_var(
-                "change_database",
-                "Change Database",
-                _CHANGE_DATABASE_VAR_SQL,
-                "Scopes the database configuration change history.",
+                "Scopes the database and scoped-configuration grids and the database configuration change history.",
             ),
             query_var(
                 "job_status",
