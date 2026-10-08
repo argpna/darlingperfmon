@@ -18,6 +18,7 @@ import base64
 import json
 import os
 import pathlib
+import re
 import sys
 import time
 import urllib.error
@@ -42,6 +43,8 @@ REQUEST_TIMEOUT_SECONDS = 30
 
 RETRY_ATTEMPTS = 4
 RETRY_DELAY_SECONDS = 15
+
+PERMANENT_ERROR_PATTERN = re.compile(r"SQLSTATE 42\w{3}")
 
 NON_SQL_VARIABLE_TYPES = {"datasource"}
 NON_SQL_VARIABLE_KINDS = {"DatasourceVariable"}
@@ -75,10 +78,12 @@ def _is_v2_dashboard(dash: dict) -> bool:
     return dash.get("kind") == "Dashboard" and "spec" in dash
 
 
-def _dashboard_subs(dash: dict, ds_uid: str | None = None) -> dict[str, str]:
+def _dashboard_subs(
+    dash: dict, ds_uid: str | None = None
+) -> tuple[dict[str, str], list[str]]:
     """Build the ${name} -> escaped-only value table for one dashboard, derived from
     its own variable list (v1 templating.list or v2 spec.variables) instead of a
-    hand-maintained global dict."""
+    hand-maintained global dict. Also returns the variables whose query failed."""
     if _is_v2_dashboard(dash):
         variables = [
             (v.get("kind"), v.get("spec", {}))
@@ -88,7 +93,8 @@ def _dashboard_subs(dash: dict, ds_uid: str | None = None) -> dict[str, str]:
         variables = [
             (v.get("type"), v) for v in dash.get("templating", {}).get("list", [])
         ]
-    subs = {}
+    subs: dict[str, str] = {}
+    errors: list[str] = []
     for kind, var in variables:
         name = var.get("name")
         if not name or kind in NON_SQL_VARIABLE_TYPES | NON_SQL_VARIABLE_KINDS:
@@ -103,12 +109,16 @@ def _dashboard_subs(dash: dict, ds_uid: str | None = None) -> dict[str, str]:
             if value == ALL_VARIABLE_VALUE:
                 value = var.get("allValue") or ""
             if not value and kind == "query" and ds_uid:
-                value = _resolve_query_var(var, ds_uid)
+                value, error = _resolve_query_var(var, ds_uid, subs)
+                if error:
+                    errors.append(f"variable {name}: {error}")
         subs[name] = str(value)
-    return subs
+    return subs, errors
 
 
-def _resolve_query_var(var: dict, ds_uid: str) -> str:
+def _resolve_query_var(
+    var: dict, ds_uid: str, subs: dict[str, str]
+) -> tuple[str, str | None]:
     """Resolve a query-backed variable by running its query, the way Grafana does.
 
     Their options populate at dashboard load, so `current` is empty in the generated JSON
@@ -118,12 +128,12 @@ def _resolve_query_var(var: dict, ds_uid: str) -> str:
     if isinstance(query, dict):
         query = query.get("rawSql") or query.get("query")
     if not isinstance(query, str) or not query.strip():
-        return ""
-    return _first_variable_value(ds_uid, query)
+        return "", None
+    return _first_variable_value(ds_uid, _apply_subs(query, subs))
 
 
-def _first_variable_value(ds_uid: str, query: str) -> str:
-    """Return the first __value (or first column) the variable query yields."""
+def _first_variable_value(ds_uid: str, query: str) -> tuple[str, str | None]:
+    """Return (first __value or first column the variable query yields, error)."""
     body = json.dumps(
         {
             "queries": [
@@ -149,9 +159,15 @@ def _first_variable_value(ds_uid: str, query: str) -> str:
     try:
         with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT_SECONDS) as resp:
             r = json.load(resp)
+    except urllib.error.HTTPError as e:
+        try:
+            return "", str(json.load(e).get("results", {}).get("A", {}).get("error"))
+        except json.JSONDecodeError:
+            return "", f"HTTP {e.code}: {e.reason}"
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
-        print(f"  (could not resolve variable query: {e})")
-        return ""
+        return "", f"request failed: {e}"
+    if r.get("results", {}).get("A", {}).get("error"):
+        return "", str(r["results"]["A"]["error"])
     frames = r.get("results", {}).get("A", {}).get("frames", [])
     for fr in frames:
         fields = [f.get("name") for f in fr.get("schema", {}).get("fields", [])]
@@ -159,8 +175,8 @@ def _first_variable_value(ds_uid: str, query: str) -> str:
         if not values or not values[0]:
             continue
         idx = fields.index("__value") if "__value" in fields else len(values) - 1
-        return str(values[idx][0])
-    return ""
+        return str(values[idx][0]), None
+    return "", None
 
 
 def _apply_subs(sql: str, subs: dict[str, str]) -> str:
@@ -290,7 +306,11 @@ def run_query(ds_uid: str, sql: str, fmt: str):
 def run_query_with_retry(ds_uid: str, sql: str, fmt: str):
     for attempt in range(1, RETRY_ATTEMPTS + 1):
         status, detail = run_query(ds_uid, sql, fmt)
-        if status == "OK" or attempt == RETRY_ATTEMPTS:
+        if (
+            status == "OK"
+            or attempt == RETRY_ATTEMPTS
+            or PERMANENT_ERROR_PATTERN.search(str(detail))
+        ):
             return status, detail
         time.sleep(RETRY_DELAY_SECONDS)
     return status, detail
@@ -330,7 +350,10 @@ def main() -> None:
             failures += 1
             continue
         name = f.name
-        subs = _dashboard_subs(dash, DS_UIDS[0])
+        subs, var_errors = _dashboard_subs(dash, DS_UIDS[0])
+        for error in var_errors:
+            failures += 1
+            print(f"{name:28s} | {error[:160]}  <<< FAIL")
         extracted = 0
         for title, fmt, sql in iter_queries(dash):
             extracted += 1

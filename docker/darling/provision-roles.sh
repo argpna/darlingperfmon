@@ -15,11 +15,6 @@ until $PSQL -tAc "SELECT to_regclass('collect.wait_stats') IS NOT NULL" 2>/dev/n
     sleep 5
 done
 
-if $PSQL -tAc "SELECT 1 FROM pg_roles WHERE rolname='viewer'" | grep -q '^1$'; then
-    echo "viewer role already present, nothing to do"
-    exit 0
-fi
-
 apk add --no-cache curl >/dev/null
 
 url="https://raw.githubusercontent.com/erikdarlingdata/PerformanceMonitor/${PERFMON_VERSION}/Darling/tools/provision-roles.sql"
@@ -30,5 +25,14 @@ sed -e "s/CHANGE_ME_ADMIN_PASSWORD/${DARLING_PG_PASSWORD}/g" \
     -e "s/CHANGE_ME_VIEWER_PASSWORD/${DARLING_VIEWER_PASSWORD}/g" \
     /tmp/provision-roles.sql > /tmp/provision-roles.rendered.sql
 
-$PSQL -f /tmp/provision-roles.rendered.sql
+attempts=60
+until $PSQL -f /tmp/provision-roles.rendered.sql; do
+    attempts=$((attempts - 1))
+    if [ "$attempts" -le 0 ]; then
+        echo "provision-roles.sql did not apply cleanly" >&2
+        exit 1
+    fi
+    echo "grants not applicable yet, retrying in 5s..."
+    sleep 5
+done
 echo "provisioned admin and viewer roles"
