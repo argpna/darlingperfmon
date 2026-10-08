@@ -101,7 +101,7 @@ darling_sql_password: "{{ vault_darling_app_password }}"
 
 | Variable | Default | Notes |
 |---|---|---|
-| `perfmon_darling_config_path` | `/etc/darling/darling.json` | Where the rendered config is written. The service resolves `DARLING_CONFIG`, then `darling.json` beside the binary. |
+| `perfmon_darling_config_path` | `/etc/darling/darling.json` | Path where the rendered config is written. The service resolves `DARLING_CONFIG`, falls back to `darling.json` located in the binary directory. |
 | `perfmon_darling_config_owner` / `perfmon_darling_config_group` | `root` / `root` | Ownership of the rendered config file. |
 | `perfmon_darling_instances` | derived from `sql_servers` group | Override with an explicit list when your inventory group is named differently or you are running without a `sql_servers` group. |
 | `perfmon_darling_pg_host` / `perfmon_darling_pg_port` / `perfmon_darling_pg_database` | `darling-pg` / `5432` / `darling` | Store the service collects into. |
@@ -109,10 +109,11 @@ darling_sql_password: "{{ vault_darling_app_password }}"
 | `perfmon_darling_pg_password` | - | Required. Password for `perfmon_darling_pg_user`. |
 | `perfmon_darling_auth` | `sql` | Fleet-wide default auth mode; override per instance with `darling_auth`. |
 | `perfmon_darling_capture_plans` | `true` | darling.json `capturePlans`. |
+| `perfmon_darling_plan_xml_compression` | `none` | darling.json `planXmlCompression`. Seeds `config_service.plan_xml_compression` on a new store only. The Plan XML panels need `none`; `gzip` stores plans Grafana cannot read. With `none`, Postgres compresses the plan text, so set compression type preferably to `default_toast_compression = lz4` on the store (this role does not manage it). |
 | `perfmon_darling_alerts_enabled` | `false` | darling.json `alerts.enabled` - the service's own alert engine, separate from the Grafana-side alert rules `perfmon_grafana` provisions. |
 | `perfmon_darling_analysis_enabled` | `true` | darling.json `analysis.enabled`. |
 | `perfmon_darling_register_new` | `true` | Insert instances missing from the registry - see Registry reconciliation. |
-| `perfmon_darling_prune_orphaned` | `false` | Disable registry rows whose instance left the inventory. Off by default: a partial-inventory run must not disable another team's instance. Only set `true` for a run whose inventory is the complete, current fleet. |
+| `perfmon_darling_prune_orphaned` | `false` | Disable registry rows whose instance left the inventory. Off by default. Important: Only set `true` for a run whose inventory is the complete, current fleet. |
 | `perfmon_darling_manage_service` | `false` | Whether to restart `perfmon_darling_service_name` (a systemd unit) when `darling.json` changes. See Restarting the collector below. |
 | `perfmon_darling_service_name` | `darling` | Systemd unit name, when `perfmon_darling_manage_service` is set. |
 

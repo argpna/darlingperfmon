@@ -312,18 +312,11 @@ def time_bucket(interval: str, col: str = "collection_time") -> str:
 _SHOWPLAN_NS = "http://schemas.microsoft.com/sqlserver/2004/07/showplan"
 
 
-def gunzip_expr(bytea_col: str) -> str:
-    """Decompress a gzip bytea column via the darling_gunzip() UDF.
-    Upstream tracking issue: #2071
-    """
-    return f"public.darling_gunzip({bytea_col})"
-
-
 def plan_parameters_sql(plan_source_sql: str) -> str:
     """Compile-time parameter values parsed out of a stored plan XML."""
     return f"""
 WITH plan AS ( {plan_source_sql} ),
-parsed AS (SELECT plan_xml::xml AS doc FROM plan WHERE plan_xml IS NOT NULL),
+parsed AS (SELECT plan_xml::xml AS doc FROM plan WHERE plan_xml IS NOT NULL AND xml_is_well_formed_document(plan_xml)),
 ns AS (SELECT ARRAY[ARRAY['sp', '{_SHOWPLAN_NS}']] AS n),
 params AS (
     SELECT unnest(xpath('//sp:ParameterList/sp:ColumnReference', doc, ns.n)) AS node

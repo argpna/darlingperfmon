@@ -1,7 +1,7 @@
 ARG DOTNET_RUNTIME_TAG=10.0
 
 FROM alpine:3.20 AS fetch
-ARG PERFMON_VERSION=v3.4.0
+ARG PERFMON_VERSION=v3.5.0
 WORKDIR /src
 RUN apk add --no-cache curl \
     && version="${PERFMON_VERSION#v}" \
