@@ -13,7 +13,6 @@ Grafana.
 | `darling` (profile `darling`) | `perfmon-darling` | The Darling collector service, monitoring SQL Server instances and writes to the TimescaleDB |
 | `darling-provision` (profile `darling`) | `perfmon-darling-provision` | One-shot: waits for the store to migrate, then provisions the `darling`/`viewer` roles |
 | `darling-collector-config` (profile `darling`) | `perfmon-darling-collector-config` | One-shot: waits for the store to migrate, then enables collectors that default off fleet-wide |
-| `darling-plan-gunzip` (profile `darling`) | `perfmon-darling-plan-gunzip` | One-shot: enables `plpython3u` and the `darling_gunzip()` UDF Plan XML panels fall back to |
 
 Environment variables, defined in `.env`:
 
@@ -21,7 +20,7 @@ Environment variables, defined in `.env`:
 |---|---|
 | `DARLING_PG_PASSWORD` | Password for the store's `darling` (owner/collector) Postgres role |
 | `DARLING_VIEWER_PASSWORD` | Password for the store's `viewer` (read-only) Postgres role, used by Grafana's datasource |
-| `PERFMON_VERSION` | Collector release tag `darling` builds from and `darling-provision` fetches `provision-roles.sql` from. Defaults to `v3.4.0` |
+| `PERFMON_VERSION` | Collector release tag `darling` builds from and `darling-provision` fetches `provision-roles.sql` from. Defaults to `v3.5.0` |
 
 `darling-pg` is a TimescaleDB container the `darling` service migrates on first start. The
 `darling` container builds from `docker/darling/Dockerfile` and waits on
@@ -38,9 +37,6 @@ each poll until the service has migrated the schema they depend on, then run the
   never does this itself.
 - `darling-collector-config` enables collectors that default off fleet-wide with no
   `config.config_collector_schedules` row (currently `long_query_completions`).
-
-`darling-plan-gunzip` only needs `darling-pg` itself healthy, not the collector's schema, so it has
-no such polling step.
 
 ### Standalone Darling stack
 

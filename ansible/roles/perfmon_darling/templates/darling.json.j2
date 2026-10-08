@@ -33,6 +33,7 @@
 {% endfor %}
   ],
   "capturePlans": {{ perfmon_darling_capture_plans | bool | to_json }},
+  "planXmlCompression": {{ perfmon_darling_plan_xml_compression | to_json }},
   "alerts": {
     "enabled": {{ perfmon_darling_alerts_enabled | bool | to_json }}
   },

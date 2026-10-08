@@ -2,7 +2,7 @@
 
 Provisions the Darling datasource, dashboards, and alert rules for PerformanceMonitor in Grafana.
 
-## What it does
+## What the role does
 
 1. Generates dashboard JSON files from the Python builder embedded in the role
    (`files/build-darling-dashboards.py`, panel builders in `files/darling_defs/`) and writes them

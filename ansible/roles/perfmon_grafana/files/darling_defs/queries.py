@@ -21,7 +21,6 @@ from ._shared import (
     detail_dashboard,
     fixed,
     flow,
-    gunzip_expr,
     heatmap,
     logs,
     multi_filter,
@@ -1523,7 +1522,7 @@ SELECT
     SUM(ps.delta_execution_count)::bigint AS "Executions",
     (SUM(ps.delta_worker_time)::double precision / 1000.0) / NULLIF(SUM(ps.delta_execution_count), 0) AS "Avg CPU (ms)",
     (SUM(ps.delta_elapsed_time)::double precision / 1000.0) / NULLIF(SUM(ps.delta_execution_count), 0) AS "Avg Duration (ms)",
-    bool_or(COALESCE(ps.query_plan_xml, dim.query_plan_xml) IS NOT NULL OR dim.query_plan_gz IS NOT NULL) AS "Has Plan XML"
+    bool_or(COALESCE(ps.query_plan_xml, dim.query_plan_xml) IS NOT NULL) AS "Has Plan XML"
 FROM {collector('procedure_stats')} AS ps
 LEFT JOIN collect.query_plan_dim AS dim ON dim.digest = ps.query_plan_digest
 WHERE {_PROCEDURE_HISTORY_WHERE}
@@ -1534,24 +1533,23 @@ ORDER BY MAX(ps.collection_time) DESC
 
 _PROCEDURE_PLAN_XML_SQL = f"""
 SELECT ps.collection_time AS time,
-    COALESCE(ps.query_plan_xml, dim.query_plan_xml, {gunzip_expr('dim.query_plan_gz')}) AS "Line"
+    COALESCE(ps.query_plan_xml, dim.query_plan_xml) AS "Line"
 FROM {collector('procedure_stats')} AS ps
 LEFT JOIN collect.query_plan_dim AS dim ON dim.digest = ps.query_plan_digest
 WHERE {_PROCEDURE_HISTORY_WHERE}
   AND ps.plan_handle = ${{plan_shape:sqlstring}}
-  AND (COALESCE(ps.query_plan_xml, dim.query_plan_xml) IS NOT NULL OR dim.query_plan_gz IS NOT NULL)
+  AND COALESCE(ps.query_plan_xml, dim.query_plan_xml) IS NOT NULL
 ORDER BY ps.collection_time DESC
 LIMIT 1
 """
 
 _PROCEDURE_PLAN_PARAMETERS_SQL = plan_parameters_sql(f"""
-    SELECT COALESCE(ps.query_plan_xml, dim.query_plan_xml,
-        {gunzip_expr('dim.query_plan_gz')}) AS plan_xml
+    SELECT COALESCE(ps.query_plan_xml, dim.query_plan_xml) AS plan_xml
     FROM {collector('procedure_stats')} AS ps
     LEFT JOIN collect.query_plan_dim AS dim ON dim.digest = ps.query_plan_digest
     WHERE {_PROCEDURE_HISTORY_WHERE}
       AND ps.plan_handle = ${{plan_shape:sqlstring}}
-      AND (COALESCE(ps.query_plan_xml, dim.query_plan_xml) IS NOT NULL OR dim.query_plan_gz IS NOT NULL)
+      AND COALESCE(ps.query_plan_xml, dim.query_plan_xml) IS NOT NULL
     ORDER BY ps.collection_time DESC
     LIMIT 1
 """)
@@ -1689,7 +1687,7 @@ SELECT
     SUM(qs.delta_execution_count)::bigint AS "Executions",
     (SUM(qs.delta_worker_time)::double precision / 1000.0) / NULLIF(SUM(qs.delta_execution_count), 0) AS "Avg CPU (ms)",
     (SUM(qs.delta_elapsed_time)::double precision / 1000.0) / NULLIF(SUM(qs.delta_execution_count), 0) AS "Avg Duration (ms)",
-    bool_or(qs.query_plan_xml IS NOT NULL OR qs.query_plan_gz IS NOT NULL) AS "Has Plan XML"
+    bool_or(qs.query_plan_xml IS NOT NULL) AS "Has Plan XML"
 FROM {collector('query_stats')} AS qs
 WHERE {_QUERY_STATS_HISTORY_WHERE}
   AND qs.query_plan_hash IS NOT NULL
@@ -1699,21 +1697,21 @@ ORDER BY MAX(qs.collection_time) DESC
 
 _QUERY_STATS_PLAN_XML_SQL = f"""
 SELECT qs.collection_time AS time,
-    COALESCE(qs.query_plan_xml, {gunzip_expr('qs.query_plan_gz')}) AS "Line"
+    qs.query_plan_xml AS "Line"
 FROM {collector('query_stats')} AS qs
 WHERE {_QUERY_STATS_HISTORY_WHERE}
   AND qs.query_plan_hash = ${{plan_shape:sqlstring}}
-  AND (qs.query_plan_xml IS NOT NULL OR qs.query_plan_gz IS NOT NULL)
+  AND qs.query_plan_xml IS NOT NULL
 ORDER BY qs.collection_time DESC
 LIMIT 1
 """
 
 _QUERY_STATS_PLAN_PARAMETERS_SQL = plan_parameters_sql(f"""
-    SELECT COALESCE(qs.query_plan_xml, {gunzip_expr('qs.query_plan_gz')}) AS plan_xml
+    SELECT qs.query_plan_xml AS plan_xml
     FROM {collector('query_stats')} AS qs
     WHERE {_QUERY_STATS_HISTORY_WHERE}
       AND qs.query_plan_hash = ${{plan_shape:sqlstring}}
-      AND (qs.query_plan_xml IS NOT NULL OR qs.query_plan_gz IS NOT NULL)
+      AND qs.query_plan_xml IS NOT NULL
     ORDER BY qs.collection_time DESC
     LIMIT 1
 """)

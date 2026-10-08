@@ -69,15 +69,12 @@ collecting, and you have an existing Grafana deployment.
 
 ### Prerequisites
 
-- A Darling collector service registered and collecting against at least one SQL Server instance.
+- A Darling collector service registered and collecting data for atleast one SQL Server instance.
 - The store's least-privilege Postgres roles provisioned - see
   `Darling/tools/provision-roles.sql` in the upstream project. Grafana connects as the read-only
   `viewer` role.
 - Grafana with Unified Alerting enabled (`GF_UNIFIED_ALERTING_ENABLED=true`), if you want alert
   rules too.
-- Optional, for Plan XML panels: `plpython3u` and a `public.darling_gunzip(bytea) RETURNS
-  text` function on the store (temporary workaround until we have an upstream fix, tracked
-  [here](https://github.com/erikdarlingdata/PerformanceMonitor/issues/2071)).
 
 ### Step 1: Add the Grafana datasource
 
@@ -141,8 +138,6 @@ the Grafana datasource, dashboards, and alert rules.
   solution - if you'd like to adapt it further.
 - The store's least-privilege Postgres roles provisioned - see
   `Darling/tools/provision-roles.sql` in the upstream project (included in the dockerized setup here).
-- Optional, for Plan XML panels: `plpython3u` and a `public.darling_gunzip(bytea) RETURNS
-  text` function on the store (also included in the dockerized setup here).
 - Grafana instance with Unified Alerting enabled.
 - `grafana_api_key`: a Grafana service account token with Admin role. Set via vault or group vars.
 

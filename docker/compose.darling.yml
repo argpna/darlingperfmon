@@ -3,7 +3,7 @@ name: darlingperfmon
 services:
   # Darling store - Timescale or plain Postgres
   darling-pg:
-    build: ./darling-pg
+    image: timescale/timescaledb:2.24.0-pg17
     container_name: perfmon-darling-pg
     environment:
       POSTGRES_USER: darling
@@ -25,7 +25,7 @@ services:
     build:
       context: ./darling
       args:
-        PERFMON_VERSION: ${PERFMON_VERSION:-v3.4.0}
+        PERFMON_VERSION: ${PERFMON_VERSION:-v3.5.0}
     container_name: perfmon-darling
     depends_on:
       darling-pg:
@@ -43,7 +43,7 @@ services:
       darling-pg:
         condition: service_healthy
     environment:
-      PERFMON_VERSION: ${PERFMON_VERSION:-v3.4.0}
+      PERFMON_VERSION: ${PERFMON_VERSION:-v3.5.0}
       DARLING_PG_PASSWORD: ${DARLING_PG_PASSWORD}
       DARLING_VIEWER_PASSWORD: ${DARLING_VIEWER_PASSWORD}
     volumes:
@@ -63,21 +63,6 @@ services:
     volumes:
       - ./darling/provision-collector-schedules.sh:/provision-collector-schedules.sh:ro
     entrypoint: ["/bin/sh", "/provision-collector-schedules.sh"]
-    restart: "no"
-    profiles: ["darling"]
-
-  # One-shot: enables plpython3u and the darling_gunzip() UDF Grafana's Plan XML panels need.
-  darling-plan-gunzip:
-    image: postgres:17-alpine
-    container_name: perfmon-darling-plan-gunzip
-    depends_on:
-      darling-pg:
-        condition: service_healthy
-    environment:
-      DARLING_PG_PASSWORD: ${DARLING_PG_PASSWORD}
-    volumes:
-      - ./darling/provision-plan-gunzip.sh:/provision-plan-gunzip.sh:ro
-    entrypoint: ["/bin/sh", "/provision-plan-gunzip.sh"]
     restart: "no"
     profiles: ["darling"]
 
