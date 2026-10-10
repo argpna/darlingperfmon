@@ -20,7 +20,7 @@ Environment variables, defined in `.env`:
 |---|---|
 | `DARLING_PG_PASSWORD` | Password for the store's `darling` (owner/collector) Postgres role |
 | `DARLING_VIEWER_PASSWORD` | Password for the store's `viewer` (read-only) Postgres role, used by Grafana's datasource |
-| `PERFMON_VERSION` | Collector release tag `darling` builds from and `darling-provision` fetches `provision-roles.sql` from. Defaults to `v3.5.0` |
+| `PERFMON_VERSION` | Collector release tag `darling` builds from and `darling-provision` fetches `provision-roles.sql` from. Defaults to `v3.6.0` |
 
 `darling-pg` is a TimescaleDB container the `darling` service migrates on first start. The
 `darling` container builds from `docker/darling/Dockerfile` and waits on

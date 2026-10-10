@@ -15,6 +15,23 @@ until $PSQL -tAc "SELECT to_regclass('collect.wait_stats') IS NOT NULL" 2>/dev/n
     sleep 5
 done
 
+echo "waiting for the continuous aggregates..."
+cagg_count() {
+    $PSQL -tAc "SELECT count(*) FROM timescaledb_information.continuous_aggregates" 2>/dev/null || echo 0
+}
+last=-1
+stable=0
+while [ "$stable" -lt 4 ]; do
+    sleep 5
+    now=$(cagg_count)
+    if [ "$now" -gt 0 ] && [ "$now" = "$last" ]; then
+        stable=$((stable + 1))
+    else
+        stable=0
+    fi
+    last=$now
+done
+
 apk add --no-cache curl >/dev/null
 
 url="https://raw.githubusercontent.com/erikdarlingdata/PerformanceMonitor/${PERFMON_VERSION}/Darling/tools/provision-roles.sql"
